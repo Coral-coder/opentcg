@@ -24,6 +24,7 @@ dependencies:
       path: packages/mtg_ui
   lorcana:
     path: packages/lorcana
+  shared_preferences: ^2.5.6
 
 dev_dependencies:
   flutter_test:
@@ -32,3 +33,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - data/lorcana-cards.json

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:mtg_ui/mtg_ui.dart';
 import 'package:tcg_app/tcg_app.dart';
 
+import 'lorcana/lorcana_home.dart';
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const OpenTcgApp());
@@ -25,11 +27,12 @@ final games = <GameEntry>[
     colors: const [Color(0xFFD9A441), Color(0xFF8C6239)],
     open: () => const OpenMtgApp(),
   ),
-  const GameEntry(
+  GameEntry(
     id: 'lorcana',
     name: 'Disney Lorcana',
-    blurb: 'Rules engine in progress.',
-    colors: [Color(0xFF6A4FB3), Color(0xFF2E6FB8)],
+    blurb: 'Ink, quest and challenge: first to 20 lore, against the computer or a friend.',
+    colors: const [Color(0xFF6A4FB3), Color(0xFF2E6FB8)],
+    open: () => const LorcanaHome(),
   ),
 ];
 
