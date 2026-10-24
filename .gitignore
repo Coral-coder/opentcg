@@ -1,0 +1,8 @@
+.dart_tool/
+build/
+.flutter-plugins*
+.packages
+.idea/
+*.iml
+.claude/worktrees/
+pubspec_overrides.yaml
