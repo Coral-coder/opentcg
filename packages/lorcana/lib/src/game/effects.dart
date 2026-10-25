@@ -13,6 +13,10 @@ class _Ctx {
   bool didIt = false;
   int? chosenOpponent;
   int? sourceStrength;
+
+  /// "Chosen player" and "name a card" (game/zones.dart).
+  int? chosenPlayer;
+  String? named;
 }
 
 extension GameEffects on Game {
@@ -75,6 +79,8 @@ extension GameEffects on Game {
       case TargetIs(:final target, :final filter):
         final ids = _resolveTargets(target, ctx, choose: false);
         return ids.isNotEmpty && matches(filter, ids.first, controller: ctx.controller, source: ctx.source);
+      case ZoneCond():
+        return _evalZoneCond(c, ctx);
     }
   }
 
@@ -109,6 +115,8 @@ extension GameEffects on Game {
         if (ev?.player != null) return [ev!.player!];
         if (ev?.card != null) return [state.obj(ev!.card!).owner];
         return [p];
+      case Who.chosenPlayer || Who.challenger:
+        return _zonePlayers(w, ctx);
     }
   }
 
@@ -178,6 +186,8 @@ extension GameEffects on Game {
   void _resolveEffect(Effect e, _Ctx ctx) {
     if (state.over) return;
     switch (e) {
+      case ZoneEffect():
+        _resolveZone(e, ctx);
       case Seq(:final steps):
         for (final s in steps) {
           _resolveEffect(s, ctx);

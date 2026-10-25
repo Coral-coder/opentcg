@@ -50,6 +50,24 @@ String _cond(Cond c) => switch (c) {
   AllConds(:final conds) => conds.map(_cond).join(' and '),
   DidIt() => 'did it',
   TargetIs(:final filter) => 'target is ${filter.describe()}',
+  CompareZone(:final who, :final place, :final cmp) => '${place.name}(${who.name}) ${cmp.name} yours',
+  HasUnder() => 'card under this',
+};
+
+String _zone(ZoneEffect e) => switch (e) {
+  Peek(:final n, :final who, :final picks, :final rest, :final reveal) =>
+    '${reveal ? 'reveal' : 'look at'} top $n (${who.name})${picks.map((p) => ', ${p.optional ? 'may ' : ''}take ${p.anyNumber ? 'any' : p.count} ${p.named ? 'named' : (p.filters.isEmpty ? 'card' : p.filters.map((f) => f.describe()).join(' or '))} → ${p.dest.name}${p.exerted ? ' exerted' : ''}${p.then == null ? '' : ' then ${describeEffect(p.then!)}'}').join()}, rest → ${rest.name}',
+  NameCard() => 'name a card',
+  RevealHand(:final who, :final discard) => 'reveal hand (${who.name})${discard == null ? '' : ', discard ${discard.describe()} of your choice'}',
+  EachMay(:final who, :final effect, :final lorePerRefusal) => 'each (${who.name}) may ${describeEffect(effect)}${lorePerRefusal > 0 ? ', +$lorePerRefusal lore per refusal' : ''}',
+  InkFromDeck(:final who, :final n, :final exerted) => 'top $n of deck to inkwell${exerted ? ' exerted' : ''} (${who.name})',
+  ReadyInkwell(:final who) => 'ready inkwell (${who.name})',
+  FromDiscard(:final filter, :final who, :final count, :final upTo, :final all, :final dest, :final named) =>
+    '${all ? 'all' : '${upTo ? 'up to ' : ''}$count'} ${named ? 'named ' : ''}${filter.describe()} from discard (${who.name}) → ${dest.name}',
+  PutUnder(:final filter) => 'top of deck under ${filter.describe()}',
+  UnderTo(:final target, :final dest, :final random) => 'cards under ${_tgt(target)} → ${dest.name}${random ? ' (random)' : ''}',
+  PayInk(:final n) => 'pay $n ink',
+  DrawToMatch(:final who) => 'draw to match hand (${who.name})',
 };
 
 String _amt(Amount a) => switch (a) {
@@ -68,6 +86,7 @@ String _tgt(Target t) => switch (t) {
 };
 
 String describeEffect(Effect e) => switch (e) {
+  ZoneEffect() => _zone(e),
   Seq(:final steps) => steps.map(describeEffect).join('; '),
   May(e: final x) => 'MAY(${describeEffect(x)})',
   If(:final cond, :final then, :final otherwise) => 'IF ${_cond(cond)} THEN ${describeEffect(then)}${otherwise == null ? '' : ' ELSE ${describeEffect(otherwise)}'}',

@@ -25,6 +25,7 @@ part 'effects.dart';
 part 'bag.dart';
 part 'query.dart';
 part 'testing.dart';
+part 'zones.dart';
 
 class NeedDecision implements Exception {
   NeedDecision(this.decision);

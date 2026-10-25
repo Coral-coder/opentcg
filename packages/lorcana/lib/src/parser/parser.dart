@@ -7,6 +7,8 @@ import '../cards/classifications.dart';
 import '../ir.dart';
 import 'text.dart';
 
+part 'zones.dart';
+
 class ParsedCard {
   const ParsedCard(this.card, this.abilities, this.unsupported);
   final LCard card;
@@ -520,7 +522,7 @@ class _CardParser {
       if (f == null) return null;
       return CountCond(f, Cmp.ge, 1, place: Place.discard);
     }
-    return null;
+    return _zoneCondition(s);
   }
 
   // -------------------------------------------------------------------------------------------
@@ -528,6 +530,8 @@ class _CardParser {
   // -------------------------------------------------------------------------------------------
 
   Effect? effects(String text, _Ctx ctx) {
+    final zone = _zoneEffects(text, ctx);
+    if (zone != null) return zone;
     // "Choose one: - A. - B." (CR 6.1.5.2).
     final ch = RegExp(r'^choose one(?: of the following)?: - (.+)$').firstMatch(text);
     if (ch != null) {
@@ -600,6 +604,8 @@ class _CardParser {
 
   /// Templates that run over several sentences: look at the top N, reveal and put into hand.
   (Effect, int)? _span(List<String> ss, int i, _Ctx ctx) {
+    final zone = _zoneSpan(ss, i, ctx);
+    if (zone != null) return zone;
     final s = ss[i];
     var m = rx(s, r'look at the top (\d+) cards of your deck');
     if (m != null && i + 1 < ss.length) {
@@ -708,6 +714,8 @@ class _CardParser {
   /// One action.
   Effect? clause(String c0, _Ctx ctx) {
     final c = c0.trim();
+    final zone = _zoneFirst(c, ctx);
+    if (zone != null) return zone;
     List<String>? m;
 
     // Cards.
@@ -896,7 +904,7 @@ class _CardParser {
         if (e != null) return e;
       }
     }
-    return null;
+    return _zoneClause(c, ctx);
   }
 
   Effect? _timedPredicate(String p, Target t, Lasting? dur) {
