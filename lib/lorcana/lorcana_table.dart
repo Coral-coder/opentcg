@@ -955,7 +955,8 @@ class _News extends StatelessWidget {
         decoration: BoxDecoration(color: const Color(0x33B79CFF), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0x66B79CFF))),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
           Text(live ? '$name is playing:' : '$name’s last turn:', style: t.style(12, weight: FontWeight.w700, color: t.accent2)),
-          for (final e in lines)
+          // A phone has room for the latest two.
+          for (final e in MediaQuery.sizeOf(context).width < 520 && lines.length > 2 ? lines.sublist(lines.length - 2) : lines)
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 300),
               child: Text('• ${e.text}', key: ValueKey(e.text), style: t.style(12, color: t.text), maxLines: 1, overflow: TextOverflow.ellipsis),
