@@ -42,6 +42,12 @@ class LorcanaStore with LorcanaLinks {
     return (ok, db.cards.length);
   }
 
+  static const _tutorialKey = 'lorcana.tutorialOffered';
+
+  /// Whether the menu has offered the tutorial (it does once, on the first visit).
+  bool get tutorialOffered => _prefs?.getBool(_tutorialKey) ?? false;
+  void markTutorialOffered() => _prefs?.setBool(_tutorialKey, true);
+
   Map<String, dynamic>? get savedGame {
     final s = _prefs?.getString(_savedKey);
     return s == null ? null : jsonDecode(s) as Map<String, dynamic>;
