@@ -24,6 +24,7 @@ void main() {
     await tester.runAsync(() => LorcanaStore.shared.init());
     await tester.pumpWidget(ThemeScope(theme: Themes.classic, child: MaterialApp(theme: Themes.classic.material(), home: const LorcanaHome())));
     await tester.pump();
+    await tester.scrollUntilVisible(find.textContaining('cards fully supported'), 200);
     expect(find.textContaining('cards fully supported'), findsOneWidget);
     await tester.tap(find.text('Play the computer'));
     await tester.pump(const Duration(milliseconds: 300));

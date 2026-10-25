@@ -5,6 +5,7 @@ import 'package:lorcana/lorcana.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tcg_app/tcg_app.dart';
 
+import 'lorcana_decks.dart';
 import 'lorcana_session.dart';
 
 /// Lorcana's card database (bundled with the app), the saved local game and the current session.
@@ -19,11 +20,15 @@ class LorcanaStore {
   SharedPreferences? _prefs;
   static const _savedKey = 'lorcana.saved';
 
+  /// The player's saved decks.
+  final decks = LorcanaDeckBook();
+
   Future<void> init() async {
     if (_db != null) return;
     final raw = await rootBundle.loadString('data/lorcana-cards.json');
     _db = LCardDb.fromJson(jsonDecode(raw) as Map<String, dynamic>);
     _prefs = await SharedPreferences.getInstance();
+    decks.load(_prefs!);
   }
 
   /// Supported cards / all cards, for the menu.

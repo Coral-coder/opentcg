@@ -5,11 +5,14 @@ import 'package:lorcana/lorcana.dart';
 import 'package:tcg_core/tcg_core.dart' show SeededRng;
 import 'package:tcg_app/tcg_app.dart';
 
-import 'lorcana_card.dart';
+import 'lorcana_cards_screen.dart';
+import 'lorcana_deck_choice.dart';
+import 'lorcana_decks_screen.dart';
 import 'lorcana_store.dart';
 import 'lorcana_table.dart';
 
-/// Lorcana's menu: play the computer or a friend on this device, with decks of the inks you pick.
+/// Lorcana's menu: play the computer or a friend on this device with saved, starter or random
+/// decks; build decks and browse the cards.
 class LorcanaHome extends StatefulWidget {
   const LorcanaHome({super.key});
   @override
@@ -18,8 +21,8 @@ class LorcanaHome extends StatefulWidget {
 
 class _LorcanaHomeState extends State<LorcanaHome> {
   final store = LorcanaStore.shared;
-  Set<Ink> mine = {Ink.amber, Ink.steel};
-  Set<Ink> theirs = {Ink.ruby, Ink.sapphire};
+  DeckChoice mine = const DeckChoice.random({Ink.amber, Ink.steel});
+  DeckChoice theirs = const DeckChoice.random({Ink.ruby, Ink.sapphire});
   String? error;
 
   @override
@@ -35,9 +38,17 @@ class _LorcanaHomeState extends State<LorcanaHome> {
   void _start({required bool hotseat}) {
     final seed = Random().nextInt(1 << 30);
     final rng = SeededRng(seed);
-    final decks = [randomDeck(store.db, mine, rng), randomDeck(store.db, theirs, rng)];
+    final a = mine.cards(store, rng), b = theirs.cards(store, rng);
+    if (a == null || b == null || mine.problem(store) != null || theirs.problem(store) != null) return;
+    final decks = [a, b];
     store.newGame(names: hotseat ? const ['Player 1', 'Player 2'] : const ['You', 'Computer'], decks: decks, seed: seed, hotseat: hotseat);
     _openTable();
+  }
+
+  void _push(Widget screen) {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen)).then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   void _openTable() {
@@ -53,29 +64,7 @@ class _LorcanaHomeState extends State<LorcanaHome> {
     if (!store.ready) return Scaffold(backgroundColor: t.bg, body: const Center(child: CircularProgressIndicator()));
     final (ok, total) = store.coverage;
     final saved = store.savedGame;
-    Widget inkPicker(String label, Set<Ink> sel, void Function(Set<Ink>) set) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: t.style(14, weight: FontWeight.w700)),
-          const SizedBox(height: 6),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            for (final ink in Ink.values)
-              FilterChip(
-                label: Text(ink.label),
-                selected: sel.contains(ink),
-                selectedColor: inkColors[ink]!.withValues(alpha: 0.6),
-                avatar: CircleAvatar(backgroundColor: inkColors[ink], radius: 7),
-                onSelected: (on) {
-                  final next = {...sel};
-                  if (on) {
-                    if (next.length == 2) next.remove(next.first);
-                    next.add(ink);
-                  } else if (next.length > 1) {
-                    next.remove(ink);
-                  }
-                  setState(() => set(next));
-                },
-              ),
-          ]),
-        ]);
+    final playable = mine.problem(store) == null && theirs.problem(store) == null;
     return Scaffold(
       backgroundColor: t.bg,
       appBar: AppBar(title: const Text('Disney Lorcana'), backgroundColor: t.panel),
@@ -89,15 +78,21 @@ class _LorcanaHomeState extends State<LorcanaHome> {
               }),
               const SizedBox(height: 16),
             ],
-            inkPicker('Your deck’s inks', mine, (s) => mine = s),
+            DeckChooser(label: 'Your deck', value: mine, onChanged: (c) => setState(() => mine = c)),
             const SizedBox(height: 14),
-            inkPicker('Opponent’s inks', theirs, (s) => theirs = s),
+            DeckChooser(label: 'Opponent’s deck', value: theirs, onChanged: (c) => setState(() => theirs = c)),
             const SizedBox(height: 18),
-            ThemedButton('Play the computer', tall: true, icon: Icons.smart_toy, onPressed: () => _start(hotseat: false)),
+            ThemedButton('Play the computer', tall: true, icon: Icons.smart_toy, onPressed: playable ? () => _start(hotseat: false) : null),
             const SizedBox(height: 10),
-            ThemedButton('Two players, one device', tall: true, icon: Icons.people, outlined: true, onPressed: () => _start(hotseat: true)),
+            ThemedButton('Two players, one device', tall: true, icon: Icons.people, outlined: true, onPressed: playable ? () => _start(hotseat: true) : null),
+            const SizedBox(height: 10),
+            Row(children: [
+              Expanded(child: ThemedButton('Decks', icon: Icons.style, outlined: true, onPressed: () => _push(const LorcanaDecksScreen()))),
+              const SizedBox(width: 10),
+              Expanded(child: ThemedButton('Cards', icon: Icons.collections, outlined: true, onPressed: () => _push(const LorcanaCardsScreen()))),
+            ]),
             const SizedBox(height: 18),
-            ThemedPanel(child: Text('$ok of $total cards fully supported. Decks are 60 random supported cards of the chosen inks.', style: t.small)),
+            ThemedPanel(child: Text('$ok of $total cards fully supported. Only supported cards can be played.', style: t.small)),
           ]),
         ),
       ),
