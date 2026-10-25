@@ -38,6 +38,9 @@ class Obj {
   /// Turn on which Boost or a "once per turn" ability was last used, by ability index.
   Map<int, int> usedOn = {};
 
+  /// The [zcc] at which it entered play by Shift ("if you used Shift to play him"), else -1.
+  int shiftedZcc = -1;
+
   Obj clone() => Obj(id: id, card: card, owner: owner, zone: zone)
     ..zcc = zcc
     ..exerted = exerted
@@ -48,11 +51,12 @@ class Obj {
     ..faceDown = faceDown
     ..timestamp = timestamp
     ..enteredTurn = enteredTurn
-    ..usedOn = Map.of(usedOn);
+    ..usedOn = Map.of(usedOn)
+    ..shiftedZcc = shiftedZcc;
 
   String digest() {
     final used = (usedOn.keys.toList()..sortStable((a, b) => a - b)).map((k) => '$k:${usedOn[k]}').join(',');
-    return '$id.$zcc|${card.length}:$card|$owner|${zone.index}|$exerted|$damage|$dry|${at ?? ''}|${under.join(',')}|$faceDown|$timestamp|$enteredTurn|$used';
+    return '$id.$zcc|${card.length}:$card|$owner|${zone.index}|$exerted|$damage|$dry|${at ?? ''}|${under.join(',')}|$faceDown|$timestamp|$enteredTurn|$used|$shiftedZcc';
   }
 }
 
@@ -74,6 +78,12 @@ class Player {
   /// Cards drawn this turn, characters of theirs banished this turn (for conditions).
   int drawnThisTurn = 0;
 
+  /// What happened this turn, indexed by [TurnStat] (all players' counts reset each turn).
+  List<int> turnStats = List.filled(TurnStat.values.length, 0);
+
+  /// Characters this player played this turn ("if you played another character this turn").
+  List<CardId> playedThisTurn = [];
+
   List<CardId> zone(Place z) => switch (z) {
     Place.deck => deck,
     Place.hand => hand,
@@ -92,9 +102,12 @@ class Player {
     ..lost = lost
     ..altered = altered
     ..inkedThisTurn = inkedThisTurn
-    ..drawnThisTurn = drawnThisTurn;
+    ..drawnThisTurn = drawnThisTurn
+    ..turnStats = List.of(turnStats)
+    ..playedThisTurn = List.of(playedThisTurn);
 
-  String digest() => '${name.length}:$name|${deck.join(',')}|${hand.join(',')}|${play.join(',')}|${inkwell.join(',')}|${discard.join(',')}|$lore|$lost|$altered|$inkedThisTurn|$drawnThisTurn';
+  String digest() =>
+      '${name.length}:$name|${deck.join(',')}|${hand.join(',')}|${play.join(',')}|${inkwell.join(',')}|${discard.join(',')}|$lore|$lost|$altered|$inkedThisTurn|$drawnThisTurn|${turnStats.join(',')}|${playedThisTurn.join(',')}';
 }
 
 /// What a triggered ability is about (CR 6.2): the card, the other card, the player, an amount,

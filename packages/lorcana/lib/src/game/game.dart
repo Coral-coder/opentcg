@@ -26,6 +26,7 @@ part 'bag.dart';
 part 'query.dart';
 part 'testing.dart';
 part 'zones.dart';
+part 'board.dart';
 
 class NeedDecision implements Exception {
   NeedDecision(this.decision);
@@ -268,6 +269,7 @@ class Game implements TcgMatch {
     pl.inkedThisTurn = 0;
     pl.drawnThisTurn = 0;
     s.banishedInChallengeThisTurn = 0;
+    _resetTurnRecords();
     // Ready (CR 3.2.1): ready everything, end "until the start of your turn" effects.
     s.timed.removeWhere((t) => t.lasting == Lasting.untilYourNextTurn && t.controller == p && t.turn < s.turn);
     final cantReady = <CardId>{
