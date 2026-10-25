@@ -4,6 +4,8 @@ library;
 
 import 'cards/card.dart';
 
+part 'ir_zones.dart';
+
 /// Keywords (CR 8.1.1).
 enum Kw { alert, bodyguard, boost, challenger, evasive, reckless, resist, rush, shift, singer, singTogether, support, vanish, ward }
 
@@ -179,7 +181,19 @@ class Remembered extends Target {
   final int slot;
 }
 
-enum Who { you, opponents, each, chosenOpponent, thatPlayer }
+enum Who {
+  you,
+  opponents,
+  each,
+  chosenOpponent,
+  thatPlayer,
+
+  /// Any player, chosen as the effect resolves ("chosen player's deck").
+  chosenPlayer,
+
+  /// The challenging character's player ("the challenging player chooses and discards a card").
+  challenger,
+}
 
 sealed class Amount {
   const Amount();
