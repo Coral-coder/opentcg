@@ -4,6 +4,8 @@ library;
 
 import 'cards/card.dart';
 
+part 'ir_board.dart';
+
 /// Keywords (CR 8.1.1).
 enum Kw { alert, bodyguard, boost, challenger, evasive, reckless, resist, rush, shift, singer, singTogether, support, vanish, ward }
 
@@ -430,7 +432,7 @@ class GrantKeyword extends Effect {
 }
 
 /// Restrictions and permissions for a duration ("can't quest during their next turn").
-enum Rule { cantQuest, cantChallenge, cantBeChallenged, cantReady, cantSing, mustChallenge, takesNoDamageFromChallenges }
+enum Rule { cantQuest, cantChallenge, cantBeChallenged, cantReady, cantSing, mustChallenge, takesNoDamageFromChallenges, mustQuest, canChallengeReady }
 
 class GrantRule extends Effect {
   const GrantRule(this.target, this.rule, this.duration);

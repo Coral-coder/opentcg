@@ -25,6 +25,7 @@ extension GameEffects on Game {
     CountOf(:final filter, :final place, :final whose, :final per) => per * matching(filter, controller: ctx.controller, source: ctx.source, place: place, whose: whose).length,
     StatOf(:final target, :final stat) => _statOf(target, stat, ctx),
     HandSize(:final who, :final per) => per * _players(who, ctx).fold<int>(0, (s, p) => s + state.player(p).hand.length),
+    DamageOn() => _boardAmount(a, ctx),
   };
 
   int _statOf(Target t, Stat stat, _Ctx ctx) {
@@ -73,8 +74,10 @@ extension GameEffects on Game {
       case DidIt():
         return ctx.didIt;
       case TargetIs(:final target, :final filter):
-        final ids = _resolveTargets(target, ctx, choose: false);
+        final ids = _resolveTargets(target, ctx, choose: target is Chosen);
         return ids.isNotEmpty && matches(filter, ids.first, controller: ctx.controller, source: ctx.source);
+      case TurnStatCond() || ShiftedCond() || HandCompare() || SelfDamage() || StrongestCond():
+        return _evalBoardCond(c, ctx);
     }
   }
 
@@ -250,6 +253,7 @@ extension GameEffects on Game {
           final o = state.obj(id);
           final n = all ? o.damage : _evalAmount(amount, ctx).clamp(0, o.damage);
           o.damage -= n;
+          _noteDamageRemoved(id, n);
           if (n > 0) log('${nameOf(id)}: $n damage removed.', card: id, kind: 'heal', amount: n);
         }
         state.version++;
@@ -377,6 +381,8 @@ extension GameEffects on Game {
             remembered: ctx.slots.values.expand((x) => x).toList(),
           ),
         );
+      case PlayerChooses() || LoseLoreRicher() || MoveToLocation() || SameNameAs():
+        _resolveBoard(e, ctx);
       case MoveFree(:final character):
         final ids = _resolveTargets(character, ctx);
         final loc = ctx.event?.location;

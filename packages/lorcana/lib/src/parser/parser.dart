@@ -7,6 +7,8 @@ import '../cards/classifications.dart';
 import '../ir.dart';
 import 'text.dart';
 
+part 'board.dart';
+
 class ParsedCard {
   const ParsedCard(this.card, this.abilities, this.unsupported);
   final LCard card;
@@ -489,6 +491,8 @@ class _CardParser {
 
   Cond? condition(String s0) {
     final s = s0.trim();
+    final board = _boardCondition(s);
+    if (board != null) return board;
     if (s == "it's your turn" || s == 'it is your turn') return const YourTurn();
     if (rx(s, r'this (character|item|location) is exerted') != null) return const SelfState(exerted: true);
     if (rx(s, r'this character is at a location') != null) return const SelfState(atLocation: true);
@@ -568,6 +572,7 @@ class _CardParser {
         steps.add(If(prev.cond, prev.then, e));
         continue;
       }
+      if (_boardInstead(s, steps, ctx)) continue;
       final e = sentence(s, ctx);
       if (e == null) return _fail(s);
       steps.add(e);
@@ -709,6 +714,8 @@ class _CardParser {
   Effect? clause(String c0, _Ctx ctx) {
     final c = c0.trim();
     List<String>? m;
+    final board = _boardClause(c, ctx);
+    if (board != null) return board;
 
     // Cards.
     m = rx(c, r'(?:you )?draw (a|an|one|two|three|four|five|\d+) cards?');
@@ -965,7 +972,7 @@ class _CardParser {
       return AllOf(f);
     }
     // "A character with cost 2 or less", "one of your characters": picked, not "chosen".
-    m = rx(p, r'(?:a|an|one|another|one of your) (.+)');
+    m = rx(p, r'(?:one of your|another|an|a|one) (.+)');
     if (m != null) {
       var rest = m[1];
       var f = filter(_plural(rest), p.startsWith('one of your') ? Owner.yours : Owner.any, cardTypes: true);
@@ -1057,6 +1064,12 @@ class _CardParser {
       m = RegExp(r'^(.+?) with (evasive|ward|bodyguard|reckless|rush|support|challenger|resist|singer)$').firstMatch(s);
       if (m != null) {
         f = f.copyWith(withKw: Kw.values.firstWhere((k) => k.name == m!.group(2)));
+        s = m.group(1)!;
+        continue;
+      }
+      m = RegExp(r'^(.+?) with no damage$').firstMatch(s);
+      if (m != null) {
+        f = f.copyWith(damaged: false);
         s = m.group(1)!;
         continue;
       }

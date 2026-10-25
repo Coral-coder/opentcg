@@ -50,6 +50,11 @@ String _cond(Cond c) => switch (c) {
   AllConds(:final conds) => conds.map(_cond).join(' and '),
   DidIt() => 'did it',
   TargetIs(:final filter) => 'target is ${filter.describe()}',
+  TurnStatCond(:final stat, :final who, :final cmp, :final n, :final excludeSource) => '${stat.name}(${who.name}${excludeSource ? ', other' : ''}) ${cmp.name} $n',
+  ShiftedCond() => 'played by shift',
+  HandCompare(:final chosen) => '${chosen ? 'chosen opponent' : 'an opponent'} has more cards in hand',
+  SelfDamage(:final min) => 'this has $min+ damage',
+  StrongestCond() => 'you have the strongest character',
 };
 
 String _amt(Amount a) => switch (a) {
@@ -57,6 +62,7 @@ String _amt(Amount a) => switch (a) {
   CountOf(:final filter, :final per, :final place) => '$per×#(${filter.describe()} in ${place.name})',
   StatOf(:final target, :final stat) => '${_tgt(target)}.${stat.name}',
   HandSize(:final who, :final per) => '$per×hand(${who.name})',
+  DamageOn(:final target) => 'damage on ${_tgt(target)}',
 };
 
 String _tgt(Target t) => switch (t) {
@@ -104,4 +110,8 @@ String describeEffect(Effect e) => switch (e) {
   Floating(:final ability) => 'this turn: ${describeAbility(ability)}',
   Delayed(:final effect) => 'at end of turn: ${describeEffect(effect)}',
   MoveFree(:final character) => 'move ${_tgt(character)} free',
+  PlayerChooses(:final who, :final filter, :final slot, :final then) => '${who.name} each choose own ${filter.describe()} #$slot: ${describeEffect(then)}',
+  SameNameAs(:final chosen, :final others, :final into) => 'remember ${others.describe()} sharing a name with ${_tgt(chosen)} as #$into',
+  LoseLoreRicher(:final amount) => 'opponents with more lore lose ${_amt(amount)}',
+  MoveToLocation(:final characters, :final toEventLocation) => 'move ${characters.map(_tgt).join(' & ')} to ${toEventLocation ? 'that location' : 'a location of yours'} free',
 };

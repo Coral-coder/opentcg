@@ -18,6 +18,7 @@ extension GameBag on Game {
   /// Finds the triggered abilities [e] meets and adds them to the bag (CR 7.7.3), in turn
   /// order and play order so every device adds them alike.
   void _emit(_Ev e) {
+    _trackTurn(e);
     final s = state;
     final info =
         e.info ??

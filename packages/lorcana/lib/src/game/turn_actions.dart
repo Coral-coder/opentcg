@@ -62,6 +62,10 @@ extension GameTurnActions on Game {
             if (_challengeProblem(p, id, t) == null) return '${c.card.name} is Reckless: challenge with them before ending the turn';
           }
         }
+        // "Must quest if able": a character that can quest has to before the turn ends.
+        for (final id in s.player(p).play) {
+          if (chars(id).rules.contains(Rule.mustQuest) && whyNot(QuestMove(p, id)) == null) return '${chars(id).card.name} must quest this turn if able';
+        }
         return null;
       default:
         return null;
@@ -309,11 +313,16 @@ extension GameTurnActions on Game {
   // -------------------------------------------------------------------------------------------
 
   /// What [attacker] could challenge, before limiters.
-  List<CardId> _challengeTargets(int p, CardId attacker) => [
-    for (final q in state.opponents(p))
-      for (final id in state.player(q).play)
-        if (chars(id).type == CardType.location || (chars(id).type == CardType.character && state.obj(id).exerted)) id,
-  ];
+  /// Exerted opposing characters, and locations (CR 4.6.4); ready ones too for a character that
+  /// "can challenge ready characters".
+  List<CardId> _challengeTargets(int p, CardId attacker) {
+    final ready = state.objOrNull(attacker)?.zone == Place.play && chars(attacker).rules.contains(Rule.canChallengeReady);
+    return [
+      for (final q in state.opponents(p))
+        for (final id in state.player(q).play)
+          if (chars(id).type == CardType.location || (chars(id).type == CardType.character && (state.obj(id).exerted || ready))) id,
+    ];
+  }
 
   String? _challengeProblem(int p, CardId attacker, CardId target) {
     final s = state;
@@ -326,7 +335,7 @@ extension GameTurnActions on Game {
     if (!a.dry && !ac.has(Kw.rush)) return '${ac.card.name} is still drying (Rush lets a character challenge right away)';
     if (ac.rules.contains(Rule.cantChallenge)) return '${ac.card.name} can’t challenge';
     if (dc.type == CardType.character) {
-      if (!d.exerted) return 'Only exerted characters can be challenged';
+      if (!d.exerted && !ac.rules.contains(Rule.canChallengeReady)) return 'Only exerted characters can be challenged';
     } else if (dc.type != CardType.location) {
       return 'Only characters and locations can be challenged';
     }
