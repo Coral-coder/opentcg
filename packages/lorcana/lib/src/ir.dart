@@ -92,6 +92,13 @@ class Filter {
   final bool atSourcesLocation;
   final bool? song;
 
+  /// Is one of [names] the name this filter asks for? "Named Woody or Jessie" takes either.
+  bool nameMatches(Iterable<String> names) {
+    final want = named!.toLowerCase();
+    final alts = want.split(' or ');
+    return names.any((n) => n.toLowerCase() == want || alts.contains(n.toLowerCase()));
+  }
+
   Filter copyWith({
     Set<CardType>? types,
     Owner? owner,
@@ -136,8 +143,10 @@ class Filter {
     if (exerted == true) b.add('exerted');
     if (exerted == false) b.add('ready');
     if (damaged == true) b.add('damaged');
+    if (damaged == false) b.add('undamaged');
     if (classes.isNotEmpty) b.add(classes.join('/'));
-    b.add(types.map((t) => t.name).join('/'));
+    b.add(song == true ? 'song' : types.map((t) => t.name).join('/'));
+    if (song == false) b.add('non-song');
     if (named != null) b.add('named $named');
     if (costMax != null) b.add('cost≤$costMax');
     if (costMin != null) b.add('cost≥$costMin');
@@ -180,9 +189,21 @@ class Chosen extends Target {
 }
 
 /// Every card matching.
+/// Slots from here on remember groups ([AllOf.slot]); lower ones remember chosen cards.
+const groupSlots = 100;
+
 class AllOf extends Target {
-  const AllOf(this.filter);
+  const AllOf(this.filter, {this.slot});
   final Filter filter;
+
+  /// Where the cards it found are remembered, so "they" later in the ability means them.
+  final int? slot;
+}
+
+/// The location [of] is at, or [of] itself if it is a location ("that location").
+class LocationOf extends Target {
+  const LocationOf(this.of);
+  final Target of;
 }
 
 /// The card the trigger is about ("that character", "the challenging character").

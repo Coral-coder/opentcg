@@ -77,7 +77,8 @@ class _CardParser {
       } catch (e) {
         r = null;
       }
-      if (r == null) {
+      // Text that parses to nothing isn't understood either.
+      if (r == null || (r.isEmpty && p.body.trim().isNotEmpty)) {
         unsupported.add(p.printed);
       } else {
         abilities.addAll(r);
@@ -277,7 +278,17 @@ class _CardParser {
             rest = ifm.group(2)!;
           }
         }
-        final e = effects(rest, _Ctx(event: true, eventOther: triggers.every((tr) => _aboutOtherCard(tr.$1))));
+        final trs = triggers;
+        bool all(Set<Event> evs) => trs.every((tr) => tr.$1 is CardEvent && evs.contains((tr.$1 as CardEvent).event));
+        final e = effects(
+          rest,
+          _Ctx(
+            event: true,
+            eventOther: triggers.every((tr) => _aboutOtherCard(tr.$1)),
+            eventLocation: all(const {Event.movesToLocation}),
+            eventChallenged: all(const {Event.isChallenged, Event.banishedInChallenge}),
+          ),
+        );
         if (e == null) return null;
         return [for (final tr in triggers) Triggered(printed, tr.$1, e, condition: cond, during: _and(during, tr.$2), oncePerTurn: once, fromDiscard: tr.$3)];
       }
@@ -556,7 +567,7 @@ class _CardParser {
       return CountCond(ff, Cmp.ge, n);
     }
     m = rx(s, r'you have a character named (.+?) in play');
-    if (m != null) return CountCond(Filter(named: m[1]), Cmp.ge, 1);
+    if (m != null) return CountCond(Filter(owner: Owner.yours, named: m[1]), Cmp.ge, 1);
     m = rx(s, r'you have (?:a|an) (.+?) in your discard');
     if (m != null) {
       final f = filter(m[1], Owner.yours, cardTypes: true);
@@ -1022,7 +1033,7 @@ class _CardParser {
       // "each of your characters" is "your characters".
       final f = _groupFilter(m[1].replaceFirst(RegExp(r'^of (?:the )?'), ''));
       if (f == null) return null;
-      return AllOf(f);
+      return AllOf(f, slot: ctx.group());
     }
     // "A character with cost 2 or less", "one of your characters": picked, not "chosen".
     m = rx(p, r'(?:one of your|another|an|a|one) (.+)');
@@ -1036,7 +1047,7 @@ class _CardParser {
     // A plural group: "your characters", "opposing characters", "characters".
     final head = p.split(RegExp(r' (?:with|named|of yours|at|in) ')).first;
     final g = _groupFilter(p);
-    if (g != null && (p.startsWith('your ') || p.startsWith('opposing ') || head.endsWith('characters') || head.endsWith('items') || head.endsWith('locations'))) return AllOf(g);
+    if (g != null && (p.startsWith('your ') || p.startsWith('opposing ') || head.endsWith('characters') || head.endsWith('items') || head.endsWith('locations'))) return AllOf(g, slot: ctx.group());
     return null;
   }
 
@@ -1048,19 +1059,31 @@ class _CardParser {
     }
     // Pronouns: the card chosen earlier in the ability, else the card itself (CR 1.4.3.2).
     if (const {'him', 'her', 'them', 'it', 'he', 'she', 'they', 'their', 'his', 'its'}.contains(p)) {
+      final plural = const {'them', 'they', 'their'}.contains(p);
+      // "Ready all your characters. They can't quest": the group, if nothing was chosen since.
+      if (plural && ctx.groupSlot != null && ctx.nextSlot == ctx.slotAtGroup) return Remembered(ctx.groupSlot!);
       if (ctx.nextSlot > 0) return Remembered(ctx.nextSlot - 1);
       // "It" is the item or location itself; on a character it means some other card.
       if ((p == 'it' || p == 'its') && card.type == CardType.character) return null;
       // "Whenever an opposing character is exerted, banish them": the card the trigger is about.
       if (ctx.eventOther && !ctx.saidThis) return const EventCard();
+      // "They" is never an item or location itself ("banish this location to … give them Evasive").
+      if (plural && card.type != CardType.character) return ctx.eventOther ? const EventCard() : null;
       return const This();
     }
+    // "That location": where the character moved to, or where the chosen character is.
+    if (p == 'that location') {
+      if (ctx.eventLocation) return const EventCard(other: true);
+      if (ctx.nextSlot > 0) return LocationOf(Remembered(ctx.nextSlot - 1));
+      return null;
+    }
     // "That character": the one chosen earlier, else the one the trigger is about.
-    if (const {'that character', 'that item', 'that location', 'the chosen character', 'that card'}.contains(p)) {
+    if (const {'that character', 'that item', 'the chosen character', 'that card'}.contains(p)) {
       if (ctx.nextSlot > 0) return Remembered(ctx.nextSlot - 1);
       if (ctx.event) return const EventCard();
       return null;
     }
+    if (p == 'the challenging character' && ctx.eventChallenged) return const EventCard(other: true);
     if (p == 'the challenging character' || p == 'the challenged character' || p == 'the banished character') return const EventCard();
     return null;
   }
@@ -1117,6 +1140,8 @@ class _CardParser {
       }
       m = RegExp(r'^(.+?) named (.+)$').firstMatch(s);
       if (m != null) {
+        // A name, not the rest of the sentence ("named Pull the Lever! from your discard on…").
+        if (RegExp(r' from (?:your|their) | on the (?:top|bottom) | to put ').hasMatch(m.group(2)!)) return null;
         f = f.copyWith(named: m.group(2));
         s = m.group(1)!;
         continue;
@@ -1249,8 +1274,14 @@ class _CardParser {
 
 /// Parse context within one ability: remembered choices and whether there's an event card.
 class _Ctx {
-  _Ctx({this.event = false, this.eventOther = false});
+  _Ctx({this.event = false, this.eventOther = false, this.eventLocation = false, this.eventChallenged = false});
   final bool event;
+
+  /// The trigger is a move, so "that location" is where the character moved to.
+  final bool eventLocation;
+
+  /// The trigger is about being challenged, so "the challenging character" is the other card.
+  final bool eventChallenged;
 
   /// The trigger is about another card, so "he", "she", "they" mean that card.
   final bool eventOther;
@@ -1259,6 +1290,16 @@ class _Ctx {
   /// can't quest").
   bool saidThis = false;
   int nextSlot = 0;
+
+  /// The last group ("all your characters") and how many choices came before it.
+  int? groupSlot;
+  int slotAtGroup = 0;
+  int _groups = 0;
+  int group() {
+    slotAtGroup = nextSlot;
+    return groupSlot = groupSlots + _groups++;
+  }
+
   int save() => nextSlot;
   void restore(int s) => nextSlot = s;
 }

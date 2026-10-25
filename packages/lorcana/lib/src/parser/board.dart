@@ -358,7 +358,7 @@ extension _Board on _CardParser {
     }
     // "You have characters named Dewey and Louie in play".
     m = rx(s, r'you have characters named (.+?) and (.+?) in play');
-    if (m != null) return AllConds([CountCond(Filter(named: m[1]), Cmp.ge, 1), CountCond(Filter(named: m[2]), Cmp.ge, 1)]);
+    if (m != null) return AllConds([CountCond(Filter(owner: Owner.yours, named: m[1]), Cmp.ge, 1), CountCond(Filter(owner: Owner.yours, named: m[2]), Cmp.ge, 1)]);
     // "The chosen character is named Pain", "a character named Darkwing Duck is chosen".
     m = rx(s, r'the chosen character is named (.+)');
     if (m != null) return TargetIs(const Remembered(), Filter(named: m[1]));
@@ -411,18 +411,18 @@ extension _Board on _CardParser {
   }
 
   /// "Remove up to 3 damage instead": the replacement acts on the card the first effect chose.
+  /// It names the same choice, so the card is chosen whichever effect happens (CR 6.1.3).
   Effect _reuseChosen(Effect e, Effect prev) {
-    final slot = _chosenSlot(prev);
-    if (slot == null) return e;
+    final chosen = _chosenTarget(prev);
+    if (chosen == null) return e;
+    bool same(Target t) => t is Chosen || (t is Remembered && t.slot == chosen.slot);
     return switch (e) {
-      Modify(:final target, :final stat, :final amount, :final duration, :final negative) when target is Chosen => Modify(Remembered(slot), stat, amount, duration, negative: negative),
-      RemoveDamage(:final target, :final amount, :final all) when target is Chosen => RemoveDamage(Remembered(slot), amount, all: all),
-      DealDamage(:final target, :final amount, :final put) when target is Chosen => DealDamage(Remembered(slot), amount, put: put),
+      Modify(:final target, :final stat, :final amount, :final duration, :final negative) when same(target) => Modify(chosen, stat, amount, duration, negative: negative),
+      RemoveDamage(:final target, :final amount, :final all) when same(target) => RemoveDamage(chosen, amount, all: all),
+      DealDamage(:final target, :final amount, :final put) when same(target) => DealDamage(chosen, amount, put: put),
       _ => e,
     };
   }
-
-  int? _chosenSlot(Effect e) => _chosenTarget(e)?.slot;
 
   Chosen? _chosenTarget(Effect e) => switch (e) {
     Modify(:final target) when target is Chosen => target,

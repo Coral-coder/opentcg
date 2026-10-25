@@ -116,7 +116,8 @@ extension GameEffects on Game {
           ctx.chosenOpponent ??= ops[ask(Decision(kind: DecisionKind.option, player: p, prompt: 'Choose an opponent', labels: [for (final q in ops) state.player(q).name])).first],
         ];
       case Who.thatPlayer:
-        final ids = ctx.slots.isNotEmpty ? ctx.slots[ctx.slots.keys.last]! : const <CardId>[];
+        final chosen = [for (final k in ctx.slots.keys) if (k < groupSlots) k];
+        final ids = chosen.isNotEmpty ? ctx.slots[chosen.last]! : const <CardId>[];
         if (ids.isNotEmpty) return [state.obj(ids.first).owner];
         final ev = ctx.event;
         if (ev?.player != null) return [ev!.player!];
@@ -153,8 +154,18 @@ extension GameEffects on Game {
           for (final id in ctx.slots[slot] ?? const <CardId>[])
             if (state.objOrNull(id)?.zone == Place.play) id,
         ];
-      case AllOf(:final filter):
-        return matching(filter, controller: ctx.controller, source: ctx.source);
+      case LocationOf(:final of):
+        final out = <CardId>[];
+        for (final id in _resolveTargets(of, ctx, choose: false)) {
+          final o = state.obj(id);
+          final l = db[o.card]!.type == CardType.location ? id : o.at;
+          if (l != null && here(l) && !out.contains(l)) out.add(l);
+        }
+        return out;
+      case AllOf(:final filter, :final slot):
+        final ids = matching(filter, controller: ctx.controller, source: ctx.source);
+        if (slot != null) ctx.slots[slot] = ids;
+        return ids;
       case Chosen(:final filter, :final count, :final upTo, :final slot, :final word):
         if (!choose) return ctx.slots[slot] ?? const [];
         // One choice per "chosen" in the ability, however many effects use it (CR 6.1.3).
@@ -396,7 +407,7 @@ extension GameEffects on Game {
         _enterPlay(ctx.controller, pick.first, free: true, exerted: entersExerted);
         ctx.didIt = true;
       case Floating(:final ability):
-        state.lingering.add(Lingering(id: state.nextBagId++, controller: ctx.controller, source: ctx.source, ability: ability, turn: state.turn));
+        state.lingering.add(Lingering(id: state.nextBagId++, controller: ctx.controller, source: ctx.source, ability: ability, turn: state.turn, remembered: [for (final k in ctx.slots.keys) if (k < groupSlots) ...ctx.slots[k]!]));
       case Delayed(:final effect):
         state.lingering.add(
           Lingering(

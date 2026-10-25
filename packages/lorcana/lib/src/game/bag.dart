@@ -131,7 +131,7 @@ extension GameBag on Game {
     }
     for (final l in List.of(s.lingering)) {
       if (l.delayedEnd) continue;
-      if (_triggerMatches(l.ability.trigger, e, l.source, l.controller, floating: true, info: info)) {
+      if (_triggerMatches(l.ability.trigger, e, l.source, l.controller, floating: true, info: info, remembered: l.remembered)) {
         _addToBag(l.controller, l.source, l.ability, info, -1, floating: true);
       }
     }
@@ -143,10 +143,11 @@ extension GameBag on Game {
       (t is CardEvent && t.subject == null && (t.event == Event.banished || t.event == Event.banishedInChallenge)) ||
       (t is On && t.self && const {Happening.leftPlay, Happening.returnedToHand, Happening.discarded, Happening.shiftedOnto}.contains(t.what));
 
-  bool _triggerMatches(Trigger t, _Ev e, CardId src, int you, {bool floating = false, EventInfo? info}) {
+  bool _triggerMatches(Trigger t, _Ev e, CardId src, int you, {bool floating = false, EventInfo? info, List<CardId> remembered = const []}) {
     bool subject(Filter? f, CardId? id, {Place place = Place.play}) {
       if (id == null) return false;
-      if (f == null) return !floating && id == src;
+      // A floating "whenever they challenge this turn" is about the card chosen for it.
+      if (f == null) return floating ? remembered.contains(id) : id == src;
       final o = state.objOrNull(id);
       if (o == null) return false;
       // Cards that left play are matched as they were (their type and owner).
@@ -157,7 +158,7 @@ extension GameBag on Game {
         if (f.owner == Owner.opposing && o.owner == you) return false;
         if (f.other && id == src) return false;
         if (f.classes.isNotEmpty && !f.classes.any(c.hasClass)) return false;
-        if (f.named != null && !c.names.any((n) => n.toLowerCase() == f.named!.toLowerCase())) return false;
+        if (f.named != null && !f.nameMatches(c.names)) return false;
         if (f.withKw != null && !LorcanaParser.parse(c).abilities.any((a) => a is KeywordAbility && a.keyword.kw == f.withKw)) return false;
         return true;
       }
@@ -187,7 +188,7 @@ extension GameBag on Game {
         if (filter.classes.isNotEmpty && !filter.classes.any(c.hasClass)) return false;
         if (filter.costMax != null && c.cost > filter.costMax!) return false;
         if (filter.withKw != null && !LorcanaParser.parse(c).abilities.any((a) => a is KeywordAbility && a.keyword.kw == filter.withKw)) return false;
-        if (filter.named != null && !c.names.any((n) => n.toLowerCase() == filter.named!.toLowerCase())) return false;
+        if (filter.named != null && !filter.nameMatches(c.names)) return false;
         if ((filter.strengthMin != null || filter.strengthMax != null) && o.zone == Place.play) {
           final st = chars(e.card!).strength;
           if (filter.strengthMin != null && st < filter.strengthMin!) return false;
