@@ -1,0 +1,1284 @@
+{
+ "total": 2088,
+ "supported": 981,
+ "sets": {
+  "me1": [
+   64,
+   135
+  ],
+  "me2": [
+   48,
+   97
+  ],
+  "me2pt5": [
+   92,
+   209
+  ],
+  "me3": [
+   38,
+   89
+  ],
+  "me4": [
+   35,
+   90
+  ],
+  "me5": [
+   30,
+   89
+  ],
+  "me55": [
+   73,
+   125
+  ],
+  "rsv10pt5": [
+   44,
+   84
+  ],
+  "sv10": [
+   71,
+   157
+  ],
+  "sv5": [
+   67,
+   158
+  ],
+  "sv6": [
+   62,
+   164
+  ],
+  "sv6pt5": [
+   22,
+   61
+  ],
+  "sv7": [
+   73,
+   130
+  ],
+  "sv8": [
+   77,
+   186
+  ],
+  "sv8pt5": [
+   34,
+   69
+  ],
+  "sv9": [
+   86,
+   138
+  ],
+  "sve": [
+   8,
+   8
+  ],
+  "svp": [
+   13,
+   18
+  ],
+  "zsv10pt5": [
+   44,
+   81
+  ]
+ },
+ "missing": [
+  [
+   16,
+   "You can't have more than N ACE SPEC card in your deck."
+  ],
+  [
+   8,
+   "Play this card as if it were a N-HP Basic Colorless Pokémon. This card can't be affected by any Special Conditions and can't retreat. At any time during your turn, you may discard this card from play."
+  ],
+  [
+   5,
+   "Gadget Show: This attack does N damage for each Pokémon Tool attached to all of your Pokémon."
+  ],
+  [
+   4,
+   "Festival Lead: If Festival Grounds is in play, this Pokémon may use an attack it has twice. If the first attack Knocks Out your opponent's Active Pokémon, you may attack again after your opponent chooses a new Active Pokémon."
+  ],
+  [
+   4,
+   "Hide 'n' Sneak: Prevent all effects of your opponent's Pokémon's attacks and Abilities done to this Pokémon. (Damage is not an effect.)"
+  ],
+  [
+   4,
+   "Poison Point: If this Pokémon is in the Active Spot and is damaged by an attack from your opponent's Pokémon (even if this Pokémon is Knocked Out), the Attacking Pokémon is now Poisoned."
+  ],
+  [
+   4,
+   "Round: This attack does N damage for each of your Pokémon in play that has the Round attack."
+  ],
+  [
+   4,
+   "Sand Attack: During your opponent's next turn, if the Defending Pokémon tries to use an attack, your opponent flips a coin. If tails, that attack doesn't happen."
+  ],
+  [
+   3,
+   "Ascension: Search your deck for a card that evolves from this Pokémon and put it onto this Pokémon to evolve it. Then, shuffle your deck."
+  ],
+  [
+   3,
+   "Crown Opal: During your opponent's next turn, prevent all damage done to this Pokémon by attacks from Basic non-Colorless Pokémon."
+  ],
+  [
+   3,
+   "Drag Off: Switch in N of your opponent's Benched Pokémon to the Active Spot. This attack does N damage to the new Active Pokémon."
+  ],
+  [
+   3,
+   "Flare Strike: During your next turn, this Pokémon can't use Flare Strike."
+  ],
+  [
+   3,
+   "Phantom Dive: Put N damage counters on your opponent's Benched Pokémon in any way you like."
+  ],
+  [
+   3,
+   "Resolute Heart: If this Pokémon has full HP and would be Knocked Out by damage from an attack, it is not Knocked Out, and its remaining HP becomes N."
+  ],
+  [
+   3,
+   "Retaliate: If any of your Pokémon were Knocked Out by damage from an attack during your opponent's last turn, this attack does N more damage."
+  ],
+  [
+   3,
+   "Stadium: Pokémon Tools attached to each Pokémon (both yours and your opponent's) have no effect."
+  ],
+  [
+   3,
+   "Unified Beatdown: If you go second, you can't use this attack during your first turn. This attack does N damage for each of your Benched Pokémon."
+  ],
+  [
+   3,
+   "You can use this card only if you discard N other cards from your hand. Search your deck for a Pokémon, reveal it, and put it into your hand. Then, shuffle your deck."
+  ],
+  [
+   2,
+   "Angelite: Choose N of your opponent's Benched Pokémon. Shuffle those Pokémon and all attached cards into your opponent's deck. If N of your Pokémon used Angelite during your last turn, this attack can't be used."
+  ],
+  [
+   2,
+   "Astonish: Choose a random card from your opponent's hand. Your opponent reveals that card and shuffles it into their deck."
+  ],
+  [
+   2,
+   "Attacks used by the Pokémon this card is attached to do N more damage to your opponent's Active Pokémon ex (before applying Weakness and Resistance)."
+  ],
+  [
+   2,
+   "Binding Flame: Your opponent's Active Pokémon's Retreat Cost is Colorless more."
+  ],
+  [
+   2,
+   "Choose up to N Pokémon Tools attached to Pokémon (yours or your opponent's) and discard them."
+  ],
+  [
+   2,
+   "Coated Attack: During your opponent's next turn, prevent all damage done to this Pokémon by attacks from Basic Pokémon."
+  ],
+  [
+   2,
+   "Cornerstone Stance: Prevent all damage from attacks done to this Pokémon by your opponent's Pokémon that have an Ability."
+  ],
+  [
+   2,
+   "Cursed Blast: Once during your turn, you may put N damage counters on N of your opponent's Pokémon. If you use this Ability, this Pokémon is Knocked Out."
+  ],
+  [
+   2,
+   "Damp: Pokémon in play (both yours and your opponent's) lose any Ability that requires the Pokémon using it to Knock Out itself."
+  ],
+  [
+   2,
+   "Demolish: This attack's damage isn't affected by Weakness or Resistance, or by any effects on your opponent's Active Pokémon."
+  ],
+  [
+   2,
+   "During your opponent's next turn, all of your Metal Pokémon take N less damage from attacks from your opponent's Pokémon (after applying Weakness and Resistance). (This includes new Pokémon that come into play.)"
+  ],
+  [
+   2,
+   "Energy Loop: Put an Energy attached to this Pokémon into your hand."
+  ],
+  [
+   2,
+   "Flashing Bolt: During your next turn, this Pokémon can't use Flashing Bolt."
+  ],
+  [
+   2,
+   "Flip a coin. If heads, discard an Energy from N of your opponent's Pokémon."
+  ],
+  [
+   2,
+   "Food Prep: Attacks used by this Pokémon cost Colorless less for each Kofu card in your discard pile."
+  ],
+  [
+   2,
+   "Gale Thrust: If this Pokémon moved from your Bench to the Active Spot this turn, this attack does N more damage."
+  ],
+  [
+   2,
+   "Garland Ray: Discard up to N Energy cards from this Pokémon, and this attack does N damage for each card you discarded in this way."
+  ],
+  [
+   2,
+   "Giga Drain: Heal from this Pokémon the same amount of damage you did to your opponent's Active Pokémon."
+  ],
+  [
+   2,
+   "Harden: During your opponent's next turn, prevent all damage done to this Pokémon by attacks if that damage is N or less."
+  ],
+  [
+   2,
+   "Heal N damage from your Active Pokémon that has N or more Energy attached."
+  ],
+  [
+   2,
+   "If you go first, you may use this card during your first turn. Discard your hand and draw N cards."
+  ],
+  [
+   2,
+   "If you have more Prize cards remaining than your opponent, attacks used by the Pokémon this card is attached to cost Colorless less."
+  ],
+  [
+   2,
+   "Impact Blow: During your next turn, this Pokémon can't use Impact Blow."
+  ],
+  [
+   2,
+   "Incandescent Body: If this Pokémon is in the Active Spot and is damaged by an attack from your opponent's Pokémon (even if this Pokémon is Knocked Out), the Attacking Pokémon is now Burned."
+  ],
+  [
+   2,
+   "Itchy Pollen: During your opponent's next turn, they can't play any Item cards from their hand."
+  ],
+  [
+   2,
+   "Knock Over: You may discard a Stadium in play."
+  ],
+  [
+   2,
+   "Leech Life: Heal from this Pokémon the same amount of damage you did to your opponent's Active Pokémon."
+  ],
+  [
+   2,
+   "Mega Brave: During your next turn, this Pokémon can't use Mega Brave."
+  ],
+  [
+   2,
+   "Myriad Leaf Shower: This attack does N more damage for each Energy attached to both Active Pokémon."
+  ],
+  [
+   2,
+   "Overflowing Wishes: For each of your Benched Pokémon, search your deck for a Basic Psychic Energy card and attach it to that Pokémon. Then, shuffle your deck."
+  ],
+  [
+   2,
+   "Phantom Maze: This attack does N more damage for each Colorless in your opponent's Active Pokémon's Retreat Cost."
+  ],
+  [
+   2,
+   "Prize Count: If you have more Prize cards remaining than your opponent, this attack does N more damage."
+  ],
+  [
+   2,
+   "Protective Cover: Prevent all effects of attacks used by your opponent's Pokémon done to this Pokémon. (Damage is not an effect.)"
+  ],
+  [
+   2,
+   "Psychic Draw: Once during your turn, when you play this Pokémon from your hand to evolve N of your Pokémon, you may use this Ability. Draw N cards."
+  ],
+  [
+   2,
+   "Put N of your Pokémon and all attached cards into your hand."
+  ],
+  [
+   2,
+   "R Command: This attack does N damage for each Supporter card that has \"Team Rocket\" in its name in your discard pile."
+  ],
+  [
+   2,
+   "Rally Back: If any of your Pokémon were Knocked Out by damage from an attack during your opponent's last turn, this attack does N more damage."
+  ],
+  [
+   2,
+   "Roasting Heat: If your opponent's Active Pokémon is Burned, this attack does N more damage."
+  ],
+  [
+   2,
+   "Screech: During your next turn, the Defending Pokémon takes N more damage from attacks (after applying Weakness and Resistance)."
+  ],
+  [
+   2,
+   "Shadowy Concealment: If N of your Darkness Pokémon is Knocked Out by damage from an attack from your opponent's Pokémon ex, that player takes N fewer Prize card. The effect of Shadowy Concealment doesn't stack."
+  ],
+  [
+   2,
+   "Shadowy Knot: This attack does N damage for each Colorless in your opponent's Active Pokémon's Retreat Cost."
+  ],
+  [
+   2,
+   "Sheer Cold: During your opponent's next turn, the Defending Pokémon can't use attacks."
+  ],
+  [
+   2,
+   "Stadium: Colorless Pokémon in play (both yours and your opponent's) have no Abilities."
+  ],
+  [
+   2,
+   "Stadium: Each Pokémon that has any Energy attached (both yours and your opponent's) recovers from all Special Conditions and can't be affected by any Special Conditions."
+  ],
+  [
+   2,
+   "Stadium: Each player who has any Tera Pokémon in play can have up to N Pokémon on their Bench. If a player no longer has any Tera Pokémon in play, that player discards Pokémon from their Bench until they have N. When this card leaves play, both players discard Pokémon from their Bench until they have N, and the player who played this card discards first."
+  ],
+  [
+   2,
+   "Stadium: Each player's Grass Pokémon can evolve into Grass Pokémon during the turn they play those Pokémon, except during their first turn."
+  ],
+  [
+   2,
+   "Stadium: Once during each player's turn, if they played a Supporter card that has \"Team Rocket\" in its name from their hand this turn, they may draw N cards."
+  ],
+  [
+   2,
+   "Stadium: Once during each player's turn, that player may discard an Energy card from their hand in order to draw cards until they have as many cards in their hand as they have Psychic Pokémon in play."
+  ],
+  [
+   2,
+   "Stadium: Once during each player's turn, that player may switch their Active Water Pokémon with N of their Benched Water Pokémon."
+  ],
+  [
+   2,
+   "Stadium: You can't have more than N ACE SPEC card in your deck."
+  ],
+  [
+   2,
+   "Swift: This attack's damage isn't affected by Weakness or Resistance, or by any effects on your opponent's Active Pokémon."
+  ],
+  [
+   2,
+   "Switch in N of your opponent's Benched Pokémon to the Active Spot. If you do, switch your Active Pokémon with N of your Benched Pokémon."
+  ],
+  [
+   2,
+   "Teal Dance: Once during your turn, you may attach a Basic Grass Energy card from your hand to this Pokémon. If you attached Energy to a Pokémon in this way, draw a card."
+  ],
+  [
+   2,
+   "The Retreat Cost of the Pokémon this card is attached to is Colorless less. If that Pokémon's remaining HP is N or less, it has no Retreat Cost."
+  ],
+  [
+   2,
+   "The Retreat Cost of the Pokémon this card is attached to is ColorlessColorless less."
+  ],
+  [
+   2,
+   "Tighten Up: Your opponent discards N cards from their hand."
+  ],
+  [
+   2,
+   "Torment: Choose N of your opponent's Active Pokémon's attacks. During your opponent's next turn, that Pokémon can't use that attack."
+  ],
+  [
+   2,
+   "Torrential Pump: You may shuffle N Energy attached to this Pokémon into your deck. If you do, this attack also does N damage to N of your opponent's Benched Pokémon. (Don't apply Weakness and Resistance for Benched Pokémon.)"
+  ],
+  [
+   2,
+   "Tricky Steps: You may move an Energy from your opponent's Active Pokémon to N of their Benched Pokémon."
+  ],
+  [
+   2,
+   "You can use this card only if you have any Tera Pokémon in play. Choose up to N of your Benched Colorless Pokémon and attach a Basic Energy card from your discard pile to each of them."
+  ],
+  [
+   1,
+   "ACE Nullifier: If this Pokémon has a Pokémon Tool attached, your opponent can't play any ACE SPEC cards from their hand."
+  ],
+  [
+   1,
+   "Abrupt Flash: If this Pokémon evolved from Misty's Staryu during this turn, this attack does N more damage."
+  ],
+  [
+   1,
+   "Abyss Eye: If your opponent's Active Pokémon is affected by a Special Condition, it is Knocked Out."
+  ],
+  [
+   1,
+   "Accelerating Stab: During your next turn, this Pokémon can't use Accelerating Stab."
+  ],
+  [
+   1,
+   "Accelerator Flash: If this Pokémon moved from your Bench to the Active Spot this turn, this attack does N more damage."
+  ],
+  [
+   1,
+   "Adjusted Horn: If you don't have the same number of cards in your hand as your opponent, this attack does nothing."
+  ],
+  [
+   1,
+   "Adrena-Brain: Once during your turn, if this Pokémon has any Darkness Energy attached, you may move up to N damage counters from N of your Pokémon to N of your opponent's Pokémon."
+  ],
+  [
+   1,
+   "Adrena-Pheromone: If this Pokémon has any Darkness Energy attached and is damaged by an attack, flip a coin. If heads, prevent that damage."
+  ],
+  [
+   1,
+   "Adrena-Power: If this Pokémon has any Darkness Energy attached, it gets +N HP, and the attacks it uses do N more damage to your opponent's Active Pokémon (before applying Weakness and Resistance)."
+  ],
+  [
+   1,
+   "Aerial Draw: Once during your turn, you may use this Ability. Draw a card."
+  ],
+  [
+   1,
+   "Aero Chase: If the Retreat Cost of your opponent's Active Pokémon is ColorlessColorless or more, this attack does N more damage."
+  ],
+  [
+   1,
+   "Agile: If this Pokémon has no Energy attached, it has no Retreat Cost."
+  ],
+  [
+   1,
+   "All Out: If you have no cards in your hand, this attack does N more damage."
+  ],
+  [
+   1,
+   "All-Out Attack: If this Pokémon used Form Ranks during your last turn, this attack does N more damage."
+  ],
+  [
+   1,
+   "All-You-Can-Grab: Flip a coin until you get tails. Search your deck for a number of cards up to the number of heads and put them into your hand. Then, shuffle your deck."
+  ],
+  [
+   1,
+   "All-You-Can-Yeet: You may discard any number of cards from your hand."
+  ],
+  [
+   1,
+   "Alluring Light: Once during your turn, you may have each player draw a card."
+  ],
+  [
+   1,
+   "Alluring Wings: Once during your turn, if this Pokémon is in the Active Spot, you may use this Ability. Each player draws a card."
+  ],
+  [
+   1,
+   "Amazez: Devolve each of your opponent's evolved Pokémon by shuffling the highest Stage Evolution card on it into your opponent's deck."
+  ],
+  [
+   1,
+   "Anachronism Repulsor: During your opponent's next turn, prevent all damage done to this Pokémon by attacks from Ancient Pokémon."
+  ],
+  [
+   1,
+   "Ancient Bulwark: As long as this Pokémon is on your Bench, prevent all damage done to each of your Pokémon by attacks from your opponent's Pokémon that have N or less Energy attached."
+  ],
+  [
+   1,
+   "Ancient Seaweed: This attack does N damage for each Item card in your opponent's discard pile."
+  ],
+  [
+   1,
+   "Ancient Wing: Once during your turn, if this Pokémon is in the Active Spot, you may devolve N of your opponent's evolved Pokémon by putting the highest Stage Evolution card on it into your opponent's hand."
+  ],
+  [
+   1,
+   "Angry Slam: This attack does N damage for each of your Pokémon that has any damage counters on it."
+  ],
+  [
+   1,
+   "Aqua Return: Shuffle this Pokémon and all attached cards into your deck."
+  ],
+  [
+   1,
+   "Aqua Split: This attack also does N damage to N of your opponent's Benched Pokémon. (Don't apply Weakness and Resistance for Benched Pokémon.)"
+  ],
+  [
+   1,
+   "Aqua Wash: You may put an Energy attached to your opponent's Active Pokémon into their hand."
+  ],
+  [
+   1,
+   "Armor Tail: Prevent all damage done to this Pokémon by attacks from your opponent's Basic Pokémon ex."
+  ],
+  [
+   1,
+   "Aroma Shot: This Pokémon recovers from all Special Conditions."
+  ],
+  [
+   1,
+   "Aromatic Stomps: Flip a coin. If heads, during your opponent's next turn, the Defending Pokémon can't attack."
+  ],
+  [
+   1,
+   "As long as the Pokémon this card is attached to is in the Active Spot, the Retreat Cost of both Active Pokémon is Colorless more."
+  ],
+  [
+   1,
+   "As long as this card is attached to a Pokémon, it provides Colorless Energy. If the Pokémon this card is attached to is in the Active Spot and is damaged by an attack from your opponent's Pokémon (even if this Pokémon is Knocked Out), put N damage counters on the Attacking Pokémon."
+  ],
+  [
+   1,
+   "As long as this card is attached to a Pokémon, it provides Colorless Energy. If this card is attached to a Basic Pokémon, this card provides every type of Energy but provides only N Energy at a time."
+  ],
+  [
+   1,
+   "As long as this card is attached to a Pokémon, it provides Colorless Energy. If this card is attached to a Stage N Pokémon, this card provides every type of Energy but provides only N Energy at a time."
+  ],
+  [
+   1,
+   "As long as this card is attached to a Pokémon, it provides Colorless Energy. If this card is discarded by an effect of an attack used by the Pokémon this card is attached to, attach this card from your discard pile to that Pokémon after attacking."
+  ],
+  [
+   1,
+   "As long as this card is attached to a Pokémon, it provides Colorless Energy. Prevent all effects of attacks used by your opponent's Pokémon done to the Pokémon this card is attached to. (Existing effects are not removed. Damage is not an effect.)"
+  ],
+  [
+   1,
+   "As long as this card is attached to a Pokémon, it provides Colorless Energy. When you attach this card from your hand to N of your Benched Pokémon, switch that Pokémon with your Active Pokémon."
+  ],
+  [
+   1,
+   "As long as this card is attached to a Pokémon, it provides Colorless Energy. When you attach this card from your hand to a Pokémon, draw N cards."
+  ],
+  [
+   1,
+   "As long as this card is attached to a Pokémon, it provides Darkness Energy. As long as the Darkness Pokémon this card is attached to is on your Bench, prevent all damage done to it by attacks from your opponent's Pokémon."
+  ],
+  [
+   1,
+   "As long as this card is attached to a Pokémon, it provides Fighting Energy. Prevent all effects of attacks used by your opponent's Pokémon done to the Fighting Pokémon this card is attached to. (Existing effects are not removed. Damage is not an effect.)"
+  ],
+  [
+   1,
+   "As long as this card is attached to a Pokémon, it provides Fire Energy. If this card is discarded by an effect of an attack used by the Fire Pokémon this card is attached to, put this card into your hand after attack damage and effects."
+  ],
+  [
+   1,
+   "As long as this card is attached to a Pokémon, it provides Grass Energy. The Grass Pokémon this card is attached to gets +N HP."
+  ],
+  [
+   1,
+   "As long as this card is attached to a Pokémon, it provides Lightning Energy. Attacks used by the Lightning Pokémon this card is attached to do N more damage to your opponent's Active Pokémon (before applying Weakness and Resistance)."
+  ],
+  [
+   1,
+   "As long as this card is attached to a Pokémon, it provides Metal Energy. The Metal Pokémon this card is attached to has no Retreat Cost."
+  ],
+  [
+   1,
+   "As long as this card is attached to a Pokémon, it provides Psychic Energy. When you attach this card from your hand to a Psychic Pokémon, search your deck for up to N Basic Psychic Pokémon and put them onto your Bench. Then, shuffle your deck."
+  ],
+  [
+   1,
+   "As long as this card is attached to a Pokémon, it provides Water Energy. The Water Pokémon this card is attached to recovers from all Special Conditions and can't be affected by any Special Conditions."
+  ],
+  [
+   1,
+   "As long as this card is attached to a Pokémon, it provides every type of Energy but provides only N Energy at a time. If the Pokémon this card is attached to has any other Special Energy attached, this card provides Colorless Energy instead."
+  ],
+  [
+   1,
+   "As long as this card is attached to a Pokémon, it provides every type of Energy but provides only N Energy at a time. If the Pokémon this card is attached to is Knocked Out by damage from an attack from your opponent's Pokémon, that player takes N fewer Prize card. This effect of your Legacy Energy can't be applied more than once per game."
+  ],
+  [
+   1,
+   "Ask your opponent if each player may take a Prize card. If yes, each player takes a Prize card. If no, you draw N cards."
+  ],
+  [
+   1,
+   "Assassin's Magic: If your opponent's Active Pokémon is affected by a Special Condition, place N damage counters on N of your opponent's Benched Pokémon."
+  ],
+  [
+   1,
+   "Assassin's Return: You may put this Pokémon into your hand. (Discard all cards attached to this Pokémon.)"
+  ],
+  [
+   1,
+   "Assault Landing: If there is no Stadium in play, this attack does nothing."
+  ],
+  [
+   1,
+   "Assault Laser: If your opponent's Active Pokémon has a Pokémon Tool attached, this attack does N more damage."
+  ],
+  [
+   1,
+   "Assemble Alloy: When you play this Pokémon from your hand to evolve N of your Pokémon during your turn, you may attach up to N Basic Metal Energy cards from your discard pile to your Metal Pokémon in any way you like."
+  ],
+  [
+   1,
+   "Astonish: Choose a random card from your opponent's hand, and your opponent reveals that card and shuffles it into their deck."
+  ],
+  [
+   1,
+   "At the end of your turn (after your attack), if the Pokémon this card is attached to is in the Active Spot, you may attach a Basic Energy card from your discard pile to it."
+  ],
+  [
+   1,
+   "Attach a Basic Energy card from your discard pile to N of your Benched N's Pokémon."
+  ],
+  [
+   1,
+   "Attach a Basic Energy card from your discard pile to each of your Future Pokémon."
+  ],
+  [
+   1,
+   "Attach a Basic Psychic Energy card from your discard pile to N of your Benched Psychic Pokémon."
+  ],
+  [
+   1,
+   "Attach up to N Basic Metal Energy cards from your discard pile to N of your Metal Pokémon."
+  ],
+  [
+   1,
+   "Attacks used by the Hop's Pokémon this card is attached to cost Colorless less and do N more damage to your opponent's Active Pokémon (before applying Weakness and Resistance)."
+  ],
+  [
+   1,
+   "Attacks used by the Pikachu ex this card is attached to do N more damage to your opponent's Active Pokémon ex (before applying Weakness and Resistance)."
+  ],
+  [
+   1,
+   "Attacks used by the Poisoned Pokémon this card is attached to do N more damage to your opponent's Active Pokémon (before applying Weakness and Resistance)."
+  ],
+  [
+   1,
+   "Attract Customers: Once during your turn, if this Pokémon is in the Active Spot, you may look at the top N cards of your deck, reveal a Supporter card you find there, and put it into your hand. Shuffle the other cards back into your deck."
+  ],
+  [
+   1,
+   "Auto Heal: As long as this Pokémon is in the Active Spot, whenever you attach an Energy card from your hand to N of your Pokémon, heal N damage from that Pokémon."
+  ],
+  [
+   1,
+   "Automated Combat: If this Pokémon is in the Active Spot and is damaged by an attack from your opponent's Pokémon (even if this Pokémon is Knocked Out), put N damage counters on the Attacking Pokémon."
+  ],
+  [
+   1,
+   "Avenging Edge: If any of your Pokémon were Knocked Out by damage from an attack during your opponent's last turn, this attack does N more damage."
+  ],
+  [
+   1,
+   "Axe Blast: If your opponent's Active Pokémon is a Basic Pokémon, it is Knocked Out."
+  ],
+  [
+   1,
+   "Azure Seas: Damage from attacks used by this Pokémon isn't affected by any effects on your opponent's Active Pokémon."
+  ],
+  [
+   1,
+   "Back Draft: This attack does N damage for each Basic Energy card in your opponent's discard pile."
+  ],
+  [
+   1,
+   "Backfire: Put N Fire Energy attached to this Pokémon into your hand."
+  ],
+  [
+   1,
+   "Bared Fangs: If your opponent's Active Pokémon has no damage counters on it before this attack does damage, this attack does nothing."
+  ],
+  [
+   1,
+   "Barite Jail: Put damage counters on each of your opponent's Benched Pokémon until its remaining HP is N."
+  ],
+  [
+   1,
+   "Barrage O'Clock: Flip a coin for each Energy attached to both Active Pokémon. This attack does N damage for each heads."
+  ],
+  [
+   1,
+   "Battle-Hardened: When you play this Pokémon from your hand onto your Bench during your turn, you may attach up to N Basic Fighting Energy cards from your hand to this Pokémon."
+  ],
+  [
+   1,
+   "Beckoning Tail: You must discard a Chill Teaser Toy card from your hand in order to use this Ability. Once during your turn, you may switch in N of your opponent's Benched Pokémon to the Active Spot."
+  ],
+  [
+   1,
+   "Bellowing Thunder: You may discard any amount of Basic Energy from your Pokémon. This attack does N damage for each card you discarded in this way."
+  ],
+  [
+   1,
+   "Bellyful of Milk: Flip N coins. If both of them are heads, heal all damage from N of your Pokémon."
+  ],
+  [
+   1,
+   "Bench Manipulation: Your opponent flips a coin for each of their Benched Pokémon. This attack does N damage to your opponent's Active Pokémon for each tails. This attack's damage isn't affected by Weakness or Resistance."
+  ],
+  [
+   1,
+   "Big Net: Your opponent's Active Evolution Pokémon's Retreat Cost is Colorless more."
+  ],
+  [
+   1,
+   "Big Storm: Discard a Stadium in play."
+  ],
+  [
+   1,
+   "Bite Together: If Durant is on your Bench, this attack does N more damage."
+  ],
+  [
+   1,
+   "Biting Spree: When you play this Pokémon from your hand to evolve N of your Pokémon during your turn, you may choose N of your opponent's Pokémon and put N damage counters on each of them."
+  ],
+  [
+   1,
+   "Blaze Blitz: This Pokémon can't use Blaze Blitz again until it leaves the Active Spot."
+  ],
+  [
+   1,
+   "Blazing Charge: If your opponent has N or fewer Prize cards remaining, this attack does N more damage."
+  ],
+  [
+   1,
+   "Blazing Destruction: Discard a Stadium in play."
+  ],
+  [
+   1,
+   "Blizzard Burst: This attack also does N damage to each of your opponent's Benched Pokémon for each Prize card your opponent has taken. (Don't apply Weakness and Resistance for Benched Pokémon.)"
+  ],
+  [
+   1,
+   "Blocking Stomp: If the Defending Pokémon is a Basic Pokémon, it can't attack during your opponent's next turn."
+  ],
+  [
+   1,
+   "Blow Through: If a Stadium is in play, this attack does N more damage."
+  ],
+  [
+   1,
+   "Boisterous Wind: Once during your turn, you may use this Ability. Flip a coin. If heads, put an Energy attached to your opponent's Active Pokémon into their hand."
+  ],
+  [
+   1,
+   "Bonded by the Journey: Once during your turn, you may search your deck for an Ethan's Adventure card, reveal it, and put it into your hand. Then, shuffle your deck."
+  ],
+  [
+   1,
+   "Bone Sniper: This attack does N damage to N of your opponent's Pokémon that has any Special Energy attached. (Don't apply Weakness and Resistance for Benched Pokémon.)"
+  ],
+  [
+   1,
+   "Bone Vengeance: If any of your Benched Cubone have any damage counters on them, this attack does N more damage."
+  ],
+  [
+   1,
+   "Boom Boom Groove: Once during your turn, if your Active Pokémon has the Festival Lead Ability, you may search your deck for a card and put it into your hand. Then, shuffle your deck."
+  ],
+  [
+   1,
+   "Booming Call: Put up to N Dragon Pokémon from your discard pile onto your Bench."
+  ],
+  [
+   1,
+   "Boosted Evolution: As long as this Pokémon is in the Active Spot, it can evolve during your first turn or the turn you play it."
+  ],
+  [
+   1,
+   "Born to Slack: If your opponent has no Pokémon ex or Pokémon V in play, this Pokémon can't attack."
+  ],
+  [
+   1,
+   "Boss Headbutt: During your next turn, this Pokémon can't use Boss Headbutt."
+  ],
+  [
+   1,
+   "Both Active non-Darkness Pokémon are now Confused."
+  ],
+  [
+   1,
+   "Bouncy Circle: This attack does N damage for each of your Benched Pokémon that has a maximum HP of N."
+  ],
+  [
+   1,
+   "Brain Crush: If your opponent's Active Pokémon isn't Confused, this attack does nothing."
+  ],
+  [
+   1,
+   "Brave Slash: During your next turn, this Pokémon can't use Brave Slash."
+  ],
+  [
+   1,
+   "Breakthrough Assault: If this Pokémon moved from your Bench to the Active Spot this turn, this attack does N more damage."
+  ],
+  [
+   1,
+   "Breezy Gift: Put this Pokémon and all attached cards into your deck. If you do, search your deck for up to N cards and put them into your hand. Then, shuffle your deck."
+  ],
+  [
+   1,
+   "Bright Horns: During your next turn, this Pokémon can't use Bright Horns."
+  ],
+  [
+   1,
+   "Brighten and Burn: Look at the top card of your deck. You may discard that card."
+  ],
+  [
+   1,
+   "Bring Down the Axe: If your opponent's Active Pokémon has any Special Energy attached, it is Knocked Out."
+  ],
+  [
+   1,
+   "Bring Down: Choose a Pokémon in play (yours or your opponent's) that has the least HP remaining, except for this Pokémon, and it is Knocked Out."
+  ],
+  [
+   1,
+   "Bubble Gathering: As often as you like during your turn, you may use this Ability. Move an Energy from N of your other Pokémon to this Pokémon."
+  ],
+  [
+   1,
+   "Buddy Attack: If you played Emma from your hand during this turn, this attack does N more damage."
+  ],
+  [
+   1,
+   "Buddy Blast: This attack does N more damage for each Ethan's Adventure card in your discard pile."
+  ],
+  [
+   1,
+   "Bug Out: Reveal the bottom N cards of your deck, and this attack does N damage for each Pokémon you find there that has the Bug Out attack. Then, shuffle any revealed Pokémon back into your deck. Discard the other cards."
+  ],
+  [
+   1,
+   "Bug's Cannon: This attack does N damage to N of your opponent's Pokémon for each Grass Energy attached to this Pokémon. (Don't apply Weakness and Resistance for Benched Pokémon.)"
+  ],
+  [
+   1,
+   "But First, Food: Attach an Energy card from your hand to this Pokémon. If you do, heal N damage from this Pokémon."
+  ],
+  [
+   1,
+   "Buzzing Boost: Once during your turn, when this Pokémon moves from your Bench to the Active Spot, you may search your deck for up to N Basic Grass Energy cards and attach them to this Pokémon. Then, shuffle your deck."
+  ],
+  [
+   1,
+   "C.O.D.E.: Protect: During your opponent's next turn, prevent all damage done to each of your Future Pokémon by attacks from Pokémon ex. If this Pokémon is no longer your Active Pokémon, this effect ends."
+  ],
+  [
+   1,
+   "Calculation: Look at the top N cards of your deck and put them back in any order."
+  ],
+  [
+   1,
+   "Call a Buddy: Once during your turn, if you have no cards in your hand, you may use this Ability. Search your deck for a Supporter card, reveal it, and put it into your hand. Then, shuffle your deck."
+  ],
+  [
+   1,
+   "Calming Light: Once during your turn, if this Pokémon is in the Active Spot, you may make your opponent's Active Pokémon Asleep."
+  ],
+  [
+   1,
+   "Captivating Invitation: Once during your turn, you may flip a coin. If heads, switch in N of your opponent's Benched Pokémon to the Active Spot, and the new Active Pokémon is now Confused."
+  ],
+  [
+   1,
+   "Cast-Off Shell: Once during your turn, when you play this Pokémon from your hand to evolve N of your Pokémon, you may use this Ability. Search your deck for a Shedinja and put it onto your Bench. Then, shuffle your deck."
+  ],
+  [
+   1,
+   "Celebration: if you have exactly N cards in your hand, take N Prize cards. If you do, shuffle your hand into your deck."
+  ],
+  [
+   1,
+   "Cellular Ascension: For each of your Benched Pokémon, search your deck for a card that evolves from that Pokémon and put it onto that Pokémon to evolve it. Then, shuffle your deck."
+  ],
+  [
+   1,
+   "Cellular Evolution: Search your deck for a card that evolves from N of your Pokémon and put it onto that Pokémon to evolve it. Then, shuffle your deck."
+  ],
+  [
+   1,
+   "Chain-Crazed: If this Pokémon is Poisoned, this attack does N more damage."
+  ],
+  [
+   1,
+   "Challenging Delivery: Flip N coins. If both of them are heads, search your deck for a Pokémon and put it onto your Bench. Then, shuffle your deck."
+  ],
+  [
+   1,
+   "Champion's Call: Once during your turn, you may search your deck for a Cynthia's Pokémon, reveal it, and put it into your hand. Then, shuffle your deck."
+  ],
+  [
+   1,
+   "Chaotic Pain: Place N damage counters on N of your opponent's Pokémon."
+  ],
+  [
+   1,
+   "Charge-Up Dash: Flip a coin until you get tails. Search your deck for an amount of Basic Lightning Energy up to the number of heads and attach it to this Pokémon. Then, shuffle your deck."
+  ],
+  [
+   1,
+   "Charged Web: If your opponent's Active Pokémon is a Pokémon ex or Pokémon V, this attack does N more damage."
+  ],
+  [
+   1,
+   "Charring Breath: If your opponent's Active Pokémon isn't Burned, this attack does nothing."
+  ],
+  [
+   1,
+   "Cheer On to Glory: Attacks used by your Cynthia's Pokémon do N more damage to your opponent's Active Pokémon (before applying Weakness and Resistance)."
+  ],
+  [
+   1,
+   "Chi-Atsu: Put damage counters on your opponent's Active Pokémon until its remaining HP is N."
+  ],
+  [
+   1,
+   "Chirp: Search your deck for up to N Pokémon with Fighting Resistance, reveal them, and put them into your hand. Then, shuffle your deck."
+  ],
+  [
+   1,
+   "Chomp Whole: If your opponent's Active Pokémon has no Retreat Cost, this attack does N more damage."
+  ],
+  [
+   1,
+   "Choose N of your Basic Pokémon in play. If you have a Stage N card in your hand that evolves from that Pokémon, put that card onto the Basic Pokémon to evolve it, skipping the Stage N. You can't use this card during your first turn or on a Basic Pokémon that was put into play this turn."
+  ],
+  [
+   1,
+   "Choose N or both: • Shuffle up to N Water Pokémon from your discard pile into your deck. • Shuffle up to N Basic Water Energy cards from your discard pile into your deck."
+  ],
+  [
+   1,
+   "Choose N: • Switch your Active Pokémon with N of your Benched Pokémon. • During this turn, attacks used by your Pokémon do N more damage to your opponent's Active Pokémon ex and Active Pokémon V (before applying Weakness and Resistance)."
+  ],
+  [
+   1,
+   "Choose a Pokémon ex in your discard pile that has \"Ogerpon\" in its name, and switch it with N of your Pokémon ex in play that has \"Ogerpon\" in its name. Any attached cards, damage counters, Special Conditions, turns in play, and any other effects remain on the new Pokémon."
+  ],
+  [
+   1,
+   "Choose up to N of your Darkness Pokémon. For each of those Pokémon, search your deck for a Basic Darkness Energy card and attach it to that Pokémon. Then, shuffle your deck. If you attached Energy to your Active Pokémon in this way, it is now Poisoned."
+  ],
+  [
+   1,
+   "Chrono Burst: You may shuffle all Energy attached to this Pokémon into your deck and have this attack do N more damage."
+  ],
+  [
+   1,
+   "Cinnabar Lure: Look at the top N cards of your deck. You may put any number of Pokémon you find there onto your Bench. Shuffle the other cards back into your deck."
+  ],
+  [
+   1,
+   "Circuit Cannon: This attack does N more damage for each of your Benched Charjabug."
+  ],
+  [
+   1,
+   "Claw of Darkness: Your opponent reveals their hand, and you discard a card you find there."
+  ],
+  [
+   1,
+   "Cleaning Up: Discard up to N Pokémon Tools from your opponent's Pokémon."
+  ],
+  [
+   1,
+   "Cobalt Command: Attacks used by your Future Pokémon, except any Iron Crown ex, do N more damage to your opponent's Active Pokémon (before applying Weakness and Resistance)."
+  ],
+  [
+   1,
+   "Cocky Claw: If you have any Stage N Darkness Pokémon on your Bench, this attack does N more damage."
+  ],
+  [
+   1,
+   "Cold Cyclone: Move a Water Energy from this Pokémon to N of your Benched Pokémon."
+  ],
+  [
+   1,
+   "Collateral Bolts: This attack does N damage to each Pokémon that has any damage counters on it (both yours and your opponent's), except for this Pokémon. (Don't apply Weakness and Resistance for Benched Pokémon.)"
+  ],
+  [
+   1,
+   "Colluding Tentacles: Switch in N of your opponent's Benched Pokémon to the Active Spot. If you do, this attack does N damage to the new Active Pokémon. If you didn't play Xerosic's Machinations from your hand during this turn, this attack does nothing."
+  ],
+  [
+   1,
+   "Colorful Catch: Search your deck for up to N Basic Energy cards of different types, reveal them, and put them into your hand. Then, shuffle your deck."
+  ],
+  [
+   1,
+   "Colorful Confection: Search your deck for up to N Pokémon that are the same type as any Basic Energy attached to this Pokémon, reveal them, and put them into your hand. Then, shuffle your deck."
+  ],
+  [
+   1,
+   "Colorful Harmony: This attack does N damage for each type of Basic Energy attached to all of your Pokémon."
+  ],
+  [
+   1,
+   "Come and Get You: Put up to N Duskull from your discard pile onto your Bench."
+  ],
+  [
+   1,
+   "Command the Grass: You may search your deck for up to N cards and put them into your hand. Then, shuffle your deck."
+  ],
+  [
+   1,
+   "Compound Eyes: Attacks used by this Pokémon do N more damage to your opponent's Active Pokémon that has an Ability (before applying Weakness and Resistance)."
+  ],
+  [
+   1,
+   "Conjoined Beams: If Beldum and Metang are on your Bench, this attack does N more damage."
+  ],
+  [
+   1,
+   "Coordinated Strike: If Illumise is on your Bench, this attack does N more damage."
+  ],
+  [
+   1,
+   "Coordinated Throwing: This attack does N damage for each of your Basic Pokémon in play."
+  ],
+  [
+   1,
+   "Corrosive Liquid: Discard all Pokémon Tools and Special Energy from all of your opponent's Pokémon."
+  ],
+  [
+   1,
+   "Corrosive Shards: Your opponent's Active Pokémon is now Poisoned. During your opponent's next turn, Energy cards can't be attached from your opponent's hand to that Pokémon."
+  ],
+  [
+   1,
+   "Corrosive Sludge: At the end of your opponent's next turn, discard the Defending Pokémon and all attached cards."
+  ],
+  [
+   1,
+   "Corrosive Winds: Put N damage counters on each of your opponent's Pokémon that has any damage counters on it."
+  ],
+  [
+   1,
+   "Cosmic Beam: If you don't have Lunatone on your Bench, this attack does nothing. This attack's damage isn't affected by Weakness or Resistance."
+  ],
+  [
+   1,
+   "Cosmic Beatdown: This attack does N damage for each of your Pokémon in play."
+  ],
+  [
+   1,
+   "Count your Prize cards, shuffle them, and put them on the bottom of your deck. Then, take that many cards from the top of your deck and put them face down as your Prize cards."
+  ],
+  [
+   1,
+   "Counter Jewel: If your opponent has N or fewer Prize cards remaining, this attack does N more damage."
+  ],
+  [
+   1,
+   "Counter: If this Pokémon was damaged by an attack during your opponent's last turn, this attack does that much more damage."
+  ],
+  [
+   1,
+   "Counterattack Grouping: If your Wishiwashi or Wishiwashi ex is in the Active Spot and is damaged by an attack from your opponent's Pokémon (even if your Pokémon is Knocked Out), place N damage counters on the Attacking Pokémon."
+  ],
+  [
+   1,
+   "Counterattack Quills: If this Pokémon is in the Active Spot and is damaged by an attack from your opponent's Pokémon (even if this Pokémon is Knocked Out), place N damage counters on the Attacking Pokémon."
+  ],
+  [
+   1,
+   "Counterattack: If this Pokémon is in the Active Spot and is damaged by an attack from your opponent's Pokémon (even if this Pokémon is Knocked Out), put N damage counters on the Attacking Pokémon."
+  ],
+  [
+   1,
+   "Counterattacking Crest: If this Pokémon is in the Active Spot and is damaged by an attack from your opponent's Pokémon (even if this Pokémon is Knocked Out), place N damage counters on the Attacking Pokémon."
+  ],
+  [
+   1,
+   "Counterturn: If there are N or fewer cards in your deck, this attack does N more damage."
+  ],
+  [
+   1,
+   "Covert Flight: During your opponent's next turn, prevent all damage done to this Pokémon by attacks from Basic Pokémon."
+  ],
+  [
+   1,
+   "Crackling Charge: Flip N coins. Attach a number of Basic Lightning Energy cards up to the number of heads from your discard pile to your Benched Pokémon in any way you like."
+  ],
+  [
+   1,
+   "Craftsmanship: This Pokémon gets +N HP for each Fighting Energy attached to it."
+  ],
+  [
+   1,
+   "Crazy Blast: If this Pokémon used Pervasive Gas during your last turn, this attack does N more damage."
+  ],
+  [
+   1,
+   "Crescendo Wave: This attack does N damage for each Water Energy attached to this Pokémon. Before doing damage, you may attach any number of Basic Water Energy cards from your hand to this Pokémon."
+  ],
+  [
+   1,
+   "Crescent Purge: You may turn N of your face-down Prize cards face up. If you do, this attack does N more damage. (That Prize card remains face up for the rest of the game.)"
+  ],
+  [
+   1,
+   "Critical Slash: If your opponent's Pokémon is Knocked Out by damage from this attack, during your opponent's next turn, prevent all damage from and effects of attacks done to this Pokémon."
+  ],
+  [
+   1,
+   "Cross Breaker: Discard up to N Metal Energy from this Pokémon. This attack does N damage for each card you discarded in this way."
+  ],
+  [
+   1,
+   "Crushing Press: You may discard a Stadium in play. If you do, this attack does N more damage."
+  ],
+  [
+   1,
+   "Crushing Pulse: Your opponent reveals their hand. Discard all Item cards and Pokémon Tool cards you find there."
+  ],
+  [
+   1,
+   "Crystal Fall: If you have at least N Water Energy in play, this attack does N more damage."
+  ],
+  [
+   1,
+   "Curly Wall: As long as you have at least N other Bouffalant in play, all of your Basic Colorless Pokémon take N less damage from attacks from your opponent's Pokémon (after applying Weakness and Resistance). The effect of Curly Wall doesn't stack."
+  ],
+  [
+   1,
+   "Cursed Drop: Put N damage counters on your opponent's Pokémon in any way you like."
+  ],
+  [
+   1,
+   "Cursed Edge: Discard all Special Energy from all of your opponent's Pokémon."
+  ],
+  [
+   1,
+   "Cursed Roots: During your opponent's next turn, Energy can't be attached from your opponent's hand to the Defending Pokémon."
+  ],
+  [
+   1,
+   "Cursed Slug: If your opponent has N or fewer cards in their hand, this attack does N more damage."
+  ],
+  [
+   1,
+   "Cursed Words: Your opponent chooses N cards from their hand and shuffles those cards into their deck."
+  ],
+  [
+   1,
+   "Cutting Riposte: If this Pokémon has any damage counters on it, this attack can be used for Darkness."
+  ],
+  [
+   1,
+   "Cyber Drive: During your next turn, this Pokémon can't use Cyber Drive."
+  ],
+  [
+   1,
+   "Damage Collection: You may move any number of damage counters from your opponent's Benched Pokémon to their Active Pokémon."
+  ],
+  [
+   1,
+   "Dark Awakening: Choose up to N of your Darkness Pokémon. For each of those Pokémon, search your deck for a card that evolves from that Pokémon and put it onto that Pokémon to evolve it. Then, shuffle your deck."
+  ],
+  [
+   1,
+   "Dark Frost: If this Pokémon has any Team Rocket's Energy attached, this attack does N more damage."
+  ],
+  [
+   1,
+   "Dark Strike: During your next turn, this Pokémon can't use Dark Strike."
+  ],
+  [
+   1,
+   "Darkest Impulse: Whenever your opponent plays a Pokémon from their hand to evolve N of their Pokémon, put N damage counters on that Pokémon. The effect of Darkest Impulse doesn't stack."
+  ],
+  [
+   1,
+   "Darkfall: If you have at least N Darkness Energy in play, this attack does N more damage."
+  ],
+  [
+   1,
+   "Dastardly Jab: Put damage counters on your opponent's Active Pokémon until its remaining HP is N."
+  ],
+  [
+   1,
+   "Daunting Gaze: As long as this Pokémon is in the Active Spot, your opponent can't play any Item cards from their hand."
+  ],
+  [
+   1,
+   "Daydream: During your opponent's next turn, if they attach an Energy card from their hand to the Defending Pokémon, their turn ends."
+  ],
+  [
+   1,
+   "Debut Performance: If you go first, this Pokémon can use attacks during your first turn."
+  ],
+  [
+   1,
+   "Defiant Horn: When you play this Pokémon from your hand to evolve N of your Pokémon during your turn, you may switch in N of your opponent's Benched Pokémon to the Active Spot."
+  ],
+  [
+   1,
+   "Deleting Slash: If your opponent has N or more Benched Pokémon, this attack does N more damage."
+  ],
+  [
+   1,
+   "Destined Fight: Both Active Pokémon are Knocked Out."
+  ],
+  [
+   1,
+   "Destructive Headbutting: Once during your turn, if this Pokémon is in the Active Spot, you may use this Ability. Flip a coin. If heads, discard an Energy from your opponent's Active Pokémon."
+  ],
+  [
+   1,
+   "Destructo-Press: Reveal the top N cards of your deck. This attack does N damage for each Future card you find there. Then, discard those Future cards and shuffle the other cards back into your deck."
+  ],
+  [
+   1,
+   "Devolution Ray: If your opponent's Active Pokémon is an evolved Pokémon, devolve it by putting the highest Stage Evolution card on it into your opponent's hand."
+  ],
+  [
+   1,
+   "Devolve N of your evolved Psychic Pokémon by putting any number of Evolution cards on it into your hand. (That Pokémon can't evolve this turn.)"
+  ],
+  [
+   1,
+   "Devouring Mouth: If this Pokémon has more Energy attached than your opponent's Active Pokémon, this attack does N more damage."
+  ],
+  [
+   1,
+   "Diffuse Reflection: This attack does N damage for each Special Energy attached to all of your opponent's Pokémon."
+  ],
+  [
+   1,
+   "Dig Dig Dig: When you play this Pokémon from your hand onto your Bench during your turn, you may search your deck for up to N Basic Fighting Energy cards and discard them. Then, shuffle your deck."
+  ],
+  [
+   1,
+   "Dig It Up: Look at the top card of your deck. You may discard that card."
+  ],
+  [
+   1,
+   "Dirty Headbutt: During your next turn, this Pokémon can't use Dirty Headbutt."
+  ],
+  [
+   1,
+   "Disaster Shock: You may discard N Lightning Energy from this Pokémon and make your opponent's Active Pokémon Paralyzed."
+  ],
+  [
+   1,
+   "Discard a Pokémon Tool and a Special Energy from N of your opponent's Pokémon."
+  ],
+  [
+   1,
+   "Discard a Special Energy from N of your opponent's Pokémon."
+  ],
+  [
+   1,
+   "Discard all Pokémon Tools and Special Energy from all of your opponent's Pokémon, and discard a Stadium in play."
+  ],
+  [
+   1,
+   "Discard up to N Pokémon that don't have a Rule Box from your hand, and draw N cards for each card you discarded in this way. (Pokémon ex, Pokémon V_atk, etc. have Rule Boxes.)"
+  ],
+  [
+   1,
+   "Discard your hand and search your deck for a Pokémon, a Supporter card, and a Basic Energy card, reveal them, and put them into your hand. Then, shuffle your deck."
+  ],
+  [
+   1,
+   "Discharge: Discard all Lightning Energy from this Pokémon. This attack does N damage for each card you discarded in this way."
+  ],
+  [
+   1,
+   "Disconnect: During your opponent's next turn, they can't play any Item cards from their hand."
+  ]
+ ]
+}
