@@ -1,0 +1,19 @@
+name: pokemon
+description: Pokémon Trading Card Game rules engine for OpenTCG. Pure Dart and deterministic; implements the tcg_core match contract.
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  crypto: ^3.0.7
+  tcg_core:
+    git:
+      url: https://github.com/Coral-coder/openmtg.git
+      ref: 4bc649b56d3b6e02493497d38911f0ac40c3e177
+      path: packages/tcg_core
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.26.0
