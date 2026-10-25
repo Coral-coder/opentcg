@@ -103,6 +103,7 @@ extension GameChars on Game {
         }
       }
       _applyChallengerMods(id, ch);
+      _s3Chars(id, ch);
       // "This character can't gain Evasive": only a printed Evasive stays.
       if (ch.rules.contains(Rule.cantGainEvasive) && !LorcanaParser.parse(c).abilities.any((a) => a is KeywordAbility && a.keyword.kw == Kw.evasive)) ch.keywords.remove(Kw.evasive);
     } finally {
@@ -149,6 +150,8 @@ extension GameChars on Game {
     if (f.other && id == source) return false;
     if (f.classes.isNotEmpty && !f.classes.any(c.hasClass)) return false;
     if (f.named != null && !c.names.any((n) => n.toLowerCase() == f.named!.toLowerCase())) return false;
+    if (f.notNamed != null && c.names.any((n) => n.toLowerCase() == f.notNamed!.toLowerCase())) return false;
+    if (f.ink != null && !c.inks.contains(f.ink)) return false;
     if (f.costMax != null && c.cost > f.costMax!) return false;
     if (f.costMin != null && c.cost < f.costMin!) return false;
     if (place == Place.play) {
@@ -157,15 +160,17 @@ extension GameChars on Game {
       if (f.atLocation != null && (o.at != null) != f.atLocation) return false;
       if (f.atThisLocation && (source == null || o.at != source)) return false;
       if (f.atSourcesLocation && (source == null || o.at == null || o.at != state.objOrNull(source)?.at)) return false;
-      if (f.strengthMax != null || f.strengthMin != null || f.withKw != null) {
+      if (f.strengthMax != null || f.strengthMin != null || f.withKw != null || f.willpowerMin != null) {
         final ch = chars(id);
         if (f.strengthMax != null && ch.strength > f.strengthMax!) return false;
         if (f.strengthMin != null && ch.strength < f.strengthMin!) return false;
+        if (f.willpowerMin != null && ch.willpower < f.willpowerMin!) return false;
         if (f.withKw != null && !ch.has(f.withKw!)) return false;
       }
     } else {
       if (f.strengthMax != null && (c.strength ?? 0) > f.strengthMax!) return false;
       if (f.strengthMin != null && (c.strength ?? 0) < f.strengthMin!) return false;
+      if (f.willpowerMin != null && (c.willpower ?? 0) < f.willpowerMin!) return false;
     }
     return true;
   }

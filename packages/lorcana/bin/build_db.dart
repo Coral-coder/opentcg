@@ -3,7 +3,8 @@
 ///     dart run bin/build_db.dart ../../data/lorcana-cards.raw.json ../../data [../../data/lorcast-cards.json]
 ///
 /// The optional Lorcast card list (api.lorcast.com, all sets) fills what the bulk data lacks:
-/// locations' move costs and the text of a few actions.
+/// locations' move costs and the text of a few actions. lorcana-overrides.json in the output
+/// directory, when there, corrects texts by hand.
 library;
 
 import 'dart:convert';
@@ -29,7 +30,7 @@ void main(List<String> args) {
   final bulk = LCardDb.fromRaw(raw, version: '${raw.length}', fill: fill);
   final alt = LCardDb.fromRaw(raw, version: '${raw.length}', fill: fill, preferFill: true);
   var switched = 0;
-  final db = LCardDb([
+  var db = LCardDb([
     for (final c in bulk.cards)
       if (!LorcanaParser.parseUncached(c).supported && alt[c.fullName] != null && alt[c.fullName]!.text != c.text && LorcanaParser.parseUncached(alt[c.fullName]!).supported) (() {
         switched++;
@@ -38,6 +39,19 @@ void main(List<String> args) {
       else c,
   ], version: bulk.version);
   if (switched > 0) stdout.writeln('$switched cards use Lorcast\'s wording');
+  // Texts both sources get wrong (lost costs, missing abilities, typos), corrected by hand from
+  // the printed card: data/lorcana-overrides.json, keyed by full name, each with why.
+  final overrides = File('$out/lorcana-overrides.json');
+  if (overrides.existsSync()) {
+    final o = (jsonDecode(overrides.readAsStringSync()) as Map).cast<String, dynamic>();
+    for (final name in o.keys) {
+      final c = db[name];
+      if (c == null) throw StateError('Override for unknown card $name');
+      final j = c.toJson()..['x'] = (o[name] as Map)['text'] as String;
+      db = LCardDb([for (final x in db.cards) x.fullName == name ? LCard.fromJson(j) : x], version: db.version);
+    }
+    stdout.writeln('${o.length} texts from lorcana-overrides.json');
+  }
   LorcanaParser.clearCache();
   File('$out/lorcana-cards.json').writeAsStringSync(jsonEncode(db.toJson()));
   final cov = Coverage();

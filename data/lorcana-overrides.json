@@ -1,0 +1,26 @@
+{
+  "Mulan - Imperial General": {
+    "text": "Shift 5 (You may pay 5 {i} to play this on top of one of your characters named Mulan.)\nEvasive (Only characters with Evasive can challenge this character.)\nEXCEPTIONAL LEADER Whenever this character challenges another character, your other characters gain \"This character can challenge ready characters\" this turn.",
+    "why": "Bulk text has a stray quote after the story name (EXCEPTIONAL LEADER\"); Lorcast's text."
+  },
+  "Mystical Tree - Mama Odie's Home": {
+    "text": "NOT BAD At the start of your turn, you may move 1 damage counter from chosen character here to chosen opposing character.\nHARD-EARNED WISDOM At the start of your turn, if you have a character named Mama Odie here, gain 1 lore.",
+    "why": "Bulk text lacks the second ability (HARD-EARNED WISDOM); Lorcast's text."
+  },
+  "Naveen's Ukulele": {
+    "text": "MAKE IT SING 1 {i}, Banish this item - Chosen character counts as having +3 cost to sing songs this turn.",
+    "why": "Bulk text lost the cost (1 {i}, Banish this item); Lorcast's text."
+  },
+  "Owl Island - Secluded Entrance": {
+    "text": "TEAMWORK For each character you have here, you pay 1 {i} less for the first action you play each turn.\nLOTS TO LEARN Whenever you play a second action in a turn, gain 3 lore.",
+    "why": "Bulk text lacks the second ability (LOTS TO LEARN); Lorcast's text."
+  },
+  "Pixie Dust": {
+    "text": "FAITH AND TRUST {e}, 2 {i} - Chosen character gains Challenger +2 and Evasive until the start of your next turn. (While challenging, they get +2 {s}. Only characters with Evasive can challenge them.)",
+    "why": "Bulk text lost the cost ({e}, 2 {i}); Lorcast's text, with its \"{2} {I}\" written \"2 {i}\" and the reminder's \"{1}\" as {s}."
+  },
+  "Ratigan - Very Large Mouse": {
+    "text": "THIS IS MY KINGDOM When you play this character, exert chosen opposing character with 3 {s} or less. Choose one of your characters and ready them. They can't quest for the rest of this turn.",
+    "why": "Bulk text says \"read them\" for \"ready them\"; Lorcast's text."
+  }
+}

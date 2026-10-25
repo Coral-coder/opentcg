@@ -38,11 +38,11 @@ class _LorcanaTableState extends State<LorcanaTable> {
                 final cardW = math.min(110.0, math.max(54.0, box.maxWidth / 7.5));
                 return Column(children: [
                   _TopBar(session: s),
-                  _PlayerStrip(session: s, player: opp),
+                  _PlayerStrip(session: s, player: opp, onCard: (id) => _cardActions(context, s, id)),
                   Expanded(child: _PlayArea(session: s, player: opp, cardWidth: cardW, onCard: (id) => _cardActions(context, s, id))),
                   const Divider(height: 1),
                   Expanded(child: _PlayArea(session: s, player: me, cardWidth: cardW, onCard: (id) => _cardActions(context, s, id))),
-                  _PlayerStrip(session: s, player: me),
+                  _PlayerStrip(session: s, player: me, onCard: (id) => _cardActions(context, s, id)),
                   _Hand(session: s, cardWidth: math.min(96.0, cardW * 0.95), onCard: (id) => _cardActions(context, s, id)),
                   _PromptBar(session: s, onDecide: () => _ask(context, s)),
                 ]);
@@ -168,11 +168,35 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-/// One player's line: lore toward 20, ink, hand, deck and discard.
+/// One player's line: lore toward 20, ink, hand, deck and discard (tap it to see the cards, and
+/// what can be done with them), and the top of the deck when it's faceup.
 class _PlayerStrip extends StatelessWidget {
-  const _PlayerStrip({required this.session, required this.player});
+  const _PlayerStrip({required this.session, required this.player, required this.onCard});
   final LorcanaSession session;
   final int player;
+  final void Function(int id) onCard;
+
+  void _showDiscard(BuildContext context, Game g, List<int> ids) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheet) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(12),
+          child: Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final id in ids.reversed)
+              GestureDetector(
+                onTap: () {
+                  Navigator.pop(sheet);
+                  onCard(id);
+                },
+                child: LorcanaCardView(card: g.card(id), width: 80),
+              ),
+          ]),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -208,7 +232,8 @@ class _PlayerStrip extends StatelessWidget {
         chip(Icons.water_drop, '${g.inkReady(player)}/${p.inkwell.length}', 'Ink ready / in inkwell'),
         chip(Icons.style, '${p.hand.length}', 'Hand'),
         chip(Icons.layers, '${p.deck.length}', 'Deck'),
-        chip(Icons.delete_outline, '${p.discard.length}', 'Discard'),
+        if (p.deck.isNotEmpty && g.topCardFaceUp(player)) chip(Icons.visibility, g.card(p.deck.first).name, 'Top of the deck (faceup)'),
+        GestureDetector(onTap: p.discard.isEmpty ? null : () => _showDiscard(context, g, p.discard), child: chip(Icons.delete_outline, '${p.discard.length}', 'Discard')),
       ]),
     );
   }

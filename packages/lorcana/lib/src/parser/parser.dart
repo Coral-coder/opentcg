@@ -11,6 +11,7 @@ part 'zones.dart';
 part 'board.dart';
 part 'triggers.dart';
 part 'statics.dart';
+part 'wave2_s3.dart';
 
 class ParsedCard {
   const ParsedCard(this.card, this.abilities, this.unsupported);
@@ -144,6 +145,8 @@ class _CardParser {
   }
 
   List<Ability>? _action(Paragraph p) {
+    final s3 = _s3Action(p);
+    if (s3 != null) return s3;
     final t = _lower(p.body);
     final e = effects(t, _Ctx());
     if (e == null) return null;
@@ -151,6 +154,8 @@ class _CardParser {
   }
 
   List<Ability>? _paragraph(Paragraph p) {
+    final s3 = _s3Paragraph(p);
+    if (s3 != null) return s3;
     final t = _lower(p.body);
     final printed = p.printed;
     // Activated: "[Cost] - [Effect]" (CR 6.3.1).
@@ -277,7 +282,7 @@ class _CardParser {
             rest = ifm.group(2)!;
           }
         }
-        final e = effects(rest, _Ctx(event: true, eventOther: triggers.every((tr) => _aboutOtherCard(tr.$1))));
+        final e = effects(rest, _Ctx(event: true, eventOther: triggers.every((tr) => _aboutOtherCard(tr.$1)), defending: triggers.every((tr) => _s3Defending(tr.$1))));
         if (e == null) return null;
         return [for (final tr in triggers) Triggered(printed, tr.$1, e, condition: cond, during: _and(during, tr.$2), oncePerTurn: once, fromDiscard: tr.$3)];
       }
@@ -292,6 +297,8 @@ class _CardParser {
   /// optional condition checked as it triggers and whether it works from the discard.
   List<(Trigger, Cond?, bool)>? _triggerHead(String h0) {
     var h = h0.trim();
+    final s3 = _s3TriggerHead(h);
+    if (s3 != null) return s3;
     final more = _moreTriggerHead(h);
     if (more != null) return more;
     // "When you play this character and whenever she quests" (CR 6.2.6).
@@ -414,6 +421,8 @@ class _CardParser {
   }
 
   List<StaticEffect>? _staticEffect(String t0) {
+    final s3 = _s3StaticEffect(t0);
+    if (s3 != null) return s3;
     final more = _moreStaticEffect(t0);
     if (more != null) return more;
     var t = t0;
@@ -528,6 +537,8 @@ class _CardParser {
 
   Cond? condition(String s0) {
     final s = s0.trim();
+    final s3 = _s3Condition(s);
+    if (s3 != null) return s3;
     final board = _boardCondition(s);
     if (board != null) return board;
     final more = _moreCondition(s);
@@ -598,6 +609,7 @@ class _CardParser {
       var s = ss[i];
       if (s.startsWith('then, ')) s = s.substring(6);
       if (s.startsWith('then ')) s = s.substring(5);
+      if (_s3Step(s, steps, ctx)) continue;
       final m = RegExp(r'^if you do, (.+)$').firstMatch(s);
       if (m != null) {
         final e = sentence(m.group(1)!, ctx);
@@ -646,6 +658,8 @@ class _CardParser {
 
   /// Templates that run over several sentences: look at the top N, reveal and put into hand.
   (Effect, int)? _span(List<String> ss, int i, _Ctx ctx) {
+    final s3 = _s3Span(ss, i, ctx);
+    if (s3 != null) return s3;
     final zone = _zoneSpan(ss, i, ctx);
     if (zone != null) return zone;
     final s = ss[i];
@@ -764,6 +778,8 @@ class _CardParser {
   /// One action.
   Effect? clause(String c0, _Ctx ctx) {
     final c = c0.trim();
+    final s3 = _s3Clause(c, ctx);
+    if (s3 != null) return s3;
     final zone = _zoneFirst(c, ctx);
     if (zone != null) return zone;
     List<String>? m;
@@ -1061,6 +1077,8 @@ class _CardParser {
       if (ctx.event) return const EventCard();
       return null;
     }
+    // On "this character is challenged (and banished)", the challenging character is the other one.
+    if (p == 'the challenging character' && ctx.defending) return const EventCard(other: true);
     if (p == 'the challenging character' || p == 'the challenged character' || p == 'the banished character') return const EventCard();
     return null;
   }
@@ -1103,7 +1121,12 @@ class _CardParser {
       m = RegExp(r'^(.+?) with (\d+) (strength|willpower) or (less|more)$').firstMatch(s);
       if (m != null) {
         final n = int.parse(m.group(2)!);
-        if (m.group(3) == 'willpower') return null;
+        if (m.group(3) == 'willpower') {
+          if (m.group(4) == 'less') return null;
+          f = f.copyWith(willpowerMin: n);
+          s = m.group(1)!;
+          continue;
+        }
         f = m.group(4) == 'less' ? f.copyWith(strengthMax: n) : f.copyWith(strengthMin: n);
         s = m.group(1)!;
         continue;
@@ -1112,6 +1135,12 @@ class _CardParser {
       if (m != null) {
         final n = int.parse(m.group(2)!);
         f = m.group(3) == 'less' ? f.copyWith(costMax: n) : f.copyWith(costMin: n);
+        s = m.group(1)!;
+        continue;
+      }
+      m = RegExp(r'^(.+?) not named (.+)$').firstMatch(s);
+      if (m != null) {
+        f = f.copyWith(notNamed: m.group(2));
         s = m.group(1)!;
         continue;
       }
@@ -1207,6 +1236,11 @@ class _CardParser {
       final cls = ws.sublist(0, ws.length - 1).join(' ').trim();
       if (cls.isNotEmpty) {
         if (cls == 'action' && t == CardType.action) continue;
+        // An ink ("Steel characters", CR 5.2.5).
+        if (Ink.parse(cls) != null) {
+          f = f.copyWith(ink: Ink.parse(cls));
+          continue;
+        }
         // Only real classifications ("Seven Dwarfs", "Floodborn"), never leftover text.
         if (!knownClassifications.contains(cls)) return null;
         classWords.add(_cap(cls));
@@ -1222,6 +1256,8 @@ class _CardParser {
   /// "for each [X]": counts cards ("character you have in play", "card in your hand").
   CountOf? countOf(String s0, {int per = 1}) {
     var s = s0.trim();
+    final s3 = _s3CountOf(s, per);
+    if (s3 != null) return s3;
     final more = _moreCountOf(s, per);
     if (more != null) return more;
     if (s == 'card in your hand' || s == 'card in your opponents\' hands') return null;
@@ -1249,8 +1285,12 @@ class _CardParser {
 
 /// Parse context within one ability: remembered choices and whether there's an event card.
 class _Ctx {
-  _Ctx({this.event = false, this.eventOther = false});
+  _Ctx({this.event = false, this.eventOther = false, this.defending = false});
   final bool event;
+
+  /// The trigger is about a character being challenged, so "the challenging character" is the
+  /// other card in the event.
+  final bool defending;
 
   /// The trigger is about another card, so "he", "she", "they" mean that card.
   final bool eventOther;
