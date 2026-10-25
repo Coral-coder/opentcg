@@ -140,6 +140,7 @@ extension GameZones on Game {
   }
 
   bool _pickMatches(PeekPick pick, CardId id, _Ctx ctx) {
+    if (pick.dest == ZoneDest.play && _w2PlayBlock(ctx.controller, id) != null) return false;
     if (pick.named) {
       final named = ctx.named;
       return named != null && db[state.obj(id).card]!.names.any((n) => n.toLowerCase() == named.toLowerCase());
@@ -272,7 +273,7 @@ extension GameZones on Game {
     for (final p in _players(who, ctx)) {
       final pl = state.player(p);
       log(pl.hand.isEmpty ? '${pl.name} reveals an empty hand.' : '${pl.name} reveals their hand: ${pl.hand.map(nameOf).join(', ')}.', player: p);
-      if (discard == null) continue;
+      if (discard == null || _w2NoDiscard(p)) continue;
       final cands = [
         for (final id in pl.hand)
           if (_zoneMatches(discard, id, ctx, Place.hand)) id,

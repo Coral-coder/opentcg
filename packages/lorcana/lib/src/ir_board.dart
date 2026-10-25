@@ -46,7 +46,7 @@ class DamageOn extends Amount {
 }
 
 /// What happened this turn, per player (CR 3: "this turn" means the current turn).
-enum TurnStat { charactersPlayed, cardsPlayed, songsPlayed, quested, challenged, damaged, removedDamage, banished, banishedInChallenge }
+enum TurnStat { charactersPlayed, cardsPlayed, songsPlayed, quested, challenged, damaged, removedDamage, banished, banishedInChallenge, discarded }
 
 /// "If you played another character this turn", "if a character was banished in a challenge
 /// this turn", "if one of your characters was damaged this turn". [excludeSource]: "another".

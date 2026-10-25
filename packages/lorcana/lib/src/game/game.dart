@@ -31,6 +31,7 @@ part 'statics.dart';
 part 'wave2_s3.dart';
 part 'wave2_s4.dart';
 part 'wave2_s1.dart';
+part 'wave2_s2.dart';
 
 class NeedDecision implements Exception {
   NeedDecision(this.decision);
@@ -298,10 +299,11 @@ class Game implements TcgMatch {
         if (t.rule == Rule.cantReady && t.lasting == Lasting.theirNextTurn && t.turn < s.turn) ...?t.cards,
     };
     final readied = <CardId>[];
+    final held = _w2ReadyHeld(p);
     for (final id in [...pl.play, ...pl.inkwell]) {
       final o = s.obj(id);
       if (!o.exerted) continue;
-      if (cantReady.contains(id) || chars(id).rules.contains(Rule.cantReady) || _s3CantReady(id)) continue;
+      if (cantReady.contains(id) || chars(id).rules.contains(Rule.cantReady) || _s3CantReady(id) || held.contains(id)) continue;
       o.exerted = false;
       if (o.zone == Place.play) readied.add(id);
     }
@@ -437,6 +439,7 @@ class Game implements TcgMatch {
     // Leaving play: damage, states and gained effects go (CR 7.1.6); the stack goes along
     // (CR 5.1.1.7); characters at a location stay in play (CR 5.6.6).
     if (from == Place.play && to != Place.play) {
+      _w2LeavingPlay(o);
       for (final u in List.of(o.under)) {
         final uo = s.obj(u);
         uo.zone = Place.play;
@@ -473,6 +476,7 @@ class Game implements TcgMatch {
     }
     s.version++;
     if (to == Place.inkwell && from != Place.inkwell && s.phase == Phase.main && !setup) _inked(o.owner, id);
+    if (from == Place.discard && to != Place.discard && !setup) _w2LeftDiscard(o.owner, id);
   }
 
   bool _draw(int p, {bool quiet = false}) {
@@ -496,6 +500,7 @@ class Game implements TcgMatch {
   }
 
   void _loseLore(int p, int n) {
+    if (_w2NoLoseLore(p)) return;
     final pl = state.player(p);
     final lost = n.clamp(0, pl.lore);
     if (lost == 0) return;

@@ -3,6 +3,8 @@ library;
 
 import 'ir.dart';
 
+part 'describe_wave2_s2.dart';
+
 String describeAbility(Ability a) => switch (a) {
   KeywordAbility(:final keyword) => 'KW ${keyword.key}',
   Triggered(:final trigger, :final effect, :final condition, :final during, :final oncePerTurn) =>
@@ -22,6 +24,7 @@ String _trig(Trigger t) => switch (t) {
   MovedHere() => 'moved here',
   S4Trigger() => t.describeWith(describeEffect),
   W1Trigger() => t.describe(),
+  W2Trigger() => _w2Trig(t),
   On(:final what, :final self, :final subject, :final by, :final min, :final max, :final nth) =>
     '${what.name}(${self ? 'this' : (subject?.describe() ?? 'any')}${by == Owner.any ? '' : ' by ${by.name}'}${min > 0 ? ' ≥$min' : ''}${max != null ? ' ≤$max' : ''}${nth > 0 ? ' #$nth' : ''})',
 };
@@ -57,6 +60,7 @@ String _static(StaticEffect e) => switch (e) {
   ShiftName(:final name) => 'counts as named ${name ?? 'anything'} for Shift',
   S3Static() => e.describe(_s3),
   W1Static() => e.describe(),
+  W2Static() => _w2Static(e),
 };
 
 String _cond(Cond c) => switch (c) {
@@ -89,6 +93,7 @@ String _cond(Cond c) => switch (c) {
   BanishedThisTurn(:final filter, :final inChallenge) => '${filter.describe()} banished${inChallenge ? ' in a challenge' : ''} this turn',
   S3Cond() => c.describe(_s3),
   W1Cond() => c.describe(),
+  W2Cond() => _w2Cond(c),
 };
 
 String _zone(ZoneEffect e) => switch (e) {
@@ -118,6 +123,7 @@ String _amt(Amount a) => switch (a) {
   UnderSelf(:final times) => '$times×cards under this',
   S3Amount() => a.describe(_s3),
   W1Amount() => a.describe(),
+  W2Amount() => _w2Amt(a),
 };
 
 String _tgt(Target t) => switch (t) {
@@ -136,6 +142,7 @@ String describeEffect(Effect e) => switch (e) {
   S3Effect() => e.describe(_s3),
   S4Effect() => e.describeWith(describeEffect),
   W1Effect() => e.describe(),
+  W2Effect() => _w2Effect(e),
   Seq(:final steps) => steps.map(describeEffect).join('; '),
   May(e: final x) => 'MAY(${describeEffect(x)})',
   If(:final cond, :final then, :final otherwise) => 'IF ${_cond(cond)} THEN ${describeEffect(then)}${otherwise == null ? '' : ' ELSE ${describeEffect(otherwise)}'}',

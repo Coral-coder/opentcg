@@ -58,7 +58,7 @@ void main() {
       final notInkable = filterCards(db, CardQuery(inkable: false));
       expect(notInkable.every((c) => !c.inkable), isTrue);
       final supported = filterCards(db, CardQuery(supportedOnly: true));
-      expect(supported.length, lessThan(all.length));
+      expect(supported.length, lessThanOrEqualTo(all.length));
       expect(supported.every((c) => LorcanaParser.parse(c).supported), isTrue);
       final mickey = filterCards(db, CardQuery(text: 'mickey mouse'));
       expect(mickey.every((c) => '${c.fullName} ${c.text}'.toLowerCase().contains('mickey')), isTrue);
@@ -172,7 +172,23 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('Legal: 60 cards'), findsOneWidget);
     await _save(tester, 'lorcana-deck-editor');
-    final unsupported = db.cards.firstWhere((c) => !LorcanaParser.parse(c).supported);
+    // Every printed card is supported, so show the page with a made-up one.
+    final real = db.cards.first;
+    final unsupported = LCard(
+      fullName: 'Test Card - Not Real',
+      type: real.type,
+      cost: real.cost,
+      inkable: real.inkable,
+      inks: real.inks,
+      strength: real.strength,
+      willpower: real.willpower,
+      lore: real.lore,
+      moveCost: real.moveCost,
+      classifications: real.classifications,
+      text: 'Whenever the moon is full, shuffle the sky into your inkwell.',
+      printings: real.printings,
+      franchise: real.franchise,
+    );
     await tester.pumpWidget(RepaintBoundary(key: _shot, child: ThemeScope(theme: Themes.classic, child: MaterialApp(key: const ValueKey('detail'), theme: Themes.classic.material(), home: LorcanaCardDetail(card: unsupported)))));
     await tester.pump();
     await tester.scrollUntilVisible(find.text('Not supported yet'), 300);

@@ -20,6 +20,9 @@ class _Ctx {
   /// "Chosen player" and "name a card" (game/zones.dart).
   int? chosenPlayer;
   String? named;
+
+  /// The characters singing the song being resolved (CR 5.4.4; wave2_s2).
+  List<CardId> singers = const [];
 }
 
 extension GameEffects on Game {
@@ -33,6 +36,7 @@ extension GameEffects on Game {
     StatOf(:final target, :final stat) => _statOf(target, stat, ctx),
     HandSize(:final who, :final per) => per * _players(who, ctx).fold<int>(0, (s, p) => s + state.player(p).hand.length),
     DamageOn() => _boardAmount(a, ctx),
+    W2Amount() => _w2Amount(a, ctx),
     DamageOnSelf(:final per, :final times) => times * ((state.objOrNull(ctx.source)?.damage ?? 0) ~/ per),
     UnderSelf(:final times) => times * (state.objOrNull(ctx.source)?.under.length ?? 0),
     S3Amount() => _s3Amount(a, ctx),
@@ -96,6 +100,8 @@ extension GameEffects on Game {
         return _s3Cond(c, ctx);
       case W1Cond():
         return _evalW1Cond(c, ctx);
+      case W2Cond():
+        return _w2EvalCond(c, ctx);
       default:
         return _evalMoreCond(c, ctx);
     }
@@ -192,11 +198,11 @@ extension GameEffects on Game {
         ];
         final min = upTo ? 0 : (count < cands.length ? count : cands.length);
         final max = count < cands.length ? count : cands.length;
-        final pick = cands.isEmpty
+        final pick = _w2ForcedPick(cands, count, upTo, word, ctx, 'Choose ${upTo ? 'up to ' : ''}$count ${filter.describe()}') ?? (cands.isEmpty
             ? const <CardId>[]
             : ask(
                 Decision(kind: DecisionKind.cards, player: ctx.controller, prompt: 'Choose ${upTo ? 'up to ' : ''}$count ${filter.describe()}', options: cands, min: min, max: max, source: ctx.source),
-              );
+              ));
         ctx.slots[slot] = pick;
         for (final id in pick) {
           final owner = state.obj(id).owner;
@@ -229,6 +235,8 @@ extension GameEffects on Game {
         _resolveS4(e, ctx);
       case W1Effect():
         _resolveW1(e, ctx);
+      case W2Effect():
+        _w2Resolve(e, ctx);
       case Seq(:final steps):
         for (final s in steps) {
           _resolveEffect(s, ctx);
@@ -260,7 +268,7 @@ extension GameEffects on Game {
       case Discard(:final who, :final amount, :final random, :final all):
         for (final p in _players(who, ctx)) {
           final hand = state.player(p).hand;
-          if (hand.isEmpty) continue;
+          if (hand.isEmpty || _w2NoDiscard(p)) continue;
           var n = all ? hand.length : _evalAmount(amount, ctx);
           if (n > hand.length) n = hand.length;
           List<CardId> pick;
@@ -425,7 +433,7 @@ extension GameEffects on Game {
       case PlayFree(:final filter, :final from, :final entersExerted):
         final cands = [
           for (final id in matching(filter, controller: ctx.controller, source: ctx.source, place: from, whose: Owner.yours))
-            if (id != ctx.source) id,
+            if (id != ctx.source && _w2PlayBlock(ctx.controller, id) == null) id,
         ];
         if (cands.isEmpty) return;
         final pick = ask(Decision(kind: DecisionKind.cards, player: ctx.controller, prompt: 'Play one for free', options: cands, min: 1, max: 1, source: ctx.source));
@@ -525,6 +533,7 @@ extension GameEffects on Game {
       if (c.has(Kw.resist)) dmg -= c.n(Kw.resist);
       if (c.rules.contains(Rule.cantBeDealtDamage)) dmg = 0;
       dmg = _s3PreventDamage(id, dmg);
+      dmg = _w2Damage(id, dmg, source, challenge);
     }
     if (dmg <= 0) return;
     if (!put && _w1Redirect(id, dmg, source)) return;
@@ -541,7 +550,7 @@ extension GameEffects on Game {
   /// Banishes a card from play (it goes to the discard with its stack).
   void _banish(CardId id, {CardId? by, bool byDamage = false}) {
     final o = state.objOrNull(id);
-    if (o == null || o.zone != Place.play) return;
+    if (o == null || o.zone != Place.play || _w2BanishInstead(id)) return;
     final c = chars(id);
     final dmg = byDamage ? _lastDamageBy[id] : null;
     final inChallenge = dmg != null && dmg.$2;

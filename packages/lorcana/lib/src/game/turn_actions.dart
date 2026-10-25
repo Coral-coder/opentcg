@@ -26,7 +26,7 @@ extension GameTurnActions on Game {
       case InkMove(:final card):
         final o = s.objOrNull(card);
         if (o == null || (o.zone != Place.hand && !(o.zone == Place.discard && _s3InkFromDiscard(p))) || o.owner != p) return 'That card isn’t in your hand';
-        if (!db[o.card]!.inkable) return 'That card has no inkwell symbol';
+        if (!db[o.card]!.inkable && !_w2Inkable(p, card)) return 'That card has no inkwell symbol';
         if (s.player(p).inkedThisTurn >= _inkAllowance(p)) return 'You’ve already put a card into your inkwell this turn';
         return null;
       case PlayMove():
@@ -214,13 +214,15 @@ extension GameTurnActions on Game {
     final o = s.objOrNull(m.card);
     if (o == null || (o.zone != Place.hand && !_s4PlayableZone(p, m.card)) || o.owner != p) return 'That card isn’t in your hand';
     final c = db[o.card]!;
+    final blocked = _w2PlayBlock(p, m.card);
+    if (blocked != null) return blocked;
     final s4 = _s4PlayProblem(m);
     if (s4 != null) return s4.isEmpty ? null : s4;
     final w1 = _w1PlayProblem(p, m.card);
     if (w1 != null) return w1;
     switch (m.mode) {
       case PlayMode.ink:
-        if (_inkReady(p) < playCost(p, m.card) && !_w1CanBanishToPlay(p, m.card)) return 'Not enough ink (${playCost(p, m.card)} needed, ${_inkReady(p)} ready)';
+        if (_inkReady(p) < playCost(p, m.card) && !_w1CanBanishToPlay(p, m.card) && !_w2CanAltPay(m)) return 'Not enough ink (${playCost(p, m.card)} needed, ${_inkReady(p)} ready)';
         return null;
       case PlayMode.shift:
         final k = _shiftOf(m.card);
@@ -236,7 +238,7 @@ extension GameTurnActions on Game {
           if (_shiftDiscardOptions(p, m.card, d).length < d.count) return 'Not enough cards to discard for Shift';
           return null;
         }
-        if (_inkReady(p) < _shiftCost(p, m.card, k, m.onto)) return 'Not enough ink to shift';
+        if (_inkReady(p) < _shiftCost(p, m.card, k, m.onto) && !_w2CanAltPay(m)) return 'Not enough ink to shift';
         return null;
       case PlayMode.sing:
         if (!c.isSong) return 'Only songs can be sung';
@@ -278,6 +280,7 @@ extension GameTurnActions on Game {
     var paid = -1;
     switch (m.mode) {
       case PlayMode.ink:
+        if (_w2AltPaid(m)) break;
         paid = _s4AltPay(m) ? -1 : playCost(p, id);
         if (paid > 0 && _w1PayByBanishing(p, id, paid)) {
           paid = 0;
@@ -285,6 +288,7 @@ extension GameTurnActions on Game {
           _payInk(p, paid);
         }
       case PlayMode.shift:
+        if (_w2AltPaid(m)) break;
         final k = _shiftOf(id)!;
         final d = k.shiftDiscard;
         if (d != null) {
@@ -344,7 +348,8 @@ extension GameTurnActions on Game {
       }
       final eff = LorcanaParser.parse(c).abilities.whereType<ActionEffect>().firstOrNull;
       if (eff != null) {
-        _resolveEffect(eff.effect, _Ctx(this, controller: p, source: id, isAction: true)..s4['sung'] = singers.isEmpty ? 0 : 1);
+        _resolveEffect(eff.effect, _Ctx(this, controller: p, source: id, isAction: true)..s4['sung'] = singers.isEmpty ? 0 : 1
+          ..singers = singers);
       }
       if (s.obj(id).zone == Place.play) _moveTo(id, Place.discard);
       return;
@@ -492,6 +497,7 @@ extension GameTurnActions on Game {
 
   void _challenge(int p, CardId attacker, CardId target) {
     final s = state;
+    GameW2S2._challenged = target;
     _exertCard(attacker);
     log('${nameOf(attacker)} challenges ${nameOf(target)}.', player: p, card: attacker, kind: 'challenge');
     _emit(_Ev(kind: _EvKind.challenges, card: attacker, other: target, player: p));
@@ -529,7 +535,7 @@ extension GameTurnActions on Game {
   int _moveCost(int p, CardId character, CardId location) {
     if (_s4MovesFree(character, location)) return 0;
     final m = (db[state.obj(location).card]!.moveCost ?? 0) - _s3MoveLess(p, character, location);
-    return m < 0 ? 0 : m;
+    return _w2MoveCost(p, character, location, m < 0 ? 0 : m);
   }
 
   void _moveCharacter(int p, CardId character, CardId location, {required bool pay}) {
@@ -565,12 +571,14 @@ extension GameTurnActions on Game {
     if (s3 != null) return s3;
     final w1 = _w1ActivateProblem(a, o, index, p);
     if (w1 != null) return w1;
+    final once = _w2ActivateProblem(o, index, a);
+    if (once != null) return once;
     final cost = a.cost;
     if (cost.exert) {
       if (o.exerted) return '${c.card.name} is exerted';
       if (c.type == CardType.character && !o.dry) return '${c.card.name} is still drying';
     }
-    if (_inkReady(p) < cost.ink) return 'Not enough ink';
+    if (_inkReady(p) < _w2AbilityInk(id, a)) return 'Not enough ink';
     if (cost.discard > s.player(p).hand.length) return 'Not enough cards in hand';
     final s4 = _s4CostProblem(p, id, index, cost);
     if (s4 != null) return s4;
@@ -612,7 +620,8 @@ extension GameTurnActions on Game {
     final ctx = _Ctx(this, controller: p, source: id);
     _s3Activating(id, index, a);
     if (cost.exert) _exertCard(id);
-    _payInk(p, cost.ink);
+    _payInk(p, _w2AbilityInk(id, a));
+    if (a is W2OnceActivated) o.usedOn[index] = s.turn;
     if (cost.discard > 0) {
       final pick = ask(
         Decision(
@@ -643,6 +652,7 @@ extension GameTurnActions on Game {
       final pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Banish one for the cost', options: opts, min: 1, max: 1, source: id));
       _s3CostBanished(ctx, pick.first);
       _banish(pick.first);
+      ctx.slots[w2CostSlot] = pick;
     }
     _s4PayCost(p, id, index, cost, ctx);
     _w1PayActivate(a, p, id, index);

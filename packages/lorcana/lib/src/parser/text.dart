@@ -50,7 +50,7 @@ bool _isCapsName(String s) {
     if (cut > 0 && _looksLikeCost(m.group(1)!.substring(cut + 3))) return (m.group(1)!.substring(0, cut), cut + 3);
     return (m.group(1)!, m.end);
   }
-  m = RegExp(r"^([A-Z][A-Za-z0-9'!?,.& ]{0,60}?)\s+-\s+").firstMatch(s);
+  m = RegExp(r"^([A-Z][A-Za-z0-9'!?,.&\- ]{0,60}?)\s+-\s+").firstMatch(s);
   if (m != null && !_looksLikeCost(m.group(1)!)) {
     // "GOOD OR EVIL Banish this item - …": a capitalized name, then a cost.
     final caps = _capsName.firstMatch(s);
@@ -66,7 +66,10 @@ final _capsName = RegExp(r"^((?:[A-Z0-9'!?,.&\-]+\s+)*[A-Z0-9'!?,.&\-]*[A-Z][A-Z
 
 bool _looksLikeCost(String s) {
   final t = s.toLowerCase();
-  return t.startsWith('banish ') || t.startsWith('exert ') || t.startsWith('choose and discard') || t.startsWith('discard ') || t.startsWith('{');
+  if (t.startsWith('banish ') || t.startsWith('exert ') || t.startsWith('choose and discard') || t.startsWith('discard ') || t.startsWith('{')) return true;
+  // "FOLLOW THE CLUES Banish this item - …": a capitalized story name, then the cost.
+  final rest = s.replaceFirst(RegExp(r"^(?:[A-Z0-9'!?,.&\-]+\s+)+(?=[A-Z][a-z]|\{)"), '');
+  return rest != s && _looksLikeCost(rest);
 }
 
 /// Splits normalized text into paragraphs. Actions have one effect paragraph (CR 5.4.3).

@@ -235,7 +235,8 @@ class _PlayerStrip extends StatelessWidget {
         const Spacer(),
         chip(Icons.water_drop, '${g.inkReady(player)}/${p.inkwell.length}', 'Ink ready / in inkwell'),
         chip(Icons.style, '${p.hand.length}', 'Hand'),
-        chip(Icons.layers, '${p.deck.length}', 'Deck'),
+        // "Each player plays with the top card of their deck face up" (Merlin's Cottage).
+        chip(Icons.layers, '${p.deck.length}', g.faceUpTop(player) == null ? 'Deck' : 'Deck · top card: ${g.faceUpTop(player)}'),
         if (p.deck.isNotEmpty && g.topCardFaceUp(player)) chip(Icons.visibility, g.card(p.deck.first).name, 'Top of the deck (faceup)'),
         GestureDetector(onTap: p.discard.isEmpty ? null : () => _showDiscard(context, g, p.discard), child: chip(Icons.delete_outline, '${p.discard.length}', 'Discard')),
       ]),

@@ -14,6 +14,7 @@ part 'statics.dart';
 part 'wave2_s3.dart';
 part 'wave2_s4.dart';
 part 'wave2_s1.dart';
+part 'wave2_s2.dart';
 
 class ParsedCard {
   const ParsedCard(this.card, this.abilities, this.unsupported);
@@ -72,11 +73,11 @@ class _CardParser {
     if (card.type == CardType.location && card.moveCost == null) unsupported.add('Location without a move cost in the data');
     final text = normalizeText(card.text);
     if (card.type == CardType.action && text.isEmpty) unsupported.add('Action without its effect text in the data');
-    final paras = splitParagraphs(text, action: card.type == CardType.action);
+    final paras = _w2Paragraphs(splitParagraphs(text, action: card.type == CardType.action));
     for (final p in paras) {
       List<Ability>? r;
       try {
-        r = p.keyword ? _keyword(p.body) : (card.type == CardType.action ? _action(p) : _paragraph(p));
+        r = p.keyword ? _keyword(p.body) : (card.type == CardType.action ? (_w2Action(p) ?? _action(p)) : _paragraph(p));
       } catch (e) {
         r = null;
       }
@@ -167,6 +168,8 @@ class _CardParser {
     final printed = p.printed;
     final w1 = _w1Paragraph(p, t);
     if (w1 != null) return w1;
+    final w2 = _w2Paragraph(printed, t);
+    if (w2 != null) return w2;
     // Activated: "[Cost] - [Effect]" (CR 6.3.1).
     final dash = t.indexOf(' - ');
     if (dash > 0) {
@@ -387,6 +390,8 @@ class _CardParser {
     }
     if (h == 'whenever you draw a card') return [(const Draws(Owner.yours), null, false)];
     if (h == 'when you move a character here' || h == 'whenever you move a character here' || h == 'whenever a character moves here') return [(const MovedHere(), null, false)];
+    final w2 = _w2TriggerHead(h);
+    if (w2 != null) return w2;
     LorcanaParser.diag?.add('trigger: $h');
     return null;
   }
@@ -404,7 +409,7 @@ class _CardParser {
   // -------------------------------------------------------------------------------------------
 
   List<Ability>? _static(String printed, String t0) {
-    final more = _moreStatic(printed, t0);
+    final more = _moreStatic(printed, t0) ?? _w2Static(printed, t0);
     if (more != null) return more;
     var t = t0;
     Cond? cond;
@@ -450,7 +455,7 @@ class _CardParser {
     if (s3 != null) return s3;
     final w1 = _w1StaticEffect(t0);
     if (w1 != null) return w1;
-    final more = _moreStaticEffect(t0);
+    final more = _moreStaticEffect(t0) ?? _w2StaticEffect(t0);
     if (more != null) return more;
     var t = t0;
     // Self cost reduction (CR 4.3.6): "you pay 2 ink less to play this character".
@@ -506,7 +511,7 @@ class _CardParser {
   }
 
   List<StaticEffect>? _predicate(String p0, Filter? f) {
-    final more = _morePredicate(p0, f);
+    final more = _morePredicate(p0, f) ?? _w2Predicate(p0, f);
     if (more != null) return more;
     var p = p0;
     var m = rx(p, r'gets? ([+-])(\d+) (strength|willpower|lore)(?: and ([+-])(\d+) (strength|willpower|lore))?(?: for each (.+))?');
@@ -605,7 +610,7 @@ class _CardParser {
       if (f == null) return null;
       return CountCond(f, Cmp.ge, 1, place: Place.discard);
     }
-    return _zoneCondition(s) ?? _s4ConditionLast(s);
+    return _zoneCondition(s) ?? _s4ConditionLast(s) ?? _w2Condition(s);
   }
 
   // -------------------------------------------------------------------------------------------
@@ -615,6 +620,8 @@ class _CardParser {
   Effect? effects(String text, _Ctx ctx) {
     final w1 = _w1Effects(text, ctx);
     if (w1 != null) return w1;
+    final w2 = _w2Effects(text, ctx);
+    if (w2 != null) return w2;
     final zone = _zoneEffects(text, ctx);
     if (zone != null) return zone;
     // "Choose one: - A. - B." (CR 6.1.5.2).
@@ -738,7 +745,7 @@ class _CardParser {
     if (m != null && i + 1 < ss.length && rx(ss[i + 1], r'put it on either the top or the bottom of your deck') != null) {
       return (const LookTop(1, reorderOnly: true), 2);
     }
-    return null;
+    return _w2Span(ss, i, ctx);
   }
 
   /// One sentence: "you may", conditions, then clauses joined by "and"/"then".
@@ -774,6 +781,8 @@ class _CardParser {
   Cond? _ifTarget(String s, _Ctx ctx) {
     final s4 = _s4IfTarget(s, ctx);
     if (s4 != null) return s4;
+    final w2 = _w2IfTarget(s, ctx);
+    if (w2 != null) return w2;
     final m = rx(s, r'(?:a|an) (.+?) (?:is|was) chosen');
     if (m != null) {
       final f = filter(m[1], Owner.any);
@@ -824,6 +833,8 @@ class _CardParser {
     if (w1 != null) return w1;
     final zone = _zoneFirst(c, ctx);
     if (zone != null) return zone;
+    final w2 = _w2Clause(c, ctx);
+    if (w2 != null) return w2;
     List<String>? m;
     final board = _boardClause(c, ctx);
     if (board != null) return board;
@@ -1014,7 +1025,7 @@ class _CardParser {
         if (e != null) return e;
       }
     }
-    return _zoneClause(c, ctx);
+    return _zoneClause(c, ctx) ?? _w2ClauseLast(c, ctx);
   }
 
   Effect? _timedPredicate(String p, Target t, Lasting? dur) {
@@ -1141,7 +1152,7 @@ class _CardParser {
 
   /// A group: "your other Seven Dwarfs characters", "opposing characters", "characters".
   Filter? _groupFilter(String s0) {
-    final more = _moreGroup(s0.trim());
+    final more = _moreGroup(s0.trim()) ?? _w2Group(s0.trim());
     if (more != null) return more;
     var s = s0.trim();
     var owner = Owner.any;
@@ -1168,6 +1179,8 @@ class _CardParser {
     if (s4 != null) return s4;
     final w1 = _w1Filter(s0, owner, cardTypes, chosenPhrase);
     if (w1 != null) return w1;
+    final w2 = _w2Filter(s0, owner);
+    if (w2 != null) return w2;
     var s = s0.trim();
     var f = Filter(owner: owner);
     // Suffixes.
@@ -1355,6 +1368,9 @@ class _Ctx {
 
   /// The trigger is about being challenged, so "the challenging character" is the other card.
   final bool eventChallenged;
+
+  /// Slice 2's name for [eventChallenged].
+  bool get challengedEvent => eventChallenged;
 
   /// The trigger is about another card, so "he", "she", "they" mean that card.
   final bool eventOther;

@@ -131,6 +131,8 @@ class LorcanaBot implements TcgBot {
 
   List<int> answer(Game g, Decision d) {
     final s = g.state;
+    final w2 = g.w2BotAnswer(seat, d);
+    if (w2 != null) return w2;
     switch (d.kind) {
       case DecisionKind.cards:
         final p = d.prompt.toLowerCase();

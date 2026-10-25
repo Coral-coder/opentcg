@@ -4,6 +4,14 @@
     "text": "Each player chooses one of their characters and puts them into their inkwell facedown and exerted.",
     "why": "The bulk text says \"facedown and excreted\". Lorcast's text for the card (listed as \"Falling Down the Rabbit Hole\", so the name-matched fill misses it) and the printed card say \"facedown and exerted\"."
   },
+  "Hiro Hamada - Robotics Prodigy": {
+    "text": "SWEET TECH {e}, 2 {i} - Search your deck for an item card or a Robot character card and reveal it to all players. Shuffle your deck and put that card on top of it.",
+    "why": "Lorcast's text, \"SWEET TECH {2} {E} - Search …\": the bulk text has lost the ability's cost; Lorcast keeps its parts ({E} and 2 ink), written here in the usual \"{e}, 2 {i}\" order."
+  },
+  "Let The Storm Rage On": {
+    "text": "(A character with cost 3 or more can {e} to sing this song for free.)\nDeal 2 damage to chosen character. Draw a card.",
+    "why": "Lorcast's text for \"Let the Storm Rage On\" (a different capitalization, so build_db's name lookup misses it). The bulk text says \"Deal 2 damaged\" and has a literal \\n."
+  },
   "Mulan - Imperial General": {
     "text": "Shift 5 (You may pay 5 {i} to play this on top of one of your characters named Mulan.)\nEvasive (Only characters with Evasive can challenge this character.)\nEXCEPTIONAL LEADER Whenever this character challenges another character, your other characters gain \"This character can challenge ready characters\" this turn.",
     "why": "Bulk text has a stray quote after the story name (EXCEPTIONAL LEADER\"); Lorcast's text."

@@ -107,6 +107,7 @@ extension GameChars on Game {
         }
       }
       _w1ApplyChars(id, ch);
+      _w2ApplyStatics(id, ch);
       _applyChallengerMods(id, ch);
       _s3Chars(id, ch);
       // "This character can't gain Evasive": only a printed Evasive stays.
@@ -154,13 +155,14 @@ extension GameChars on Game {
     if (f.owner == Owner.yours && o.owner != controller) return false;
     if (f.owner == Owner.opposing && o.owner == controller) return false;
     if (f.other && id == source) return false;
-    if (f.classes.isNotEmpty && !f.classes.any((x) => c.hasClass(x) || _w1HasClass(id, x)) && !_s4GainedClass(id, f.classes)) return false;
+    if (f.classes.isNotEmpty && !f.classes.any((x) => c.hasClass(x) || _w1HasClass(id, x) || _w2HasClass(id, x)) && !_s4GainedClass(id, f.classes)) return false;
     if (f.named != null && !f.nameMatches(c.names)) return false;
     if (f.notNamed != null && c.names.any((n) => n.toLowerCase() == f.notNamed!.toLowerCase())) return false;
     if (f.ink != null && !c.inks.contains(f.ink)) return false;
     if (f.costMax != null && c.cost > f.costMax!) return false;
     if (f.costMin != null && c.cost < f.costMin!) return false;
     if ((f.hasUnder != null || f.withoutKw != null) && !_s4FilterOk(f, id, place)) return false;
+    if (f is W2Filter && !_w2Matches(f, id, controller, source, place)) return false;
     if (place == Place.play) {
       if (f.exerted != null && o.exerted != f.exerted) return false;
       if (f.damaged != null && (o.damage > 0) != f.damaged) return false;
