@@ -11,6 +11,7 @@ import 'package:tcg_core/tcg_core.dart' show SeededRng;
 import 'lorcana_deck_choice.dart';
 import 'lorcana_store.dart';
 import 'lorcana_table.dart';
+import 'lorcana_theme.dart';
 
 /// The cards for [choice] (a saved, starter or random deck from the Lorcana menu); random decks
 /// draw fresh cards each time.
@@ -35,7 +36,7 @@ class PlayerNameField extends StatelessWidget {
 void _openLinked(BuildContext context, LockstepMatch match) {
   LorcanaStore.shared.startLinkedGame(match);
   Console.shared.play(Fx.confirm);
-  Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const LorcanaTable()));
+  Navigator.of(context).pushReplacement(lorcanaRoute<void>(const LorcanaTable(), sky: false));
 }
 
 /// Play online through public relays: share a 6-character code; no account, no server of ours.
@@ -93,7 +94,7 @@ class _LorcanaRemoteLobbyState extends State<LorcanaRemoteLobby> {
     // A match already on the table: go back to it.
     final current = store.session?.link;
     if (current != null && current.matchKey == 'relay:$code' && current.game != null) {
-      Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const LorcanaTable()));
+      Navigator.of(context).pushReplacement(lorcanaRoute<void>(const LorcanaTable(), sky: false));
       return;
     }
     await sub?.cancel();
@@ -140,8 +141,8 @@ class _LorcanaRemoteLobbyState extends State<LorcanaRemoteLobby> {
   Widget build(BuildContext context) {
     final t = GameTheme.of(context);
     return Scaffold(
-      backgroundColor: t.bg,
-      appBar: AppBar(title: const Text('Play Lorcana online'), backgroundColor: t.panel),
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(title: const Text('Play Lorcana online')),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 520),
@@ -369,8 +370,8 @@ class _LorcanaLocalLobbyState extends State<LorcanaLocalLobby> {
   Widget build(BuildContext context) {
     final t = GameTheme.of(context);
     return Scaffold(
-      backgroundColor: t.bg,
-      appBar: AppBar(title: const Text('Play Lorcana nearby'), backgroundColor: t.panel),
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(title: const Text('Play Lorcana nearby')),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 520),

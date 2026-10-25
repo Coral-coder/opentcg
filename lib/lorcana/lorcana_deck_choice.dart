@@ -6,6 +6,7 @@ import 'package:tcg_core/tcg_core.dart' show SeededRng;
 import 'lorcana_card.dart';
 import 'lorcana_decks.dart';
 import 'lorcana_store.dart';
+import 'lorcana_theme.dart';
 
 enum DeckSource { saved, starter, random }
 
@@ -74,9 +75,11 @@ class DeckChooser extends StatelessWidget {
     final current = keyOf(value);
     final problem = value.problem(store);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(label, style: t.style(14, weight: FontWeight.w700)),
+      EnchantedTitle(label, size: 16),
       DropdownButton<String>(
         isExpanded: true,
+        dropdownColor: const Color(0xFF221E5C),
+        style: t.style(14),
         value: items.any((i) => i.value == current) ? current : 'random',
         items: items,
         onChanged: (k) {
@@ -97,7 +100,7 @@ class DeckChooser extends StatelessWidget {
               label: Text(ink.label),
               selected: value.inks.contains(ink),
               selectedColor: inkColors[ink]!.withValues(alpha: 0.6),
-              avatar: CircleAvatar(backgroundColor: inkColors[ink], radius: 7),
+              avatar: InkBlot(inks: [ink], size: 18),
               onSelected: (on) {
                 final next = {...value.inks};
                 if (on) {
