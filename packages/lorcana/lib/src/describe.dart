@@ -3,6 +3,8 @@ library;
 
 import 'ir.dart';
 
+part 'describe_wave2_s2.dart';
+
 String describeAbility(Ability a) => switch (a) {
   KeywordAbility(:final keyword) => 'KW ${keyword.key}',
   Triggered(:final trigger, :final effect, :final condition, :final during, :final oncePerTurn) =>
@@ -20,6 +22,7 @@ String _trig(Trigger t) => switch (t) {
   TurnStep(:final start, :final yours, :final opponents) => '${start ? 'start' : 'end'} of ${yours ? 'your' : (opponents ? 'each opponent\'s' : 'each')} turn',
   Draws(:final by, :final nth, :final theirTurn) => '${by.name} draw${nth > 0 ? ' #$nth' : ''}${theirTurn ? ' in their turn' : ''}',
   MovedHere() => 'moved here',
+  W2Trigger() => _w2Trig(t),
   On(:final what, :final self, :final subject, :final by, :final min, :final max, :final nth) =>
     '${what.name}(${self ? 'this' : (subject?.describe() ?? 'any')}${by == Owner.any ? '' : ' by ${by.name}'}${min > 0 ? ' ≥$min' : ''}${max != null ? ' ≤$max' : ''}${nth > 0 ? ' #$nth' : ''})',
 };
@@ -49,6 +52,7 @@ String _static(StaticEffect e) => switch (e) {
   MayEnterExerted(:final then) => 'may enter exerted${then == null ? '' : ' to ${describeEffect(then)}'}',
   DeckLimit(:final max) => 'deck limit ${max ?? 'any'}',
   ShiftName(:final name) => 'counts as named ${name ?? 'anything'} for Shift',
+  W2Static() => _w2Static(e),
 };
 
 String _cond(Cond c) => switch (c) {
@@ -78,6 +82,7 @@ String _cond(Cond c) => switch (c) {
   Challenging(:final defender) => 'challenging ${defender.describe()}',
   ThisTurnCond(:final what, :final cmp, :final n) => '${what.name} this turn ${cmp.name} $n',
   BanishedThisTurn(:final filter, :final inChallenge) => '${filter.describe()} banished${inChallenge ? ' in a challenge' : ''} this turn',
+  W2Cond() => _w2Cond(c),
 };
 
 String _zone(ZoneEffect e) => switch (e) {
@@ -104,6 +109,7 @@ String _amt(Amount a) => switch (a) {
   DamageOn(:final target) => 'damage on ${_tgt(target)}',
   DamageOnSelf(:final per, :final times) => '$times×(damage on this / $per)',
   UnderSelf(:final times) => '$times×cards under this',
+  W2Amount() => _w2Amt(a),
 };
 
 String _tgt(Target t) => switch (t) {
@@ -116,6 +122,7 @@ String _tgt(Target t) => switch (t) {
 
 String describeEffect(Effect e) => switch (e) {
   ZoneEffect() => _zone(e),
+  W2Effect() => _w2Effect(e),
   Seq(:final steps) => steps.map(describeEffect).join('; '),
   May(e: final x) => 'MAY(${describeEffect(x)})',
   If(:final cond, :final then, :final otherwise) => 'IF ${_cond(cond)} THEN ${describeEffect(then)}${otherwise == null ? '' : ' ELSE ${describeEffect(otherwise)}'}',

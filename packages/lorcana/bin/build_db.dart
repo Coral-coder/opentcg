@@ -13,6 +13,21 @@ import 'package:lorcana/lorcana.dart';
 
 void main(List<String> args) {
   final raw = jsonDecode(File(args[0]).readAsStringSync()) as List;
+  // Documented corrections for texts both sources mangle (lorcana-overrides.json, next to the
+  // raw file): the corrected text replaces the bulk text of every printing.
+  final overrides = File('${File(args[0]).parent.path}/lorcana-overrides.json');
+  if (overrides.existsSync()) {
+    final cards = ((jsonDecode(overrides.readAsStringSync()) as Map)['cards'] as Map).cast<String, dynamic>();
+    var n = 0;
+    for (final r in raw) {
+      final o = cards[((r as Map)['Name'] as String).trim()];
+      if (o != null) {
+        r['Body_Text'] = (o as Map)['text'] as String;
+        n++;
+      }
+    }
+    stdout.writeln('$n printings use lorcana-overrides.json');
+  }
   final out = args.length > 1 ? args[1] : '.';
   final fill = <String, ({int? moveCost, String text})>{};
   if (args.length > 2) {

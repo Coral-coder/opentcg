@@ -102,6 +102,7 @@ extension GameChars on Game {
           default:
         }
       }
+      _w2ApplyStatics(id, ch);
       _applyChallengerMods(id, ch);
       // "This character can't gain Evasive": only a printed Evasive stays.
       if (ch.rules.contains(Rule.cantGainEvasive) && !LorcanaParser.parse(c).abilities.any((a) => a is KeywordAbility && a.keyword.kw == Kw.evasive)) ch.keywords.remove(Kw.evasive);
@@ -147,10 +148,11 @@ extension GameChars on Game {
     if (f.owner == Owner.yours && o.owner != controller) return false;
     if (f.owner == Owner.opposing && o.owner == controller) return false;
     if (f.other && id == source) return false;
-    if (f.classes.isNotEmpty && !f.classes.any(c.hasClass)) return false;
+    if (f.classes.isNotEmpty && !f.classes.any((x) => c.hasClass(x) || _w2HasClass(id, x))) return false;
     if (f.named != null && !c.names.any((n) => n.toLowerCase() == f.named!.toLowerCase())) return false;
     if (f.costMax != null && c.cost > f.costMax!) return false;
     if (f.costMin != null && c.cost < f.costMin!) return false;
+    if (f is W2Filter && !_w2Matches(f, id, controller, source, place)) return false;
     if (place == Place.play) {
       if (f.exerted != null && o.exerted != f.exerted) return false;
       if (f.damaged != null && (o.damage > 0) != f.damaged) return false;

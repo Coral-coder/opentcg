@@ -1,0 +1,13 @@
+{
+  "about": "Corrected rules text for cards whose text is mangled in the bulk data (data/lorcana-cards.raw.json) and missing or mangled in Lorcast's (data/lorcast-cards.json). Keyed by full name; bin/build_db.dart uses the text here in place of the bulk text. Each entry says where its wording comes from: nothing here is written from memory alone.",
+  "cards": {
+    "Let The Storm Rage On": {
+      "text": "(A character with cost 3 or more can {e} to sing this song for free.)\nDeal 2 damage to chosen character. Draw a card.",
+      "source": "Lorcast's text for \"Let the Storm Rage On\" (a different capitalization, so build_db's name lookup misses it). The bulk text says \"Deal 2 damaged\" and has a literal \\n."
+    },
+    "Hiro Hamada - Robotics Prodigy": {
+      "text": "SWEET TECH {e}, 2 {i} - Search your deck for an item card or a Robot character card and reveal it to all players. Shuffle your deck and put that card on top of it.",
+      "source": "Lorcast's text, \"SWEET TECH {2} {E} - Search …\": the bulk text has lost the ability's cost; Lorcast keeps its parts ({E} and 2 ink), written here in the usual \"{e}, 2 {i}\" order."
+    }
+  }
+}

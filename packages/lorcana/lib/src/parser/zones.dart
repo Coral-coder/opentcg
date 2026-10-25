@@ -227,6 +227,8 @@ extension _Zones on _CardParser {
   /// named kevin", "princess or queen character card", "card": one or more alternatives (a card
   /// matching any of them).
   List<Filter>? _zoneFilters(String s0) {
+    final w2 = _w2ZoneFilters(s0);
+    if (w2 != null) return w2;
     var s = s0.trim();
     if (s.startsWith('a ')) s = s.substring(2);
     if (s.startsWith('an ')) s = s.substring(3);

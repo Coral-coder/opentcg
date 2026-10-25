@@ -45,7 +45,7 @@ bool _isCapsName(String s) {
 (String, int)? storyName(String s) {
   var m = RegExp(r"^([A-Z0-9][^:]{0,60}?)\s*:\s+").firstMatch(s);
   if (m != null && !RegExp(r'^choose ', caseSensitive: false).hasMatch(m.group(1)!) && !m.group(1)!.contains('{')) return (m.group(1)!, m.end);
-  m = RegExp(r"^([A-Z][A-Za-z0-9'!?,.& ]{0,60}?)\s+-\s+").firstMatch(s);
+  m = RegExp(r"^([A-Z][A-Za-z0-9'!?,.&\- ]{0,60}?)\s+-\s+").firstMatch(s);
   if (m != null && !_looksLikeCost(m.group(1)!)) return (m.group(1)!, m.end);
   m = RegExp(r"^((?:[A-Z0-9'!?,.&\-]+\s+)*[A-Z0-9'!?,.&\-]*[A-Z][A-Z'!?,.&\-]+)\s+(?=[A-Z][a-z]|\{|\d)").firstMatch(s);
   if (m != null && _isCapsName(m.group(1)!)) return (m.group(1)!, m.end);
@@ -54,7 +54,10 @@ bool _isCapsName(String s) {
 
 bool _looksLikeCost(String s) {
   final t = s.toLowerCase();
-  return t.startsWith('banish ') || t.startsWith('exert ') || t.startsWith('choose and discard') || t.startsWith('discard ') || t.startsWith('{');
+  if (t.startsWith('banish ') || t.startsWith('exert ') || t.startsWith('choose and discard') || t.startsWith('discard ') || t.startsWith('{')) return true;
+  // "FOLLOW THE CLUES Banish this item - …": a capitalized story name, then the cost.
+  final rest = s.replaceFirst(RegExp(r"^(?:[A-Z0-9'!?,.&\-]+\s+)+(?=[A-Z][a-z]|\{)"), '');
+  return rest != s && _looksLikeCost(rest);
 }
 
 /// Splits normalized text into paragraphs. Actions have one effect paragraph (CR 5.4.3).

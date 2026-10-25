@@ -30,6 +30,9 @@ enum _EvKind {
   exerted,
   returnedFromDiscard,
   dealsChallengeDamage,
+
+  /// A card leaves a discard (wave2_s2).
+  w2LeftDiscard,
 }
 
 /// The event kind each [Happening] waits for.
@@ -78,6 +81,7 @@ extension GameBag on Game {
   /// order and play order so every device adds them alike.
   void _emit(_Ev e) {
     _trackTurn(e);
+    _w2Track(e);
     final s = state;
     final info =
         e.info ??
@@ -135,6 +139,7 @@ extension GameBag on Game {
         _addToBag(l.controller, l.source, l.ability, info, -1, floating: true);
       }
     }
+    _w2EmitGranted(e, info);
   }
 
   /// Triggers a card can have about its own leaving play, being discarded or shifted onto,
@@ -159,7 +164,7 @@ extension GameBag on Game {
         if (f.classes.isNotEmpty && !f.classes.any(c.hasClass)) return false;
         if (f.named != null && !c.names.any((n) => n.toLowerCase() == f.named!.toLowerCase())) return false;
         if (f.withKw != null && !LorcanaParser.parse(c).abilities.any((a) => a is KeywordAbility && a.keyword.kw == f.withKw)) return false;
-        return true;
+        return _w2LeftPlayMatches(f, c);
       }
       return matches(f, id, controller: you, source: src);
     }
@@ -188,6 +193,7 @@ extension GameBag on Game {
         if (filter.costMax != null && c.cost > filter.costMax!) return false;
         if (filter.withKw != null && !LorcanaParser.parse(c).abilities.any((a) => a is KeywordAbility && a.keyword.kw == filter.withKw)) return false;
         if (filter.named != null && !c.names.any((n) => n.toLowerCase() == filter.named!.toLowerCase())) return false;
+        if (!_w2LeftPlayMatches(filter, c)) return false;
         if ((filter.strengthMin != null || filter.strengthMax != null) && o.zone == Place.play) {
           final st = chars(e.card!).strength;
           if (filter.strengthMin != null && st < filter.strengthMin!) return false;
@@ -224,6 +230,8 @@ extension GameBag on Game {
         return true;
       case MovedHere():
         return e.kind == _EvKind.moves && e.other == src && !floating;
+      case W2Trigger():
+        return _w2TriggerMatches(t, e, src, you);
     }
   }
 
