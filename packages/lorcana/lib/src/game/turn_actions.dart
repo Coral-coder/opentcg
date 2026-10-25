@@ -215,16 +215,21 @@ extension GameTurnActions on Game {
     final id = m.card;
     final c = db[s.obj(id).card]!;
     // Pay (CR 4.3.2.4); payment modifiers for "the next X" are used up (CR 4.3.6).
+    var paid = -1;
     switch (m.mode) {
       case PlayMode.ink:
-        _payInk(p, playCost(p, id));
+        paid = playCost(p, id);
+        _payInk(p, paid);
       case PlayMode.shift:
-        _payInk(p, _shiftCost(p, id, _shiftOf(id)!));
+        paid = _shiftCost(p, id, _shiftOf(id)!);
+        _payInk(p, paid);
       case PlayMode.sing:
         for (final singer in m.singers) {
-          s.obj(singer).exerted = true;
+          _exertCard(singer);
         }
     }
+    // "Whenever you pay N ink or less to play a card" (CR 4.3.2.4).
+    if (paid >= 0) _emit(_Ev(kind: _EvKind.inkPaid, card: id, player: p, amount: paid));
     final ri = s.reductions.indexWhere((r) => r.player == p && matches(r.filter, id, controller: p, place: Place.hand));
     if (ri >= 0) s.reductions.removeAt(ri);
     _enterPlay(p, id, shiftOnto: m.mode == PlayMode.shift ? m.onto : null, singers: m.singers, how: m.mode);
@@ -244,9 +249,19 @@ extension GameTurnActions on Game {
     log('${s.player(p).name} $verb ${c.fullName}$by.', player: p, card: id, kind: how == PlayMode.sing ? 'sing' : (how == PlayMode.shift ? 'shift' : 'play'));
     if (c.type == CardType.action) {
       _moveTo(id, Place.play);
-      _emit(_Ev(kind: _EvKind.played, card: id, player: p));
+      final n = ++s.player(p).actionsThisTurn;
+      _emit(_Ev(kind: _EvKind.played, card: id, player: p, amount: n));
       for (final singer in singers) {
         _emit(_Ev(kind: _EvKind.sings, card: singer, other: id, player: p));
+      }
+      if (singers.isNotEmpty) {
+        _emit(_Ev(kind: _EvKind.songSung, card: id, player: p));
+        // Sing Together (CR 8.12): each singer of a song more than one sang.
+        if (singers.length > 1) {
+          for (final singer in singers) {
+            _emit(_Ev(kind: _EvKind.sungTogether, card: singer, other: id, player: p));
+          }
+        }
       }
       final eff = LorcanaParser.parse(c).abilities.whereType<ActionEffect>().firstOrNull;
       if (eff != null) {
@@ -294,6 +309,8 @@ extension GameTurnActions on Game {
     }
     s.version++;
     _emit(_Ev(kind: _EvKind.played, card: id, player: p, other: shiftOnto));
+    // "When you shift a character on top of this one" (CR 8.10.6).
+    if (shiftOnto != null) _emit(_Ev(kind: _EvKind.shiftedOnto, card: shiftOnto, other: id, player: p));
   }
 
   // -------------------------------------------------------------------------------------------
@@ -301,7 +318,7 @@ extension GameTurnActions on Game {
   // -------------------------------------------------------------------------------------------
 
   void _quest(int p, CardId id) {
-    state.obj(id).exerted = true;
+    _exertCard(id);
     final lore = chars(id).loreAtLeast0;
     log('${state.player(p).name} quests with ${nameOf(id)}.', player: p, card: id, kind: 'quest', amount: lore);
     _gainLore(p, lore, source: id);
@@ -360,7 +377,7 @@ extension GameTurnActions on Game {
 
   void _challenge(int p, CardId attacker, CardId target) {
     final s = state;
-    s.obj(attacker).exerted = true;
+    _exertCard(attacker);
     log('${nameOf(attacker)} challenges ${nameOf(target)}.', player: p, card: attacker, kind: 'challenge');
     _emit(_Ev(kind: _EvKind.challenges, card: attacker, other: target, player: p));
     _emit(_Ev(kind: _EvKind.isChallenged, card: target, other: attacker, player: s.obj(target).owner));
@@ -458,7 +475,7 @@ extension GameTurnActions on Game {
     a as Activated;
     final cost = a.cost;
     final ctx = _Ctx(this, controller: p, source: id);
-    if (cost.exert) o.exerted = true;
+    if (cost.exert) _exertCard(id);
     _payInk(p, cost.ink);
     if (cost.discard > 0) {
       final pick = ask(
@@ -472,9 +489,7 @@ extension GameTurnActions on Game {
           source: id,
         ),
       );
-      for (final d in pick) {
-        _moveTo(d, Place.discard);
-      }
+      _discardCards(p, pick);
     }
     if (cost.exertOther != null) {
       final opts = [
@@ -482,7 +497,7 @@ extension GameTurnActions on Game {
           if (x != id && !s.obj(x).exerted && (chars(x).type != CardType.character || s.obj(x).dry)) x,
       ];
       final pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Exert one for the cost', options: opts, min: 1, max: 1, source: id));
-      s.obj(pick.first).exerted = true;
+      _exertCard(pick.first);
     }
     if (cost.banishOther != null) {
       final opts = [

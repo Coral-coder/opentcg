@@ -9,6 +9,7 @@ import 'text.dart';
 
 part 'zones.dart';
 part 'board.dart';
+part 'triggers.dart';
 
 class ParsedCard {
   const ParsedCard(this.card, this.abilities, this.unsupported);
@@ -237,9 +238,10 @@ class _CardParser {
     var idx = t.indexOf(', ');
     while (idx > 0) {
       final head = t.substring(0, idx);
-      final triggers = _triggerHead(head);
+      var triggers = _triggerHead(head);
       if (triggers != null) {
         var rest = t.substring(idx + 2);
+        (triggers, rest) = _qualifyTrigger(triggers, rest);
         Cond? cond;
         final ifm = RegExp(r'^if (.+?), (.+)$').firstMatch(rest);
         if (ifm != null) {
@@ -249,7 +251,7 @@ class _CardParser {
             rest = ifm.group(2)!;
           }
         }
-        final e = effects(rest, _Ctx(event: true));
+        final e = effects(rest, _Ctx(event: true, eventOther: triggers.every((tr) => _aboutOtherCard(tr.$1))));
         if (e == null) return null;
         return [for (final tr in triggers) Triggered(printed, tr.$1, e, condition: cond, during: _and(during, tr.$2), oncePerTurn: once, fromDiscard: tr.$3)];
       }
@@ -264,6 +266,8 @@ class _CardParser {
   /// optional condition checked as it triggers and whether it works from the discard.
   List<(Trigger, Cond?, bool)>? _triggerHead(String h0) {
     var h = h0.trim();
+    final more = _moreTriggerHead(h);
+    if (more != null) return more;
     // "When you play this character and whenever she quests" (CR 6.2.6).
     final both = RegExp(r'^(when you play this character) and (whenever (?:he|she|they|this character) quests?)$').firstMatch(h);
     if (both != null) {
@@ -996,12 +1000,17 @@ class _CardParser {
 
   /// "this character", pronouns, "that character", "the challenging character".
   Target? ref(String p, _Ctx ctx) {
-    if (const {'this character', 'this item', 'this location', 'this card'}.contains(p)) return const This();
+    if (const {'this character', 'this item', 'this location', 'this card'}.contains(p)) {
+      ctx.saidThis = true;
+      return const This();
+    }
     // Pronouns: the card chosen earlier in the ability, else the card itself (CR 1.4.3.2).
     if (const {'him', 'her', 'them', 'it', 'he', 'she', 'they', 'their', 'his', 'its'}.contains(p)) {
       if (ctx.nextSlot > 0) return Remembered(ctx.nextSlot - 1);
       // "It" is the item or location itself; on a character it means some other card.
       if ((p == 'it' || p == 'its') && card.type == CardType.character) return null;
+      // "Whenever an opposing character is exerted, banish them": the card the trigger is about.
+      if (ctx.eventOther && !ctx.saidThis) return const EventCard();
       return const This();
     }
     // "That character": the one chosen earlier, else the one the trigger is about.
@@ -1192,8 +1201,15 @@ class _CardParser {
 
 /// Parse context within one ability: remembered choices and whether there's an event card.
 class _Ctx {
-  _Ctx({this.event = false});
+  _Ctx({this.event = false, this.eventOther = false});
   final bool event;
+
+  /// The trigger is about another card, so "he", "she", "they" mean that card.
+  final bool eventOther;
+
+  /// "This character" came up already, so later pronouns mean it ("ready this character. He
+  /// can't quest").
+  bool saidThis = false;
   int nextSlot = 0;
   int save() => nextSlot;
   void restore(int s) => nextSlot = s;

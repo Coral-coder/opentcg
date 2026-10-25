@@ -268,6 +268,10 @@ class Game implements TcgMatch {
     log('Turn ${s.turn}: ${pl.name}.', player: p, kind: 'turn');
     pl.inkedThisTurn = 0;
     pl.drawnThisTurn = 0;
+    for (final q in s.players) {
+      q.inkPutThisTurn = 0;
+      q.actionsThisTurn = 0;
+    }
     s.banishedInChallengeThisTurn = 0;
     _resetTurnRecords();
     // Ready (CR 3.2.1): ready everything, end "until the start of your turn" effects.
@@ -276,13 +280,19 @@ class Game implements TcgMatch {
       for (final t in s.timed)
         if (t.rule == Rule.cantReady && t.lasting == Lasting.theirNextTurn && t.turn < s.turn) ...?t.cards,
     };
+    final readied = <CardId>[];
     for (final id in [...pl.play, ...pl.inkwell]) {
       final o = s.obj(id);
       if (!o.exerted) continue;
       if (cantReady.contains(id) || chars(id).rules.contains(Rule.cantReady)) continue;
       o.exerted = false;
+      if (o.zone == Place.play) readied.add(id);
     }
     s.version++;
+    // "Whenever you ready this character" triggers in the Ready step too (CR 3.2.1.4).
+    for (final id in readied) {
+      _emit(_Ev(kind: _EvKind.readied, card: id, player: p));
+    }
     _turnTriggers(start: true);
     // Set (CR 3.2.2): characters dry, locations give lore, the bag resolves.
     for (final id in pl.play) {
@@ -398,7 +408,7 @@ class Game implements TcgMatch {
   // Zones (CR 7)
   // -------------------------------------------------------------------------------------------
 
-  void _moveTo(CardId id, Place to, {bool bottom = false, bool exerted = false}) {
+  void _moveTo(CardId id, Place to, {bool bottom = false, bool exerted = false, bool setup = false}) {
     final s = state;
     final o = s.obj(id);
     final from = o.zone;
@@ -439,6 +449,7 @@ class Game implements TcgMatch {
       list.add(id);
     }
     s.version++;
+    if (to == Place.inkwell && from != Place.inkwell && s.phase == Phase.main && !setup) _inked(o.owner, id);
   }
 
   bool _draw(int p, {bool quiet = false}) {
@@ -449,7 +460,7 @@ class Game implements TcgMatch {
     pl.drawnThisTurn++;
     if (!quiet) {
       log('${pl.name} draws a card.', player: p, card: id, kind: 'draw');
-      _emit(_Ev(kind: _EvKind.draw, player: p));
+      _emit(_Ev(kind: _EvKind.draw, player: p, amount: pl.drawnThisTurn));
     }
     return true;
   }

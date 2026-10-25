@@ -14,11 +14,14 @@ String describeAbility(Ability a) => switch (a) {
 
 String _trig(Trigger t) => switch (t) {
   OnPlay() => 'on play',
-  CardPlayed(:final filter, :final by) => '${by.name} play ${filter.describe()}',
-  CardEvent(:final event, :final subject) => '${subject == null ? 'this' : subject.describe()} ${event.name}',
-  TurnStep(:final start, :final yours) => '${start ? 'start' : 'end'} of ${yours ? 'your' : 'each'} turn',
-  Draws(:final by) => '${by.name} draw',
+  CardPlayed(:final filter, :final by, :final nth) => '${by.name} play ${filter.describe()}${nth > 0 ? ' #$nth this turn' : ''}',
+  CardEvent(:final event, :final subject, :final other, :final where, :final here) =>
+    '${subject == null ? 'this' : subject.describe()} ${event.name}${other == null ? '' : ' ${other.describe()}'}${where == null ? '' : ' while ${where.describe()}'}${here ? ' here' : ''}',
+  TurnStep(:final start, :final yours, :final opponents) => '${start ? 'start' : 'end'} of ${yours ? 'your' : (opponents ? 'each opponent\'s' : 'each')} turn',
+  Draws(:final by, :final nth, :final theirTurn) => '${by.name} draw${nth > 0 ? ' #$nth' : ''}${theirTurn ? ' in their turn' : ''}',
   MovedHere() => 'moved here',
+  On(:final what, :final self, :final subject, :final by, :final min, :final max, :final nth) =>
+    '${what.name}(${self ? 'this' : (subject?.describe() ?? 'any')}${by == Owner.any ? '' : ' by ${by.name}'}${min > 0 ? ' ≥$min' : ''}${max != null ? ' ≤$max' : ''}${nth > 0 ? ' #$nth' : ''})',
 };
 
 String _cost(Cost c) => [

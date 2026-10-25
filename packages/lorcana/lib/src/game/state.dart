@@ -83,6 +83,10 @@ class Player {
 
   /// Characters this player played this turn ("if you played another character this turn").
   List<CardId> playedThisTurn = [];
+  /// Cards put into their inkwell this turn, any way; actions played this turn (for "the
+  /// second card you've put into your inkwell this turn", "a second action in a turn").
+  int inkPutThisTurn = 0;
+  int actionsThisTurn = 0;
 
   List<CardId> zone(Place z) => switch (z) {
     Place.deck => deck,
@@ -104,10 +108,12 @@ class Player {
     ..inkedThisTurn = inkedThisTurn
     ..drawnThisTurn = drawnThisTurn
     ..turnStats = List.of(turnStats)
-    ..playedThisTurn = List.of(playedThisTurn);
+    ..playedThisTurn = List.of(playedThisTurn)
+    ..inkPutThisTurn = inkPutThisTurn
+    ..actionsThisTurn = actionsThisTurn;
 
   String digest() =>
-      '${name.length}:$name|${deck.join(',')}|${hand.join(',')}|${play.join(',')}|${inkwell.join(',')}|${discard.join(',')}|$lore|$lost|$altered|$inkedThisTurn|$drawnThisTurn|${turnStats.join(',')}|${playedThisTurn.join(',')}';
+      '${name.length}:$name|${deck.join(',')}|${hand.join(',')}|${play.join(',')}|${inkwell.join(',')}|${discard.join(',')}|$lore|$lost|$altered|$inkedThisTurn|$drawnThisTurn|${turnStats.join(',')}|${playedThisTurn.join(',')}|$inkPutThisTurn|$actionsThisTurn';
 }
 
 /// What a triggered ability is about (CR 6.2): the card, the other card, the player, an amount,
