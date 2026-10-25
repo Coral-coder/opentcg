@@ -3,6 +3,7 @@ import 'package:mtg_ui/mtg_ui.dart';
 import 'package:tcg_app/tcg_app.dart';
 
 import 'lorcana/lorcana_home.dart';
+import 'pokemon/pokemon_home.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,6 +34,13 @@ final games = <GameEntry>[
     blurb: 'Ink, quest and challenge: first to 20 lore, against the computer or a friend.',
     colors: const [Color(0xFF6A4FB3), Color(0xFF2E6FB8)],
     open: () => const LorcanaHome(),
+  ),
+  GameEntry(
+    id: 'pokemon',
+    name: 'Pokémon TCG',
+    blurb: 'Attach Energy, evolve and attack: take all 6 Prize cards, against the computer or a friend.',
+    colors: const [Color(0xFFFFCB05), Color(0xFF2A75BB)],
+    open: () => const PokemonHome(),
   ),
 ];
 

@@ -1,5 +1,5 @@
 name: opentcg
-description: OpenTCG — trading card games on one table (Magic, Lorcana), grown from OpenMTG. Private.
+description: OpenTCG — trading card games on one table (Magic, Lorcana, Pokémon), grown from OpenMTG. Private.
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -27,6 +27,8 @@ dependencies:
       path: packages/mtg_ui
   lorcana:
     path: packages/lorcana
+  pokemon:
+    path: packages/pokemon
   shared_preferences: ^2.5.6
 
 dev_dependencies:
@@ -44,3 +46,4 @@ flutter:
   uses-material-design: true
   assets:
     - data/lorcana-cards.json
+    - data/pokemon-cards.json
