@@ -23,7 +23,22 @@ void main(List<String> args) {
       fill[name.trim()] = (moveCost: m['move_cost'] as int?, text: ((m['text'] as String?) ?? '').trim());
     }
   }
-  final db = LCardDb.fromRaw(raw, version: '${raw.length}', fill: fill);
+  // Both sources transcribe the same printed text, but each mangles a few cards (merged lines,
+  // lost symbols). Keep the bulk text, and switch a card to Lorcast's wording only when that's
+  // the one the parser reads in full.
+  final bulk = LCardDb.fromRaw(raw, version: '${raw.length}', fill: fill);
+  final alt = LCardDb.fromRaw(raw, version: '${raw.length}', fill: fill, preferFill: true);
+  var switched = 0;
+  final db = LCardDb([
+    for (final c in bulk.cards)
+      if (!LorcanaParser.parseUncached(c).supported && alt[c.fullName] != null && alt[c.fullName]!.text != c.text && LorcanaParser.parseUncached(alt[c.fullName]!).supported) (() {
+        switched++;
+        return alt[c.fullName]!;
+      })()
+      else c,
+  ], version: bulk.version);
+  if (switched > 0) stdout.writeln('$switched cards use Lorcast\'s wording');
+  LorcanaParser.clearCache();
   File('$out/lorcana-cards.json').writeAsStringSync(jsonEncode(db.toJson()));
   final cov = Coverage();
   for (final c in db.cards) {

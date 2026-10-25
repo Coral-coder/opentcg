@@ -32,6 +32,10 @@ class LorcanaParser {
   static ParsedCard parse(LCard card) => _cache.putIfAbsent(card.fullName, () => _CardParser(card).run());
 
   static void clearCache() => _cache.clear();
+
+  /// Parses [card] without the cache (which is keyed by name), for comparing two wordings of
+  /// the same card.
+  static ParsedCard parseUncached(LCard card) => _CardParser(card).run();
 }
 
 // Number words.

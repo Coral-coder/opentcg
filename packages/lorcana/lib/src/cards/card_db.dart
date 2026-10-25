@@ -36,7 +36,7 @@ class LCardDb {
   /// full name become one card; its rules text and stats come from the newest printing.
   /// [fill]: per full name, values from a second source for fields the bulk data lacks (a
   /// location's move cost, an action's text); used only where the bulk data has nothing.
-  static LCardDb fromRaw(List<dynamic> raw, {String version = '', Map<String, ({int? moveCost, String text})> fill = const {}}) {
+  static LCardDb fromRaw(List<dynamic> raw, {String version = '', Map<String, ({int? moveCost, String text})> fill = const {}, bool preferFill = false}) {
     final groups = <String, List<Map<String, dynamic>>>{};
     for (final r in raw) {
       final m = (r as Map).cast<String, dynamic>();
@@ -77,7 +77,9 @@ class LCardDb {
           lore: type == CardType.character || type == CardType.location ? n('Lore') : null,
           moveCost: type == CardType.location ? (n('Move_Cost') ?? fill[name]?.moveCost) : null,
           classifications: classes,
-          text: _hasRules((m['Body_Text'] as String?) ?? '') ? ((m['Body_Text'] as String?) ?? '').trim() : (fill[name]?.text ?? ((m['Body_Text'] as String?) ?? '').trim()),
+          text: preferFill && (fill[name]?.text.isNotEmpty ?? false)
+              ? fill[name]!.text
+              : (_hasRules((m['Body_Text'] as String?) ?? '') ? ((m['Body_Text'] as String?) ?? '').trim() : (fill[name]?.text ?? ((m['Body_Text'] as String?) ?? '').trim())),
           franchise: (m['Franchise'] as String?) ?? '',
           printings: [
             for (final p in ps)
