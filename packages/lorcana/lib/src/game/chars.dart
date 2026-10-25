@@ -148,7 +148,7 @@ extension GameChars on Game {
     if (f.owner == Owner.opposing && o.owner == controller) return false;
     if (f.other && id == source) return false;
     if (f.classes.isNotEmpty && !f.classes.any(c.hasClass)) return false;
-    if (f.named != null && !c.names.any((n) => n.toLowerCase() == f.named!.toLowerCase())) return false;
+    if (f.named != null && !f.nameMatches(c.names)) return false;
     if (f.costMax != null && c.cost > f.costMax!) return false;
     if (f.costMin != null && c.cost < f.costMin!) return false;
     if (place == Place.play) {

@@ -42,6 +42,32 @@ extension _Zones on _CardParser {
   // Templates over several sentences
   // -------------------------------------------------------------------------------------------
 
+  /// The sentence after "look at the top N cards of [who]'s deck": where they go.
+  (Effect, int)? _lookTop(int n, Who who, String? next, String? next2) {
+    if (next == null) return null;
+    if (rx(next, r'put them back on the top of your deck in any order') != null) return (Peek(n, rest: ZoneDest.top), 2);
+    // "Put one into your hand and the other on the bottom of your deck", "put 2 into your
+    // hand and the rest…", "put one into your inkwell facedown and exerted and the other on
+    // the top of your deck".
+    final split = rx(next, r"put (one|\d+) (into your hand|on the top of (?:your|their) deck|into your inkwell facedown and exerted) and the (?:other|rest) (on the bottom of (?:your|their) deck|on the bottom|on the top of (?:your|their) deck|into your inkwell facedown and exerted)(?: in any order)?");
+    if (split != null) {
+      final count = numWord(split[1])!;
+      return (Peek(n, who: who, picks: [PeekPick(count: count, optional: false, dest: _dest(split[2])!, exerted: split[2].contains('exerted'))], rest: _dest(split[3])!), 2);
+    }
+    // "You may put one into your hand. Put the rest on the bottom of your deck in any order."
+    final putOne = rx(next, r'(you may )?put (one|\d+) into your hand');
+    final rest = next2 == null ? null : _restDest(next2);
+    if (putOne != null && rest != null) {
+      return (Peek(n, picks: [PeekPick(count: numWord(putOne[2])!, optional: putOne[1].isNotEmpty)], rest: rest), 3);
+    }
+    // "You may reveal a character card and put it into your hand", "…up to 2 character cards
+    // and up to 1 item card and put them into your hand", "…with cost 3 or less and play it
+    // for free". Then the rest go somewhere.
+    final picks = _revealPicks(next);
+    if (picks != null && rest != null) return (Peek(n, picks: picks, rest: rest), 3);
+    return null;
+  }
+
   (Effect, int)? _zoneSpan(List<String> ss, int i, _Ctx ctx) {
     final s = ss[i];
     String? at(int k) => i + k < ss.length ? ss[i + k] : null;
@@ -52,29 +78,9 @@ extension _Zones on _CardParser {
       final n = int.parse(m[1]);
       final who = m[2] == 'your' ? Who.you : Who.chosenPlayer;
       if (m[3].isNotEmpty) return (Peek(n, who: who, rest: ZoneDest.top), 1);
-      final next = at(1);
-      if (next == null) return null;
-      if (rx(next, r'put them back on the top of your deck in any order') != null) return (Peek(n, rest: ZoneDest.top), 2);
-      // "Put one into your hand and the other on the bottom of your deck", "put 2 into your
-      // hand and the rest…", "put one into your inkwell facedown and exerted and the other on
-      // the top of your deck".
-      final split = rx(next, r"put (one|\d+) (into your hand|on the top of (?:your|their) deck|into your inkwell facedown and exerted) and the (?:other|rest) (on the bottom of (?:your|their) deck|on the bottom|on the top of (?:your|their) deck|into your inkwell facedown and exerted)(?: in any order)?");
-      if (split != null) {
-        final count = numWord(split[1])!;
-        return (Peek(n, who: who, picks: [PeekPick(count: count, optional: false, dest: _dest(split[2])!, exerted: split[2].contains('exerted'))], rest: _dest(split[3])!), 2);
-      }
-      // "You may put one into your hand. Put the rest on the bottom of your deck in any order."
-      final putOne = rx(next, r'(you may )?put (one|\d+) into your hand');
-      final rest = at(2) == null ? null : _restDest(at(2)!);
-      if (putOne != null && rest != null) {
-        return (Peek(n, picks: [PeekPick(count: numWord(putOne[2])!, optional: putOne[1].isNotEmpty)], rest: rest), 3);
-      }
-      // "You may reveal a character card and put it into your hand", "…up to 2 character cards
-      // and up to 1 item card and put them into your hand", "…with cost 3 or less and play it
-      // for free". Then the rest go somewhere.
-      final picks = _revealPicks(next);
-      if (picks != null && rest != null) return (Peek(n, picks: picks, rest: rest), 3);
-      return null;
+      // "You may look at the top 2 cards…": the whole look is optional (CR 6.1.5.1).
+      final r = _lookTop(n, who, at(1), at(2));
+      return r == null ? null : (s.startsWith('you may ') ? May(r.$1) : r.$1, r.$2);
     }
 
     // "Look at the top card of your deck. Put it on either the top or the bottom of your deck."

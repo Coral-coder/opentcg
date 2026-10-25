@@ -65,7 +65,7 @@ extension GameStatics on Game {
           if (filter.owner == Owner.opposing && owner == ctx.controller) continue;
           final card = db[parts[0]];
           if (card == null || !filter.types.contains(card.type)) continue;
-          if (filter.named != null && !card.names.any((x) => x.toLowerCase() == filter.named!.toLowerCase())) continue;
+          if (filter.named != null && !filter.nameMatches(card.names)) continue;
           if (filter.classes.isNotEmpty && !filter.classes.any(card.hasClass)) continue;
           return true;
         }

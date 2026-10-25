@@ -88,8 +88,8 @@ String _zone(ZoneEffect e) => switch (e) {
   EachMay(:final who, :final effect, :final lorePerRefusal) => 'each (${who.name}) may ${describeEffect(effect)}${lorePerRefusal > 0 ? ', +$lorePerRefusal lore per refusal' : ''}',
   InkFromDeck(:final who, :final n, :final exerted) => 'top $n of deck to inkwell${exerted ? ' exerted' : ''} (${who.name})',
   ReadyInkwell(:final who) => 'ready inkwell (${who.name})',
-  FromDiscard(:final filter, :final who, :final count, :final upTo, :final all, :final dest, :final named) =>
-    '${all ? 'all' : '${upTo ? 'up to ' : ''}$count'} ${named ? 'named ' : ''}${filter.describe()} from discard (${who.name}) → ${dest.name}',
+  FromDiscard(:final filter, :final who, :final count, :final upTo, :final all, :final dest, :final named, :final exerted) =>
+    '${all ? 'all' : '${upTo ? 'up to ' : ''}$count'} ${named ? 'named ' : ''}${filter.describe()} from discard (${who.name}) → ${dest.name}${exerted ? ' exerted' : ''}',
   PutUnder(:final filter) => 'top of deck under ${filter.describe()}',
   UnderTo(:final target, :final dest, :final random) => 'cards under ${_tgt(target)} → ${dest.name}${random ? ' (random)' : ''}',
   PayInk(:final n) => 'pay $n ink',
@@ -112,6 +112,7 @@ String _tgt(Target t) => switch (t) {
   AllOf(:final filter) => 'all ${filter.describe()}',
   EventCard(:final other) => other ? 'event.other' : 'event card',
   Remembered(:final slot) => 'that #$slot',
+  LocationOf(:final of) => 'location of ${_tgt(of)}',
 };
 
 String describeEffect(Effect e) => switch (e) {
@@ -120,7 +121,7 @@ String describeEffect(Effect e) => switch (e) {
   May(e: final x) => 'MAY(${describeEffect(x)})',
   If(:final cond, :final then, :final otherwise) => 'IF ${_cond(cond)} THEN ${describeEffect(then)}${otherwise == null ? '' : ' ELSE ${describeEffect(otherwise)}'}',
   ChooseOne(:final options) => 'ONE OF {${options.map(describeEffect).join(' | ')}}',
-  Draw(:final who, :final amount) => 'draw ${_amt(amount)} (${who.name})',
+  Draw(:final who, :final amount, :final untilHandSize) => 'draw ${untilHandSize ? 'until hand is ' : ''}${_amt(amount)} (${who.name})',
   Discard(:final who, :final amount, :final random, :final all) => 'discard ${all ? 'all' : _amt(amount)}${random ? ' at random' : ''} (${who.name})',
   GainLore(:final who, :final amount) => 'gain ${_amt(amount)} lore (${who.name})',
   LoseLore(:final who, :final amount) => 'lose ${_amt(amount)} lore (${who.name})',
@@ -139,7 +140,7 @@ String describeEffect(Effect e) => switch (e) {
         : ' (shuffle)'}',
   ToInkwell(:final target, :final exerted) => '${_tgt(target)} to inkwell${exerted ? ' exerted' : ''}',
   InkTopOfDeck(:final exerted) => 'top of deck to inkwell${exerted ? ' exerted' : ''}',
-  InkFromHand() => 'card from hand to inkwell',
+  InkFromHand(:final exerted) => 'card from hand to inkwell${exerted ? ' exerted' : ''}',
   Modify(:final target, :final stat, :final amount, :final duration, :final negative) => '${_tgt(target)} ${negative ? '-' : '+'}${_amt(amount)} ${stat.name} (${duration.name})',
   GrantKeyword(:final target, :final keyword, :final duration) => '${_tgt(target)} gains ${keyword.key} (${duration.name})',
   GrantRule(:final target, :final rule, :final duration) => '${_tgt(target)} ${rule.name} (${duration.name})',
