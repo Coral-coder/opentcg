@@ -38,11 +38,19 @@ String _static(StaticEffect e) => switch (e) {
   EntersWith(:final exerted, :final damage) => 'enters${exerted ? ' exerted' : ''}${damage > 0 ? ' with $damage damage' : ''}',
   ExtraInk() => 'extra ink',
   SkipDraw() => 'skip draw',
+  CantBeChallengedBy(:final attackers, :final defenders) => '${defenders?.describe() ?? 'this'} can\'t be challenged by ${attackers.describe()}',
+  ChallengerMod(:final stat, :final amount, :final negative) => 'challenger ${negative ? '-' : '+'}$amount ${stat.name}',
+  OpponentsLoreToWin(:final n) => 'opponents need $n lore',
+  OpposingEnterExerted(:final filter) => 'opposing ${filter.describe()} enter exerted',
+  OpposingInkExerted() => 'opposing ink enters exerted',
+  MayEnterExerted(:final then) => 'may enter exerted${then == null ? '' : ' to ${describeEffect(then)}'}',
+  DeckLimit(:final max) => 'deck limit ${max ?? 'any'}',
+  ShiftName(:final name) => 'counts as named ${name ?? 'anything'} for Shift',
 };
 
 String _cond(Cond c) => switch (c) {
   CountCond(:final filter, :final cmp, :final n, :final place) => 'count(${filter.describe()} in ${place.name}) ${cmp.name} $n',
-  SelfState(:final exerted, :final atLocation, :final damaged) => 'this${exerted == true ? ' exerted' : ''}${atLocation == true ? ' at location' : ''}${damaged == true ? ' damaged' : ''}',
+  SelfState(:final exerted, :final atLocation, :final damaged) => 'this${exerted == true ? ' exerted' : ''}${atLocation == true ? ' at location' : ''}${damaged == true ? ' damaged' : ''}${damaged == false ? ' undamaged' : ''}',
   YourTurn() => 'your turn',
   HandCond(:final who, :final cmp, :final n) => 'hand(${who.name}) ${cmp.name} $n',
   LoreCond(:final who, :final cmp, :final n) => 'lore(${who.name}) ${cmp.name} $n',
@@ -50,6 +58,16 @@ String _cond(Cond c) => switch (c) {
   AllConds(:final conds) => conds.map(_cond).join(' and '),
   DidIt() => 'did it',
   TargetIs(:final filter) => 'target is ${filter.describe()}',
+  FirstTurnNotFirstPlayer() => 'first turn, second player',
+  SelfStat(:final stat, :final cmp, :final n) => 'this.${stat.name} ${cmp.name} $n',
+  SelfHasUnder() => 'card under this',
+  AnyWithUnder(:final whose) => '${whose.name} card with a card under it',
+  InkwellCond(:final who, :final cmp, :final n) => 'inkwell(${who.name}) ${cmp.name} $n',
+  MoreThanEachOpponent(:final place, :final filter) => 'more ${filter?.describe() ?? 'cards'} in ${place.name} than each opponent',
+  BeingChallenged() => 'being challenged',
+  Challenging(:final defender) => 'challenging ${defender.describe()}',
+  ThisTurnCond(:final what, :final cmp, :final n) => '${what.name} this turn ${cmp.name} $n',
+  BanishedThisTurn(:final filter, :final inChallenge) => '${filter.describe()} banished${inChallenge ? ' in a challenge' : ''} this turn',
 };
 
 String _amt(Amount a) => switch (a) {
@@ -57,6 +75,8 @@ String _amt(Amount a) => switch (a) {
   CountOf(:final filter, :final per, :final place) => '$per×#(${filter.describe()} in ${place.name})',
   StatOf(:final target, :final stat) => '${_tgt(target)}.${stat.name}',
   HandSize(:final who, :final per) => '$per×hand(${who.name})',
+  DamageOnSelf(:final per, :final times) => '$times×(damage on this / $per)',
+  UnderSelf(:final times) => '$times×cards under this',
 };
 
 String _tgt(Target t) => switch (t) {
@@ -78,7 +98,7 @@ String describeEffect(Effect e) => switch (e) {
   LoseLore(:final who, :final amount) => 'lose ${_amt(amount)} lore (${who.name})',
   DealDamage(:final target, :final amount, :final put) => '${put ? 'put' : 'deal'} ${_amt(amount)} damage to ${_tgt(target)}',
   RemoveDamage(:final target, :final amount, :final all) => 'remove ${all ? 'all' : _amt(amount)} damage from ${_tgt(target)}',
-  MoveDamage(:final from, :final to, :final amount) => 'move ${_amt(amount)} damage ${_tgt(from)} → ${_tgt(to)}',
+  MoveDamage(:final from, :final to, :final amount, :final upTo) => 'move ${upTo ? 'up to ' : ''}${_amt(amount)} damage ${_tgt(from)} → ${_tgt(to)}',
   Banish(:final target) => 'banish ${_tgt(target)}',
   ReturnToHand(:final target) => 'return ${_tgt(target)} to hand',
   Exert(:final target) => 'exert ${_tgt(target)}',

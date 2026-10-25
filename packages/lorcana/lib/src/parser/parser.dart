@@ -7,6 +7,8 @@ import '../cards/classifications.dart';
 import '../ir.dart';
 import 'text.dart';
 
+part 'statics.dart';
+
 class ParsedCard {
   const ParsedCard(this.card, this.abilities, this.unsupported);
   final LCard card;
@@ -16,7 +18,7 @@ class ParsedCard {
 }
 
 /// Bumped whenever parsing could change how a card plays.
-const lorcanaEngineVersion = 1;
+const lorcanaEngineVersion = 2;
 
 class LorcanaParser {
   static final Map<String, ParsedCard> _cache = {};
@@ -74,11 +76,6 @@ class _CardParser {
         abilities.addAll(r);
       }
     }
-    for (final a in abilities) {
-      if (a is KeywordAbility && a.keyword.kw == Kw.shift && (a.text.toLowerCase().startsWith('duo') || a.text.toLowerCase().startsWith('combo') || a.text.toLowerCase().startsWith('temporary'))) {
-        unsupported.add(a.text);
-      }
-    }
     return ParsedCard(card, abilities, unsupported);
   }
 
@@ -90,19 +87,35 @@ class _CardParser {
     final t = raw.toLowerCase().trim();
     final simple = {'alert': Kw.alert, 'bodyguard': Kw.bodyguard, 'evasive': Kw.evasive, 'reckless': Kw.reckless, 'rush': Kw.rush, 'support': Kw.support, 'vanish': Kw.vanish, 'ward': Kw.ward}[t];
     if (simple != null) return [KeywordAbility(raw, Keyword(simple))];
-    var m = rx(t, r'(challenger|resist) \+(\d+)');
+    var m = rx(t, r'(challenger|resist) ?\+(\d+)');
     if (m != null) return [KeywordAbility(raw, Keyword(m[1] == 'challenger' ? Kw.challenger : Kw.resist, n: int.parse(m[2])))];
     m = rx(t, r'(singer|sing together) (\d+)');
     if (m != null) return [KeywordAbility(raw, Keyword(m[1] == 'singer' ? Kw.singer : Kw.singTogether, n: int.parse(m[2])))];
     m = rx(t, r'boost (\d+) ?\{i\}');
     if (m != null) return [KeywordAbility(raw, Keyword(Kw.boost, n: int.parse(m[1])))];
+    final sd = shiftDiscard(t);
+    if (sd != null) return [KeywordAbility(raw, Keyword(Kw.shift, shiftDiscard: sd))];
     m = rx(t, r'(?:(.+) )?shift:? (\d+) ?(?:\{i\})?');
     if (m != null) {
-      final prefix = m[1];
-      if (prefix.isEmpty) return [KeywordAbility(raw, Keyword(Kw.shift, n: int.parse(m[2])))];
-      if (prefix == 'universal') return [KeywordAbility(raw, Keyword(Kw.shift, n: int.parse(m[2]), universalShift: true))];
-      if (const {'duo', 'combo', 'temporary', 'potato'}.contains(prefix.split(' ').first)) return [KeywordAbility(raw, Keyword(Kw.shift, n: int.parse(m[2])))];
-      return [KeywordAbility(raw, Keyword(Kw.shift, n: int.parse(m[2]), shiftClass: _cap(prefix)))];
+      var prefix = m[1];
+      final n = int.parse(m[2]);
+      if (prefix.isEmpty) return [KeywordAbility(raw, Keyword(Kw.shift, n: n))];
+      if (prefix == 'universal') return [KeywordAbility(raw, Keyword(Kw.shift, n: n, universalShift: true))];
+      // Duo, Combo, Potato and Temporary Shift (CR 8.10.8.3–8.10.8.6); Temporary combines
+      // with [Classification] Shift (8.10.9: "Temporary Red Panda Shift").
+      final first = prefix.split(' ').first;
+      final variant = switch (first) {
+        'duo' => ShiftVariant.duo,
+        'combo' => ShiftVariant.combo,
+        'temporary' => ShiftVariant.temporary,
+        'potato' => ShiftVariant.potato,
+        _ => ShiftVariant.plain,
+      };
+      if (variant != ShiftVariant.plain) {
+        prefix = prefix.substring(first.length).trim();
+        if (prefix.isNotEmpty && variant != ShiftVariant.temporary) return null;
+      }
+      return [KeywordAbility(raw, Keyword(Kw.shift, n: n, shiftVariant: variant, shiftClass: prefix.isEmpty ? null : _cap(prefix)))];
     }
     return null;
   }
@@ -143,6 +156,16 @@ class _CardParser {
         return [Activated(printed, cost, e)];
       }
     }
+    // Some texts write the cost with a colon: "{e}: Exert chosen character".
+    final colon = t.indexOf(': ');
+    if (colon > 0) {
+      final cost = _cost(t.substring(0, colon));
+      if (cost != null) {
+        final e = effects(t.substring(colon + 2), _Ctx());
+        if (e == null) return null;
+        return [Activated(printed, cost, e)];
+      }
+    }
     final before = LorcanaParser.diag?.length ?? 0;
     final trig = _triggered(printed, t);
     if (trig != null) return trig;
@@ -159,7 +182,7 @@ class _CardParser {
   Cost? _cost(String s) {
     var exert = false, ink = 0, banishSelf = false, discard = 0;
     Filter? exertOther, banishOther;
-    for (final part in s.split(RegExp(r', | and '))) {
+    for (final part in s.split(RegExp(r', |(?<!choose) and '))) {
       final p = part.trim();
       if (p == '{e}') {
         exert = true;
@@ -339,6 +362,8 @@ class _CardParser {
   // -------------------------------------------------------------------------------------------
 
   List<Ability>? _static(String printed, String t0) {
+    final more = _moreStatic(printed, t0);
+    if (more != null) return more;
     var t = t0;
     Cond? cond;
     // "While X, Y" / "During your turn, Y" / "Y while X" / "If X, Y".
@@ -379,6 +404,8 @@ class _CardParser {
   }
 
   List<StaticEffect>? _staticEffect(String t0) {
+    final more = _moreStaticEffect(t0);
+    if (more != null) return more;
     var t = t0;
     // Self cost reduction (CR 4.3.6): "you pay 2 ink less to play this character".
     var m = rx(t, r'(?:for each (.+?), )?you pay (\d+) ink less to play this (character|item|location|action|song)(?: for each (.+))?');
@@ -433,6 +460,8 @@ class _CardParser {
   }
 
   List<StaticEffect>? _predicate(String p0, Filter? f) {
+    final more = _morePredicate(p0, f);
+    if (more != null) return more;
     var p = p0;
     var m = rx(p, r'gets? ([+-])(\d+) (strength|willpower|lore)(?: and ([+-])(\d+) (strength|willpower|lore))?(?: for each (.+))?');
     if (m != null) {
@@ -489,6 +518,8 @@ class _CardParser {
 
   Cond? condition(String s0) {
     final s = s0.trim();
+    final more = _moreCondition(s);
+    if (more != null) return more;
     if (s == "it's your turn" || s == 'it is your turn') return const YourTurn();
     if (rx(s, r'this (character|item|location) is exerted') != null) return const SelfState(exerted: true);
     if (rx(s, r'this character is at a location') != null) return const SelfState(atLocation: true);
@@ -614,6 +645,7 @@ class _CardParser {
             pick: hand ? const Filter(types: {CardType.character, CardType.action, CardType.item, CardType.location}) : null,
             restBottom: true,
             reorderOnly: !hand,
+            mustPick: hand,
           ),
           2,
         );
@@ -623,10 +655,17 @@ class _CardParser {
         final f = filter(_plural(pick[2]), Owner.any, cardTypes: true);
         if (f == null) return null;
         final count = pick[1].isEmpty ? 1 : numWord(pick[1])!;
-        return (LookTop(n, pick: f, pickCount: count, restBottom: ss[i + 2].contains('bottom')), 3);
+        return (LookTop(n, pick: f, pickCount: count, restBottom: ss[i + 2].contains('bottom'), mustPick: pick[1].isEmpty && !next.startsWith('you may')), 3);
       }
       final pickAny = rx(next, r'put one into your hand and the rest on the bottom of your deck(?: in any order)?');
-      if (pickAny != null) return (LookTop(n, pick: const Filter(types: {CardType.character, CardType.action, CardType.item, CardType.location})), 2);
+      if (next == 'put one into your hand and the other into your inkwell facedown and exerted') {
+        return (LookTop(n, pick: const Filter(types: {CardType.character, CardType.action, CardType.item, CardType.location}), mustPick: true, restInk: true), 2);
+      }
+      final one = rx(next, r'(you may )?put one (?:of them )?into your hand');
+      if (one != null && i + 2 < ss.length && rx(ss[i + 2], r'put the rest on the (bottom|top) of your deck(?: in any order)?') != null) {
+        return (LookTop(n, pick: const Filter(types: {CardType.character, CardType.action, CardType.item, CardType.location}), restBottom: ss[i + 2].contains('bottom'), mustPick: one[1].isEmpty), 3);
+      }
+      if (pickAny != null) return (LookTop(n, pick: const Filter(types: {CardType.character, CardType.action, CardType.item, CardType.location}), mustPick: true), 2);
     }
     m = rx(s, r'look at the top card of your deck');
     if (m != null && i + 1 < ss.length && rx(ss[i + 1], r'put it on either the top or the bottom of your deck') != null) {
@@ -792,12 +831,12 @@ class _CardParser {
       if (t == null) return null;
       return RemoveDamage(t, const Fixed(0), all: true);
     }
-    m = rx(c, r'move (?:up to )?(\d+) damage(?: counters?)? from (.+?) to (.+)');
+    m = rx(c, r'move (up to )?(\d+) damage(?: counters?)? from (.+?) to (.+)');
     if (m != null) {
-      final a = target(m[2], ctx);
-      final b = target(m[3], ctx);
+      final a = target(m[3], ctx);
+      final b = target(m[4], ctx);
       if (a == null || b == null) return null;
-      return MoveDamage(a, b, Fixed(int.parse(m[1])));
+      return MoveDamage(a, b, Fixed(int.parse(m[2])), upTo: m[1].isNotEmpty);
     }
 
     // Moving cards.
@@ -1002,6 +1041,8 @@ class _CardParser {
 
   /// A group: "your other Seven Dwarfs characters", "opposing characters", "characters".
   Filter? _groupFilter(String s0) {
+    final more = _moreGroup(s0.trim());
+    if (more != null) return more;
     var s = s0.trim();
     var owner = Owner.any;
     var other = false;
@@ -1109,6 +1150,8 @@ class _CardParser {
     // "character, item, or location", "card".
     final types = <CardType>{};
     var song = false;
+    final classList = _classList(rest);
+    if (classList != null) return f.copyWith(types: {classList.$1}, classes: classList.$2);
     final typeWords = rest.split(RegExp(r', or |, | or | and/or '));
     final classWords = <String>[];
     for (final tw in typeWords) {
@@ -1147,6 +1190,8 @@ class _CardParser {
   /// "for each [X]": counts cards ("character you have in play", "card in your hand").
   CountOf? countOf(String s0, {int per = 1}) {
     var s = s0.trim();
+    final more = _moreCountOf(s, per);
+    if (more != null) return more;
     if (s == 'card in your hand' || s == 'card in your opponents\' hands') return null;
     var whose = Owner.yours;
     var place = Place.play;

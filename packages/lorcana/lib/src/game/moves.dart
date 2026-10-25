@@ -15,7 +15,7 @@ sealed class LMove extends TcgMove {
       'start' => StartMove([for (final d in j['decks'] as List) (d as List).cast<String>()], firstPlayer: j['first'] as int?),
       'answer' => AnswerMove(p, (j['a'] as List).cast<int>()),
       'ink' => InkMove(p, j['c'] as int),
-      'play' => PlayMove(p, j['c'] as int, mode: PlayMode.values.byName(j['m'] as String? ?? 'ink'), onto: j['o'] as int?, singers: ((j['s'] as List?) ?? const []).cast<int>()),
+      'play' => PlayMove(p, j['c'] as int, mode: PlayMode.values.byName(j['m'] as String? ?? 'ink'), onto: j['o'] as int?, onto2: j['o2'] as int?, singers: ((j['s'] as List?) ?? const []).cast<int>()),
       'quest' => QuestMove(p, j['c'] as int),
       'challenge' => ChallengeMove(p, j['c'] as int, j['d'] as int),
       'move' => MoveMove(p, j['c'] as int, j['l'] as int),
@@ -61,13 +61,16 @@ enum PlayMode { ink, shift, sing }
 
 /// Play a card (CR 4.3).
 class PlayMove extends LMove {
-  const PlayMove(super.seat, this.card, {this.mode = PlayMode.ink, this.onto, this.singers = const []});
+  const PlayMove(super.seat, this.card, {this.mode = PlayMode.ink, this.onto, this.onto2, this.singers = const []});
   final int card;
   final PlayMode mode;
   final int? onto;
+
+  /// The second card a Duo or Combo Shift goes on top of (CR 8.10.8.3–8.10.8.4).
+  final int? onto2;
   final List<int> singers;
   @override
-  Map<String, dynamic> toJson() => {'t': 'play', 'p': seat, 'c': card, if (mode != PlayMode.ink) 'm': mode.name, if (onto != null) 'o': onto, if (singers.isNotEmpty) 's': singers};
+  Map<String, dynamic> toJson() => {'t': 'play', 'p': seat, 'c': card, if (mode != PlayMode.ink) 'm': mode.name, if (onto != null) 'o': onto, if (onto2 != null) 'o2': onto2, if (singers.isNotEmpty) 's': singers};
 }
 
 /// Quest (CR 4.5).

@@ -13,13 +13,17 @@ class Paragraph {
 
 /// The keyword at the start of [s] (CR 8.1.1), with the rest, or null.
 final keywordStart = RegExp(
-  r'^(alert|bodyguard|evasive|reckless|rush|support|vanish|ward|challenger \+\d+|resist \+\d+|singer \d+|sing together \d+|boost \d+ ?\{i\}|(?:(?:temporary|universal|duo|combo|[a-z]+(?: [a-z]+)?) )?shift:? \d+ ?(?:\{i\})?)(?=$|[\s,.:;])',
+  r'^(alert|bodyguard|evasive|reckless|rush|support|vanish|ward|challenger ?\+\d+|resist ?\+\d+|singer \d+|sing together \d+|boost \d+ ?\{i\}|shift: discard (?:an? [a-z]+ card|\d+ cards)|(?:(?:temporary|universal|duo|combo|potato) )?(?:[a-z]+(?: [a-z]+)? )?shift:? \d+ ?(?:\{i\})?)(?=$|[\s,.:;])',
   caseSensitive: false,
 );
 
 String normalizeText(String raw) {
   var t = raw.replaceAll('\r', '').replaceAll('’', "'").replaceAll('‘', "'").replaceAll('“', '"').replaceAll('”', '"').replaceAll('–', '-').replaceAll('—', '-').replaceAll('…', '...');
+  // Some texts carry an escaped newline ("\\n") instead of a real one.
+  t = t.replaceAll(r'\n', '\n');
   t = t.replaceAll(RegExp(r'\s*\n\s*'), ' ');
+  // "1: {i}" is a misprint of "1 {i}" in a few texts.
+  t = t.replaceAllMapped(RegExp(r'\b(\d+): (\{i\})', caseSensitive: false), (m) => '${m[1]} ${m[2]}');
   // Reminder text (CR 1.1.7), innermost first.
   for (var i = 0; i < 3; i++) {
     t = t.replaceAll(RegExp(r'\s*\([^()]*\)'), '');

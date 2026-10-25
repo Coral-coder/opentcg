@@ -11,7 +11,7 @@ enum Kw { alert, bodyguard, boost, challenger, evasive, reckless, resist, rush, 
 const stackingKws = {Kw.challenger, Kw.resist};
 
 class Keyword {
-  const Keyword(this.kw, {this.n = 0, this.shiftClass, this.universalShift = false});
+  const Keyword(this.kw, {this.n = 0, this.shiftClass, this.universalShift = false, this.shiftVariant = ShiftVariant.plain, this.shiftDiscard});
   final Kw kw;
 
   /// Challenger/Resist +N, Singer N, Sing Together N, Boost and Shift costs.
@@ -23,7 +23,24 @@ class Keyword {
   /// Universal Shift (CR 8.10.8.2).
   final bool universalShift;
 
-  String get key => '${kw.name}$n${shiftClass ?? ''}${universalShift ? 'u' : ''}';
+  /// Duo, Combo, Temporary and Potato Shift (CR 8.10.8.3–8.10.8.6).
+  final ShiftVariant shiftVariant;
+
+  /// "Shift: Discard a location card": the alternate cost is discarding instead of ink (CR 8.10.1).
+  final ShiftDiscard? shiftDiscard;
+
+  String get key => '${kw.name}$n${shiftClass ?? ''}${universalShift ? 'u' : ''}${shiftVariant == ShiftVariant.plain ? '' : shiftVariant.name}${shiftDiscard == null ? '' : 'd${shiftDiscard!.count}${shiftDiscard!.types.map((t) => t.name).join('+')}${shiftDiscard!.song ? 's' : ''}'}';
+}
+
+enum ShiftVariant { plain, duo, combo, temporary, potato }
+
+/// Cards to discard from hand as a Shift cost: [count] cards of [types] (all types when empty),
+/// songs only when [song].
+class ShiftDiscard {
+  const ShiftDiscard(this.count, {this.types = const {}, this.song = false});
+  final int count;
+  final Set<CardType> types;
+  final bool song;
 }
 
 enum Stat { strength, willpower, lore }
@@ -360,9 +377,12 @@ class RemoveDamage extends Effect {
 }
 
 class MoveDamage extends Effect {
-  const MoveDamage(this.from, this.to, this.amount);
+  const MoveDamage(this.from, this.to, this.amount, {this.upTo = false});
   final Target from, to;
   final Amount amount;
+
+  /// "Move up to N damage": the player picks how many, 0 to N.
+  final bool upTo;
 }
 
 class Banish extends Effect {
@@ -430,7 +450,39 @@ class GrantKeyword extends Effect {
 }
 
 /// Restrictions and permissions for a duration ("can't quest during their next turn").
-enum Rule { cantQuest, cantChallenge, cantBeChallenged, cantReady, cantSing, mustChallenge, takesNoDamageFromChallenges }
+enum Rule {
+  cantQuest,
+  cantChallenge,
+  cantBeChallenged,
+  cantReady,
+  cantSing,
+  mustChallenge,
+  takesNoDamageFromChallenges,
+
+  /// "This character can challenge ready characters" (CR 4.6.4 exception).
+  canChallengeReady,
+
+  /// "…can challenge ready damaged characters".
+  canChallengeReadyDamaged,
+
+  /// "This character can quest the turn he's played" (CR 5.1.2 exception).
+  canQuestWhileDrying,
+
+  /// "This character can't move to locations".
+  cantMove,
+
+  /// "This character can't gain Evasive".
+  cantGainEvasive,
+
+  /// "This character can't sing songs without Sing Together".
+  singsOnlyTogether,
+
+  /// "…can't be dealt damage".
+  cantBeDealtDamage,
+
+  /// "During challenges, your characters deal damage with their {w} instead of their {s}".
+  dealsWillpowerInChallenges,
+}
 
 class GrantRule extends Effect {
   const GrantRule(this.target, this.rule, this.duration);
@@ -451,8 +503,14 @@ class FromDiscardToHand extends Effect {
 /// "Look at the top N cards of your deck. You may reveal a X card and put it into your hand. Put
 /// the rest on the bottom of your deck in any order."
 class LookTop extends Effect {
-  const LookTop(this.n, {this.pick, this.pickCount = 1, this.restBottom = true, this.reorderOnly = false});
+  const LookTop(this.n, {this.pick, this.pickCount = 1, this.restBottom = true, this.reorderOnly = false, this.mustPick = false, this.restInk = false});
   final int n;
+
+  /// "…and the other into your inkwell facedown and exerted".
+  final bool restInk;
+
+  /// "Put one into your hand" (no "you may", no "up to"): a matching card must be taken.
+  final bool mustPick;
   final Filter? pick;
   final int pickCount;
   final bool restBottom;
@@ -659,4 +717,143 @@ class Static extends Ability {
 class ActionEffect extends Ability {
   const ActionEffect(super.text, this.effect);
   final Effect effect;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Static abilities: more conditions and effects (parser/statics.dart)
+// ---------------------------------------------------------------------------------------------
+
+/// "If this is your first turn and you're not the first player" (CR 2.2.1).
+class FirstTurnNotFirstPlayer extends Cond {
+  const FirstTurnNotFirstPlayer();
+}
+
+/// "While this character has N {s} or more": compares the source's own current value.
+class SelfStat extends Cond {
+  const SelfStat(this.stat, this.cmp, this.n);
+  final Stat stat;
+  final Cmp cmp;
+  final int n;
+}
+
+/// "While there's a card under this character" (CR 8.4, 8.10).
+class SelfHasUnder extends Cond {
+  const SelfHasUnder();
+}
+
+/// "While you have a character or location in play with a card under them".
+class AnyWithUnder extends Cond {
+  const AnyWithUnder(this.whose);
+  final Owner whose;
+}
+
+/// Cards in a player's inkwell ("while you have 3 or more cards in your inkwell").
+class InkwellCond extends Cond {
+  const InkwellCond(this.who, this.cmp, this.n);
+  final Who who;
+  final Cmp cmp;
+  final int n;
+}
+
+/// "While you have more items in play than each opponent" / "more cards in your inkwell than
+/// each opposing player": [filter] on cards in [place] (all cards there when null).
+class MoreThanEachOpponent extends Cond {
+  const MoreThanEachOpponent(this.place, [this.filter]);
+  final Place place;
+  final Filter? filter;
+}
+
+/// "While being challenged" (CR 4.6): true while the source is the challenged card.
+class BeingChallenged extends Cond {
+  const BeingChallenged();
+}
+
+enum TurnCount { putIntoDiscard, actionsPlayed, questedOthers, discardedByYou }
+
+/// Things counted this turn ("if 2 or more cards were put into your discard this turn").
+class ThisTurnCond extends Cond {
+  const ThisTurnCond(this.what, this.cmp, this.n);
+  final TurnCount what;
+  final Cmp cmp;
+  final int n;
+}
+
+/// "If a character named Buzz Lightyear was banished this turn" / "if an opposing character was
+/// banished in a challenge this turn".
+class BanishedThisTurn extends Cond {
+  const BanishedThisTurn(this.filter, {this.inChallenge = false});
+  final Filter filter;
+  final bool inChallenge;
+}
+
+/// Damage on the source, counted in groups of [per] ("for each 2 damage on him").
+class DamageOnSelf extends Amount {
+  const DamageOnSelf({this.per = 1, this.times = 1});
+  final int per, times;
+}
+
+/// Cards under the source ("for each card under him").
+class UnderSelf extends Amount {
+  const UnderSelf({this.times = 1});
+  final int times;
+}
+
+/// "Damaged characters can't challenge your characters", "this character can't be challenged by
+/// pirate characters": [attackers] can't challenge cards matching [defenders] (null: the source).
+class CantBeChallengedBy extends StaticEffect {
+  const CantBeChallengedBy(this.attackers, {this.defenders});
+  final Filter attackers;
+  final Filter? defenders;
+}
+
+/// "While this character is being challenged, the challenging character gets -N {s}".
+class ChallengerMod extends StaticEffect {
+  const ChallengerMod(this.stat, this.amount, {this.negative = false});
+  final Stat stat;
+  final int amount;
+  final bool negative;
+}
+
+/// "Opponents need 25 lore to win the game".
+class OpponentsLoreToWin extends StaticEffect {
+  const OpponentsLoreToWin(this.n);
+  final int n;
+}
+
+/// "Opposing items enter play exerted", "opposing characters with Rush enter play exerted".
+class OpposingEnterExerted extends StaticEffect {
+  const OpposingEnterExerted(this.filter);
+  final Filter filter;
+}
+
+/// "Cards enter opponents' inkwells exerted".
+class OpposingInkExerted extends StaticEffect {
+  const OpposingInkExerted();
+}
+
+/// "This character may enter play exerted [to <effect>]" (CR 6.7.9).
+class MayEnterExerted extends StaticEffect {
+  const MayEnterExerted([this.then]);
+  final Effect? then;
+}
+
+/// "You may have up to 99 copies of X in your deck" / "any number of cards named X" (deck
+/// building, CR 1.10.1.1 exception); [max] null: any number.
+class DeckLimit extends StaticEffect {
+  const DeckLimit(this.max);
+  final int? max;
+}
+
+/// "While challenging a damaged character" (CR 4.6): the source is the challenger and the
+/// challenged card matches [defender].
+class Challenging extends Cond {
+  const Challenging(this.defender);
+  final Filter defender;
+}
+
+/// "This character also counts as being named King Candy for Shift" (CR 8.10.1); [name] null:
+/// "you can shift any character on top of this character".
+class ShiftName extends StaticEffect {
+  const ShiftName(this.name);
+  final String? name;
 }

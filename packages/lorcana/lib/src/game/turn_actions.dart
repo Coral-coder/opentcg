@@ -36,7 +36,7 @@ extension GameTurnActions on Game {
         if (e != null) return e;
         final c = chars(card);
         if (c.type != CardType.character) return 'Only characters can quest';
-        if (!s.obj(card).dry) return '${c.card.name} is still drying (played this turn)';
+        if (!s.obj(card).dry && !c.rules.contains(Rule.canQuestWhileDrying)) return '${c.card.name} is still drying (played this turn)';
         if (s.obj(card).exerted) return '${c.card.name} is exerted';
         if (c.has(Kw.reckless)) return '${c.card.name} is Reckless and can’t quest';
         if (c.rules.contains(Rule.cantQuest)) return '${c.card.name} can’t quest';
@@ -47,6 +47,7 @@ extension GameTurnActions on Game {
         final e = inPlay(card) ?? inPlay(location);
         if (e != null) return e;
         if (chars(card).type != CardType.character) return 'Only characters move to locations';
+        if (chars(card).rules.contains(Rule.cantMove)) return '${nameOf(card)} can’t move to locations';
         if (chars(location).type != CardType.location) return 'That isn’t a location';
         if (s.obj(card).at == location) return 'Already there';
         if (_inkReady(p) < _moveCost(p, card, location)) return 'Not enough ink to move there';
@@ -94,7 +95,7 @@ extension GameTurnActions on Game {
   // -------------------------------------------------------------------------------------------
 
   void _ink(int p, CardId id) {
-    _moveTo(id, Place.inkwell);
+    _moveTo(id, Place.inkwell, exerted: _inkEntersExerted(p));
     state.player(p).inkedThisTurn++;
     log('${state.player(p).name} puts ${nameOf(id)} into their inkwell.', player: p, card: id, kind: 'ink');
   }
@@ -137,18 +138,57 @@ extension GameTurnActions on Game {
     return null;
   }
 
-  /// Characters [card] can be shifted onto (CR 8.10).
+  /// Single cards [card] can be shifted onto (CR 8.10.1, 8.10.8.1–8.10.8.2, 8.10.8.4–8.10.8.6).
+  /// Duo Shift only goes onto two cards ([duoShiftTargets]).
   List<CardId> shiftTargets(int p, CardId card) {
     final k = _shiftOf(card);
-    if (k == null) return const [];
+    if (k == null || k.shiftVariant == ShiftVariant.duo) return const [];
     final c = db[state.obj(card).card]!;
+    bool named(CardId id) {
+      final under = db[state.obj(id).card]!;
+      if (under.names.any((n) => c.names.any((m) => m.toLowerCase() == n.toLowerCase()))) return true;
+      // "Also counts as being named X for Shift" / "you can shift any character on top" (CR 8.10.1).
+      for (final a in LorcanaParser.parse(under).abilities) {
+        if (a is Static && a.effect is ShiftName) {
+          final n = (a.effect as ShiftName).name;
+          if (n == null || c.names.any((m) => m.toLowerCase() == n)) return true;
+        }
+      }
+      return false;
+    }
     return [
       for (final id in state.player(p).play)
-        if (chars(id).type == CardType.character &&
-            (k.universalShift || (k.shiftClass != null ? chars(id).classes.any((x) => x.toLowerCase() == k.shiftClass!.toLowerCase()) : db[state.obj(id).card]!.names.any((n) => c.names.contains(n)))))
+        if (k.shiftVariant == ShiftVariant.potato
+            ? chars(id).type == CardType.item && db[state.obj(id).card]!.names.any((n) => n.toLowerCase() == 'potato')
+            : chars(id).type == CardType.character && (k.universalShift || (k.shiftClass != null ? chars(id).classes.any((x) => x.toLowerCase() == k.shiftClass!.toLowerCase()) : named(id))))
           id,
     ];
   }
+
+  /// Pairs of characters a Duo or Combo Shift card can go on top of: each matches a different
+  /// one of its names (CR 8.10.8.3–8.10.8.4).
+  List<(CardId, CardId)> duoShiftTargets(int p, CardId card) {
+    final k = _shiftOf(card);
+    if (k == null || (k.shiftVariant != ShiftVariant.duo && k.shiftVariant != ShiftVariant.combo)) return const [];
+    final parts = db[state.obj(card).card]!.names.skip(1).map((n) => n.toLowerCase()).toList();
+    if (parts.length < 2) return const [];
+    final chars0 = [for (final id in state.player(p).play) if (chars(id).type == CardType.character) id];
+    Set<int> which(CardId id) => {for (var i = 0; i < parts.length; i++) if (db[state.obj(id).card]!.names.any((n) => n.toLowerCase() == parts[i])) i};
+    final out = <(CardId, CardId)>[];
+    for (var i = 0; i < chars0.length; i++) {
+      for (var j = i + 1; j < chars0.length; j++) {
+        final a = which(chars0[i]), b = which(chars0[j]);
+        if (a.any((x) => b.any((y) => y != x))) out.add((chars0[i], chars0[j]));
+      }
+    }
+    return out;
+  }
+
+  /// Hand cards that can be discarded to pay a "Shift: Discard …" cost (CR 8.10.1).
+  List<CardId> _shiftDiscardOptions(int p, CardId card, ShiftDiscard d) => [
+    for (final id in state.player(p).hand)
+      if (id != card && (d.types.isEmpty || d.types.contains(db[state.obj(id).card]!.type)) && (!d.song || db[state.obj(id).card]!.isSong)) id,
+  ];
 
   /// The cost [singer] counts as for singing (Singer N; CR 8.11).
   int _singCost(CardId singer) {
@@ -174,7 +214,17 @@ extension GameTurnActions on Game {
       case PlayMode.shift:
         final k = _shiftOf(m.card);
         if (k == null) return '${c.name} has no Shift';
-        if (m.onto == null || !shiftTargets(p, m.card).contains(m.onto)) return 'Shift onto one of your characters named ${c.name}';
+        if (m.onto2 != null || k.shiftVariant == ShiftVariant.duo) {
+          final pairs = duoShiftTargets(p, m.card);
+          if (m.onto == null || m.onto2 == null || !pairs.any((x) => (x.$1 == m.onto && x.$2 == m.onto2) || (x.$1 == m.onto2 && x.$2 == m.onto))) return 'Shift onto two of your characters, each with one of ${c.name}’s names';
+        } else if (m.onto == null || !shiftTargets(p, m.card).contains(m.onto)) {
+          return k.shiftVariant == ShiftVariant.potato ? 'Shift onto one of your items named Potato' : 'Shift onto one of your characters named ${c.name}';
+        }
+        final d = k.shiftDiscard;
+        if (d != null) {
+          if (_shiftDiscardOptions(p, m.card, d).length < d.count) return 'Not enough cards to discard for Shift';
+          return null;
+        }
         if (_inkReady(p) < _shiftCost(p, m.card, k)) return 'Not enough ink to shift';
         return null;
       case PlayMode.sing:
@@ -185,7 +235,7 @@ extension GameTurnActions on Game {
           if (!_canExertToPay(p, id)) return '${nameOf(id)} can’t sing now (exerted or still drying)';
           if (chars(id).rules.contains(Rule.cantSing)) return '${nameOf(id)} can’t sing';
         }
-        if (m.singers.length == 1) {
+        if (m.singers.length == 1 && !chars(m.singers.first).rules.contains(Rule.singsOnlyTogether)) {
           if (_singCost(m.singers.first) >= c.cost) return null;
         }
         final together = LorcanaParser.parse(c).abilities.whereType<KeywordAbility>().where((a) => a.keyword.kw == Kw.singTogether).firstOrNull;
@@ -215,7 +265,17 @@ extension GameTurnActions on Game {
       case PlayMode.ink:
         _payInk(p, playCost(p, id));
       case PlayMode.shift:
-        _payInk(p, _shiftCost(p, id, _shiftOf(id)!));
+        final k = _shiftOf(id)!;
+        final d = k.shiftDiscard;
+        if (d != null) {
+          final opts = _shiftDiscardOptions(p, id, d);
+          final pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Discard ${d.count} card${d.count == 1 ? '' : 's'} to shift', options: opts, min: d.count, max: d.count, source: id));
+          for (final x in pick) {
+            _moveTo(x, Place.discard);
+          }
+        } else {
+          _payInk(p, _shiftCost(p, id, k));
+        }
       case PlayMode.sing:
         for (final singer in m.singers) {
           s.obj(singer).exerted = true;
@@ -223,12 +283,13 @@ extension GameTurnActions on Game {
     }
     final ri = s.reductions.indexWhere((r) => r.player == p && matches(r.filter, id, controller: p, place: Place.hand));
     if (ri >= 0) s.reductions.removeAt(ri);
-    _enterPlay(p, id, shiftOnto: m.mode == PlayMode.shift ? m.onto : null, singers: m.singers, how: m.mode);
+    _enterPlay(p, id, shiftOnto: m.mode == PlayMode.shift ? m.onto : null, shiftOnto2: m.mode == PlayMode.shift ? m.onto2 : null, singers: m.singers, how: m.mode);
+    if (m.mode == PlayMode.shift && _shiftOf(id)?.shiftVariant == ShiftVariant.temporary && s.obj(id).zone == Place.play) s.obj(id).temporaryShift = true;
     if (c.type != CardType.action) return;
   }
 
   /// A card enters play (CR 4.3.3), or an action resolves and goes to the discard.
-  void _enterPlay(int p, CardId id, {CardId? shiftOnto, List<CardId> singers = const [], PlayMode how = PlayMode.ink, bool free = false, bool exerted = false}) {
+  void _enterPlay(int p, CardId id, {CardId? shiftOnto, CardId? shiftOnto2, List<CardId> singers = const [], PlayMode how = PlayMode.ink, bool free = false, bool exerted = false}) {
     final s = state;
     final c = db[s.obj(id).card]!;
     final verb = switch (how) {
@@ -239,6 +300,7 @@ extension GameTurnActions on Game {
     final by = how == PlayMode.sing ? ' (${singers.map(nameOf).join(' and ')})' : '';
     log('${s.player(p).name} $verb ${c.fullName}$by.', player: p, card: id, kind: how == PlayMode.sing ? 'sing' : (how == PlayMode.shift ? 'shift' : 'play'));
     if (c.type == CardType.action) {
+      s.player(p).actionsThisTurn++;
       _moveTo(id, Place.play);
       _emit(_Ev(kind: _EvKind.played, card: id, player: p));
       for (final singer in singers) {
@@ -253,13 +315,33 @@ extension GameTurnActions on Game {
     }
     if (shiftOnto != null) {
       final under = s.obj(shiftOnto);
-      final wasExerted = under.exerted, wasDry = under.dry, damage = under.damage, at = under.at;
+      // On top of a non-character (Potato Shift), the character is dry only if that card has
+      // been in play since the start of its player's turn (CR 8.10.4.1, 8.10.8.6).
+      final underDry = db[under.card]!.type == CardType.character ? under.dry : under.enteredTurn < s.turn;
+      var wasExerted = under.exerted, wasDry = underDry, damage = under.damage;
+      final at = under.at;
       final stack = [shiftOnto, ...under.underCopy()];
       final pl = s.player(p);
       final pos = pl.play.indexOf(shiftOnto);
+      // Duo and Combo Shift onto two characters: exerted if either was, drying if either was
+      // (CR 8.10.4.2); both keep their damage (8.10.6).
+      if (shiftOnto2 != null) {
+        final second = s.obj(shiftOnto2);
+        wasExerted = wasExerted || second.exerted;
+        wasDry = wasDry && second.dry;
+        damage += second.damage;
+        stack.addAll([shiftOnto2, ...second.underCopy()]);
+        pl.play.remove(shiftOnto2);
+        second.under = [];
+        for (final q in s.players) {
+          for (final other in q.play) {
+            if (s.obj(other).at == shiftOnto2) s.obj(other).at = null;
+          }
+        }
+      }
       _moveTo(id, Place.play);
       pl.play.remove(id);
-      pl.play[pos] = id;
+      pl.play[pl.play.contains(shiftOnto) ? pl.play.indexOf(shiftOnto) : pos] = id;
       under.under = [];
       final o = s.obj(id);
       o.under = stack;
@@ -285,6 +367,15 @@ extension GameTurnActions on Game {
         s.obj(id).damage += e.damage;
       }
     }
+    if (_entersExertedByOpponents(p, id)) s.obj(id).exerted = true;
+    for (final a in LorcanaParser.parse(c).abilities) {
+      if (a is! Static || a.effect is! MayEnterExerted || s.obj(id).exerted) continue;
+      final then = (a.effect as MayEnterExerted).then;
+      if (askYesNo(p, then == null ? 'Have ${c.name} enter play exerted?' : '${c.name}: enter play exerted to ${_describeEffect(then)}?', source: id)) {
+        s.obj(id).exerted = true;
+        if (then != null) _resolveEffect(then, _Ctx(this, controller: p, source: id));
+      }
+    }
     if (c.type == CardType.character && chars(id).has(Kw.bodyguard) && !s.obj(id).exerted && shiftOnto == null) {
       if (askYesNo(p, 'Bodyguard: have ${c.name} enter play exerted?', source: id)) s.obj(id).exerted = true;
     }
@@ -301,6 +392,7 @@ extension GameTurnActions on Game {
     final lore = chars(id).loreAtLeast0;
     log('${state.player(p).name} quests with ${nameOf(id)}.', player: p, card: id, kind: 'quest', amount: lore);
     _gainLore(p, lore, source: id);
+    state.player(p).questsThisTurn++;
     _emit(_Ev(kind: _EvKind.quests, card: id, player: p));
   }
 
@@ -309,11 +401,17 @@ extension GameTurnActions on Game {
   // -------------------------------------------------------------------------------------------
 
   /// What [attacker] could challenge, before limiters.
-  List<CardId> _challengeTargets(int p, CardId attacker) => [
-    for (final q in state.opponents(p))
-      for (final id in state.player(q).play)
-        if (chars(id).type == CardType.location || (chars(id).type == CardType.character && state.obj(id).exerted)) id,
-  ];
+  List<CardId> _challengeTargets(int p, CardId attacker) {
+    final rules = state.objOrNull(attacker)?.zone == Place.play ? chars(attacker).rules : const <Rule>{};
+    return [
+      for (final q in state.opponents(p))
+        for (final id in state.player(q).play)
+          if (chars(id).type == CardType.location || (chars(id).type == CardType.character && (state.obj(id).exerted || _mayChallengeReady(rules, id)))) id,
+    ];
+  }
+
+  /// "Can challenge ready characters" / "ready damaged characters".
+  bool _mayChallengeReady(Set<Rule> rules, CardId target) => rules.contains(Rule.canChallengeReady) || (rules.contains(Rule.canChallengeReadyDamaged) && state.obj(target).damage > 0);
 
   String? _challengeProblem(int p, CardId attacker, CardId target) {
     final s = state;
@@ -326,11 +424,13 @@ extension GameTurnActions on Game {
     if (!a.dry && !ac.has(Kw.rush)) return '${ac.card.name} is still drying (Rush lets a character challenge right away)';
     if (ac.rules.contains(Rule.cantChallenge)) return '${ac.card.name} can’t challenge';
     if (dc.type == CardType.character) {
-      if (!d.exerted) return 'Only exerted characters can be challenged';
+      if (!d.exerted && !_mayChallengeReady(ac.rules, target)) return 'Only exerted characters can be challenged';
     } else if (dc.type != CardType.location) {
       return 'Only characters and locations can be challenged';
     }
     if (dc.rules.contains(Rule.cantBeChallenged)) return '${dc.card.name} can’t be challenged';
+    final limited = _challengeLimiter(attacker, target);
+    if (limited != null) return limited;
     // Evasive (CR 8.6) unless Alert (8.2).
     if (dc.has(Kw.evasive) && !ac.has(Kw.evasive) && !ac.has(Kw.alert)) return '${dc.card.name} is Evasive';
     // Bodyguard (CR 8.3.3): if a Bodyguard could be chosen, one must be.
@@ -360,9 +460,18 @@ extension GameTurnActions on Game {
     // Challenge Damage step (CR 4.6.6): both deal damage at once; locations deal none.
     final aStill = s.obj(attacker).zone == Place.play, dStill = s.obj(target).zone == Place.play;
     if (aStill && dStill) {
-      final ac = chars(attacker), dc = chars(target);
-      final toDefender = ac.strengthAtLeast0 + (ac.has(Kw.challenger) ? ac.n(Kw.challenger) : 0);
-      final toAttacker = dc.type == CardType.character ? dc.strengthAtLeast0 : 0;
+      _challengePair = (attacker, target);
+      final LChars ac, dc;
+      try {
+        ac = chars(attacker);
+        dc = chars(target);
+      } finally {
+        _challengePair = null;
+      }
+      // "Deal damage with their {w} instead of their {s}" (Dale).
+      int power(LChars x) => x.rules.contains(Rule.dealsWillpowerInChallenges) ? (x.willpower < 0 ? 0 : x.willpower) : x.strengthAtLeast0;
+      final toDefender = power(ac) + (ac.has(Kw.challenger) ? ac.n(Kw.challenger) : 0);
+      final toAttacker = dc.type == CardType.character ? power(dc) : 0;
       final noDamageA = ac.rules.contains(Rule.takesNoDamageFromChallenges);
       final noDamageD = dc.rules.contains(Rule.takesNoDamageFromChallenges);
       _dealDamage(target, noDamageD ? 0 : toDefender, source: attacker, challenge: true);
@@ -487,6 +596,39 @@ extension GameTurnActions on Game {
     if (cost.banishSelf) _banish(id);
     log('${s.player(p).name} uses ${a.text.split(' - ').first.split(':').first} (${lki.card.name}).', player: p, card: id, kind: 'ability');
     _resolveEffect(a.effect, ctx..sourceStrength = lki.strength);
+  }
+}
+
+extension GameTemporaryShift on Game {
+  /// Temporary Shift (CR 8.10.8.5): at the end of its player's turn, a card played with it that's
+  /// still in play has all damage removed and goes back to the hand alone; the card under it
+  /// stays in play with the stack's state.
+  void _endTemporaryShifts(int p) {
+    final s = state;
+    for (final id in List.of(s.player(p).play)) {
+      final o = s.obj(id);
+      if (!o.temporaryShift || o.zone != Place.play) continue;
+      o.damage = 0;
+      final stack = List.of(o.under);
+      final pl = s.player(p);
+      final pos = pl.play.indexOf(id);
+      final exerted = o.exerted, dry = o.dry, at = o.at;
+      o.under = [];
+      _moveTo(id, Place.hand);
+      if (stack.isNotEmpty) {
+        final top = s.obj(stack.first);
+        top.under = stack.sublist(1);
+        top.zone = Place.play;
+        top.faceDown = false;
+        top.exerted = exerted;
+        top.dry = dry;
+        top.at = at;
+        top.damage = 0;
+        pl.play.insert(pos.clamp(0, pl.play.length), stack.first);
+      }
+      s.version++;
+      log('${nameOf(id)} returns to ${pl.name}’s hand (Temporary Shift).', player: p, card: id, kind: 'return');
+    }
   }
 }
 
