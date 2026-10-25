@@ -143,10 +143,12 @@ class _CardParser {
         return [Activated(printed, cost, e)];
       }
     }
+    final before = LorcanaParser.diag?.length ?? 0;
     final trig = _triggered(printed, t);
     if (trig != null) return trig;
     if (RegExp(r'^(when|whenever|at the (start|end)|once per turn|once during your turn|the first time|during your turn, when)').hasMatch(t)) {
-      LorcanaParser.diag?.add('trigger: ${t.split(',').first}');
+      // Only when nothing more specific (the failing sentence or trigger head) was recorded.
+      if ((LorcanaParser.diag?.length ?? 0) == before) LorcanaParser.diag?.add('trigger: ${t.split(',').first}');
       return null;
     }
     final st = _static(printed, t);
