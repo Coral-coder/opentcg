@@ -45,7 +45,19 @@ jobs:
         run: |
           flutter build web --release --base-href /opentcg/
           touch build/web/.nojekyll
-          du -sh build/web
+      # Lorcana card images served by the site itself, so the game draws them on its canvas
+      # (tool/lorcana_images.py says why). Cached, so only new cards are fetched.
+      - uses: actions/cache@v4
+        with:
+          path: .lorcana-images
+          key: lorcana-images-${{ hashFiles('data/lorcana-cards.json', 'data/lorcast-cards.json', 'tool/lorcana_images.py') }}
+          restore-keys: lorcana-images-
+      - name: Lorcana card images
+        run: |
+          pip install --quiet pillow
+          python3 tool/lorcana_images.py data/lorcana-cards.json .lorcana-images --lorcast data/lorcast-cards.json
+          cp -r .lorcana-images build/web/lorcana-images
+          du -sh build/web build/web/lorcana-images
       - uses: actions/configure-pages@v5
         with:
           enablement: true

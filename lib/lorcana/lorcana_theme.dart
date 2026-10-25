@@ -139,7 +139,9 @@ class EnchantedBackdrop extends StatefulWidget {
 }
 
 class _EnchantedBackdropState extends State<EnchantedBackdrop> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(seconds: 24));
+  // One loop of the sky. Everything in it moves by whole cycles per loop, so the end of a loop
+  // matches its start and the sky never jumps.
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(seconds: 120));
 
   @override
   void initState() {
@@ -171,10 +173,15 @@ class _Star {
         y = r.nextDouble(),
         size = 0.4 + r.nextDouble() * r.nextDouble() * 2.2,
         phase = r.nextDouble() * math.pi * 2,
-        speed = 1 + r.nextInt(3),
+        speed = 20 + r.nextInt(40),
+        drift = 1 + r.nextInt(2),
         gold = r.nextDouble() < 0.18;
   final double x, y, size, phase;
+  /// Twinkles per loop.
   final int speed;
+
+  /// Times the star crosses the sky per loop.
+  final int drift;
   final bool gold;
 }
 
@@ -200,7 +207,7 @@ class _SkyPainter extends CustomPainter {
     final p = Paint();
     for (final s in _stars) {
       final tw = 0.55 + 0.45 * math.sin(v * s.speed + s.phase);
-      final c = Offset(s.x * size.width, (s.y * size.height + t.value * 18 * s.size) % size.height);
+      final c = Offset(s.x * size.width, (s.y + t.value * s.drift) % 1 * size.height);
       p.color = (s.gold ? const Color(0xFFFFE6A0) : Colors.white).withValues(alpha: (0.25 + 0.6 * tw).clamp(0, 1));
       canvas.drawCircle(c, s.size * (0.8 + 0.3 * tw), p);
       if (s.size > 1.6) {

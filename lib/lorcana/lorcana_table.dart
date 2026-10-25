@@ -71,7 +71,9 @@ class _LorcanaTableState extends State<LorcanaTable> {
           return Scaffold(
             backgroundColor: enchantedTheme.bg,
             body: Stack(children: [
-              const Positioned.fill(child: EnchantedBackdrop()),
+              // Still during play: a full-screen sky repainting every frame costs a phone more
+              // than a game screen should.
+              const Positioned.fill(child: EnchantedBackdrop(animate: false)),
               SafeArea(
                 child: LayoutBuilder(builder: (context, box) {
                   final cardW = math.min(112.0, math.max(56.0, box.maxWidth / 7.2));
