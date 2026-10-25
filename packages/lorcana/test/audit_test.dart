@@ -297,5 +297,15 @@ void main() {
       if (g.pending?.decision.kind == DecisionKind.cards) answer(g, [t], player: 0);
       expect(g.state.obj(t).damage, 3);
     });
-  });
+      test('Faline - Playful Fawn: +2 {l} while you have the strongest character (CR 6.4)', () {
+      final g = emptyGame();
+      final faline = g.addCard('Faline - Playful Fawn', 0, Place.play); // printed 1 {l}, 2 {s}
+      g.addCard('David Xanatos - Charismatic Leader', 1, Place.play); // 5 {s}
+      expect(g.chars(faline).lore, 1);
+      g.addCard('Lyle Tiberius Rourke - Crystallized Commander', 0, Place.play); // 6 {s}
+      expect(g.chars(faline).lore, 3);
+      g.addCard('Lyle Tiberius Rourke - Crystallized Commander', 1, Place.play); // a tie is not "more"
+      expect(g.chars(faline).lore, 1);
+    });
+});
 }

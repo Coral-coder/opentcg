@@ -61,6 +61,10 @@ extension GameChars on Game {
         };
         final applies = affected == null ? src == id : matches(affected, id, controller: ctl, source: src);
         if (!applies) continue;
+        if (e is S4Static) {
+          _s4Static(e, st, src, ctl, ch);
+          continue;
+        }
         if (e is! StaticMod && e is! StaticKeyword && e is! StaticRule) continue;
         if (st.condition != null && !_evalCond(st.condition!, _Ctx(this, controller: ctl, source: src))) continue;
         switch (e) {
@@ -76,7 +80,7 @@ extension GameChars on Game {
       }
       for (final t in state.timed) {
         final applies = t.cards != null ? t.cards!.contains(id) : (t.filter != null && matches(t.filter!, id, controller: t.controller, source: t.source));
-        if (!applies) continue;
+        if (!applies || !_s4TimedLive(t)) continue;
         if (t.lasting == Lasting.theirNextTurn && !(t.turn < state.turn && state.active == o.owner)) continue;
         if (t.stat != null) _addStat(ch, t.stat!, t.amount);
         if (t.keyword != null) ch.addKeyword(t.keyword!);
@@ -142,18 +146,20 @@ extension GameChars on Game {
   bool matches(Filter f, CardId id, {required int controller, CardId? source, Place place = Place.play}) {
     final o = state.objOrNull(id);
     if (o == null || o.zone != place) return false;
+    if (f.or != null && matches(f.or!, id, controller: controller, source: source, place: place)) return true;
     final c = db[o.card]!;
     if (!f.types.contains(c.type)) return false;
     if (f.song != null && c.isSong != f.song) return false;
     if (f.owner == Owner.yours && o.owner != controller) return false;
     if (f.owner == Owner.opposing && o.owner == controller) return false;
     if (f.other && id == source) return false;
-    if (f.classes.isNotEmpty && !f.classes.any(c.hasClass)) return false;
+    if (f.classes.isNotEmpty && !f.classes.any(c.hasClass) && !_s4GainedClass(id, f.classes)) return false;
     if (f.named != null && !f.nameMatches(c.names)) return false;
     if (f.notNamed != null && c.names.any((n) => n.toLowerCase() == f.notNamed!.toLowerCase())) return false;
     if (f.ink != null && !c.inks.contains(f.ink)) return false;
     if (f.costMax != null && c.cost > f.costMax!) return false;
     if (f.costMin != null && c.cost < f.costMin!) return false;
+    if ((f.hasUnder != null || f.withoutKw != null) && !_s4FilterOk(f, id, place)) return false;
     if (place == Place.play) {
       if (f.exerted != null && o.exerted != f.exerted) return false;
       if (f.damaged != null && (o.damage > 0) != f.damaged) return false;

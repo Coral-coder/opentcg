@@ -12,6 +12,7 @@ part 'board.dart';
 part 'triggers.dart';
 part 'statics.dart';
 part 'wave2_s3.dart';
+part 'wave2_s4.dart';
 
 class ParsedCard {
   const ParsedCard(this.card, this.abilities, this.unsupported);
@@ -148,6 +149,8 @@ class _CardParser {
   List<Ability>? _action(Paragraph p) {
     final s3 = _s3Action(p);
     if (s3 != null) return s3;
+    final s4 = _s4Action(p);
+    if (s4 != null) return s4;
     final t = _lower(p.body);
     final e = effects(t, _Ctx());
     if (e == null) return null;
@@ -193,6 +196,8 @@ class _CardParser {
   }
 
   Cost? _cost(String s) {
+    final s4 = _s4Cost(s);
+    if (s4 != null) return s4;
     var exert = false, ink = 0, banishSelf = false, discard = 0;
     Filter? exertOther, banishOther;
     for (final part in s.split(RegExp(r', |(?<!choose) and '))) {
@@ -244,6 +249,8 @@ class _CardParser {
   // -------------------------------------------------------------------------------------------
 
   List<Ability>? _triggered(String printed, String t0) {
+    final s4 = _s4Triggered(printed, t0);
+    if (s4 != null) return s4;
     var t = t0;
     Cond? during;
     var once = false;
@@ -292,7 +299,7 @@ class _CardParser {
             eventOther: triggers.every((tr) => _aboutOtherCard(tr.$1)),
             eventLocation: all(const {Event.movesToLocation}),
             eventChallenged: all(const {Event.isChallenged, Event.banishedInChallenge}) || triggers.every((tr) => _s3Defending(tr.$1)),
-          ),
+          )..s4Challenged = triggers.every((tr) => tr.$1 is CardEvent && (tr.$1 as CardEvent).event == Event.isChallenged),
         );
         if (e == null) return null;
         return [for (final tr in triggers) Triggered(printed, tr.$1, e, condition: cond, during: _and(during, tr.$2), oncePerTurn: once, fromDiscard: tr.$3)];
@@ -550,6 +557,8 @@ class _CardParser {
     final s = s0.trim();
     final s3 = _s3Condition(s);
     if (s3 != null) return s3;
+    final s4 = _s4Condition(s);
+    if (s4 != null) return s4;
     final board = _boardCondition(s);
     if (board != null) return board;
     final more = _moreCondition(s);
@@ -585,7 +594,7 @@ class _CardParser {
       if (f == null) return null;
       return CountCond(f, Cmp.ge, 1, place: Place.discard);
     }
-    return _zoneCondition(s);
+    return _zoneCondition(s) ?? _s4ConditionLast(s);
   }
 
   // -------------------------------------------------------------------------------------------
@@ -636,6 +645,7 @@ class _CardParser {
         steps.add(If(prev.cond, prev.then, e));
         continue;
       }
+      if (_s4Instead(s, steps, ctx)) continue;
       if (_boardInstead(s, steps, ctx)) continue;
       final e = sentence(s, ctx);
       if (e == null) return _fail(s);
@@ -671,6 +681,8 @@ class _CardParser {
   (Effect, int)? _span(List<String> ss, int i, _Ctx ctx) {
     final s3 = _s3Span(ss, i, ctx);
     if (s3 != null) return s3;
+    final s4 = _s4Span(ss, i, ctx);
+    if (s4 != null) return s4;
     final zone = _zoneSpan(ss, i, ctx);
     if (zone != null) return zone;
     final s = ss[i];
@@ -747,6 +759,8 @@ class _CardParser {
   }
 
   Cond? _ifTarget(String s, _Ctx ctx) {
+    final s4 = _s4IfTarget(s, ctx);
+    if (s4 != null) return s4;
     final m = rx(s, r'(?:a|an) (.+?) (?:is|was) chosen');
     if (m != null) {
       final f = filter(m[1], Owner.any);
@@ -791,6 +805,8 @@ class _CardParser {
     final c = c0.trim();
     final s3 = _s3Clause(c, ctx);
     if (s3 != null) return s3;
+    final s4 = _s4Clause(c, ctx);
+    if (s4 != null) return s4;
     final zone = _zoneFirst(c, ctx);
     if (zone != null) return zone;
     List<String>? m;
@@ -1035,6 +1051,8 @@ class _CardParser {
     final p = p0.trim();
     final r = ref(p, ctx);
     if (r != null) return r;
+    final s4 = _s4Target(p, ctx);
+    if (s4 != null) return s4;
     var m = rx(p, r'(another |up to (\w+) )?chosen (.+)');
     if (m != null) {
       final rest = _plural(m[3]);
@@ -1069,6 +1087,8 @@ class _CardParser {
 
   /// "this character", pronouns, "that character", "the challenging character".
   Target? ref(String p, _Ctx ctx) {
+    final s4 = _s4Ref(p, ctx);
+    if (s4 != null) return s4;
     if (const {'this character', 'this item', 'this location', 'this card'}.contains(p)) {
       ctx.saidThis = true;
       return const This();
@@ -1129,6 +1149,8 @@ class _CardParser {
   /// "opposing character with 2 {s} or less", "damaged character", "item", "Seven Dwarfs
   /// character", "character card with cost 3 or less", "character of yours".
   Filter? filter(String s0, Owner owner, {bool cardTypes = false, bool chosenPhrase = false}) {
+    final s4 = _s4Filter(s0.trim(), owner, cardTypes, chosenPhrase);
+    if (s4 != null) return s4;
     var s = s0.trim();
     var f = Filter(owner: owner);
     // Suffixes.
@@ -1323,6 +1345,9 @@ class _Ctx {
   /// "This character" came up already, so later pronouns mean it ("ready this character. He
   /// can't quest").
   bool saidThis = false;
+
+  /// The trigger is "is challenged", so "the challenging character" is the other card.
+  bool s4Challenged = false;
   int nextSlot = 0;
 
   /// The last group ("all your characters") and how many choices came before it.

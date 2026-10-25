@@ -1,4 +1,5 @@
 {
+  "_about": "Corrected card text, keyed by full name, for cards whose text is mangled in both sources (lorcana-cards.raw.json and lorcast-cards.json). bin/build_db.dart uses the text here instead. Only the official printed wording goes here, with what was wrong.",
   "Mulan - Imperial General": {
     "text": "Shift 5 (You may pay 5 {i} to play this on top of one of your characters named Mulan.)\nEvasive (Only characters with Evasive can challenge this character.)\nEXCEPTIONAL LEADER Whenever this character challenges another character, your other characters gain \"This character can challenge ready characters\" this turn.",
     "why": "Bulk text has a stray quote after the story name (EXCEPTIONAL LEADER\"); Lorcast's text."
@@ -22,5 +23,13 @@
   "Ratigan - Very Large Mouse": {
     "text": "THIS IS MY KINGDOM When you play this character, exert chosen opposing character with 3 {s} or less. Choose one of your characters and ready them. They can't quest for the rest of this turn.",
     "why": "Bulk text says \"read them\" for \"ready them\"; Lorcast's text."
+  },
+  "Swing Into Action": {
+    "text": "Chosen character gains Rush this turn. (They can challenge the turn they're played.)",
+    "why": "bulk: \"gins\" for \"gains\"; not in the Lorcast list"
+  },
+  "The Boss Is On A Roll": {
+    "text": "(A character with cost 3 or more can {e} to sing this song for free.)\nLook at the top 5 cards of your deck. Put any number of them on the top or the bottom of your deck in any order. Gain 1 lore.",
+    "why": "bulk: \"on the top of the bottom\" for \"on the top or the bottom\"; not in the Lorcast list"
   }
 }

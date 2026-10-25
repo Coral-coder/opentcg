@@ -39,6 +39,7 @@ extension GameBoard on Game {
           add(e.player, TurnStat.banishedInChallenge);
         }
       default:
+        _s4Track(e);
     }
   }
 
@@ -92,7 +93,8 @@ extension GameBoard on Game {
       case StrongestCond():
         final mine = matching(const Filter(), controller: ctx.controller, whose: Owner.yours);
         final theirs = matching(const Filter(owner: Owner.opposing), controller: ctx.controller);
-        final best = theirs.fold<int>(-1 << 30, (m, id) => chars(id).strength > m ? chars(id).strength : m);
+        // No shifts here: compiled to JavaScript, `-1 << 30` is a large positive number.
+        final best = theirs.fold<int>(-1, (m, id) => chars(id).strength > m ? chars(id).strength : m);
         return mine.any((id) => chars(id).strength > best);
       default:
         return false;

@@ -44,13 +44,25 @@ bool _isCapsName(String s) {
 /// capitalized words followed by the ability ("SORRY ABOUT THAT When you play…").
 (String, int)? storyName(String s) {
   var m = RegExp(r"^([A-Z0-9][^:]{0,60}?)\s*:\s+").firstMatch(s);
-  if (m != null && !RegExp(r'^choose ', caseSensitive: false).hasMatch(m.group(1)!) && !m.group(1)!.contains('{')) return (m.group(1)!, m.end);
+  if (m != null && !RegExp(r'^choose ', caseSensitive: false).hasMatch(m.group(1)!) && !m.group(1)!.contains('{')) {
+    // "Good Or Evil - Banish this item: …": the name stops before a cost.
+    final cut = m.group(1)!.indexOf(' - ');
+    if (cut > 0 && _looksLikeCost(m.group(1)!.substring(cut + 3))) return (m.group(1)!.substring(0, cut), cut + 3);
+    return (m.group(1)!, m.end);
+  }
   m = RegExp(r"^([A-Z][A-Za-z0-9'!?,.& ]{0,60}?)\s+-\s+").firstMatch(s);
-  if (m != null && !_looksLikeCost(m.group(1)!)) return (m.group(1)!, m.end);
-  m = RegExp(r"^((?:[A-Z0-9'!?,.&\-]+\s+)*[A-Z0-9'!?,.&\-]*[A-Z][A-Z'!?,.&\-]+)\s+(?=[A-Z][a-z]|\{|\d)").firstMatch(s);
+  if (m != null && !_looksLikeCost(m.group(1)!)) {
+    // "GOOD OR EVIL Banish this item - …": a capitalized name, then a cost.
+    final caps = _capsName.firstMatch(s);
+    if (caps != null && _isCapsName(caps.group(1)!) && caps.end < m.group(1)!.length && _looksLikeCost(s.substring(caps.end))) return (caps.group(1)!, caps.end);
+    return (m.group(1)!, m.end);
+  }
+  m = _capsName.firstMatch(s);
   if (m != null && _isCapsName(m.group(1)!)) return (m.group(1)!, m.end);
   return null;
 }
+
+final _capsName = RegExp(r"^((?:[A-Z0-9'!?,.&\-]+\s+)*[A-Z0-9'!?,.&\-]*[A-Z][A-Z'!?,.&\-]+)\s+(?=[A-Z][a-z]|\{|\d)");
 
 bool _looksLikeCost(String s) {
   final t = s.toLowerCase();

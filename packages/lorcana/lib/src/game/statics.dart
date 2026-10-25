@@ -70,6 +70,8 @@ extension GameStatics on Game {
           return true;
         }
         return false;
+      case S4Cond():
+        return _evalS4Cond(c, ctx);
       default:
         return false;
     }

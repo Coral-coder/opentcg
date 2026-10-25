@@ -211,8 +211,10 @@ extension GameTurnActions on Game {
     final s = state;
     final p = m.seat;
     final o = s.objOrNull(m.card);
-    if (o == null || o.zone != Place.hand || o.owner != p) return 'That card isn’t in your hand';
+    if (o == null || (o.zone != Place.hand && !_s4PlayableZone(p, m.card)) || o.owner != p) return 'That card isn’t in your hand';
     final c = db[o.card]!;
+    final s4 = _s4PlayProblem(m);
+    if (s4 != null) return s4.isEmpty ? null : s4;
     switch (m.mode) {
       case PlayMode.ink:
         if (_inkReady(p) < playCost(p, m.card)) return 'Not enough ink (${playCost(p, m.card)} needed, ${_inkReady(p)} ready)';
@@ -251,7 +253,7 @@ extension GameTurnActions on Game {
   }
 
   int _shiftCost(int p, CardId card, Keyword k) {
-    var cost = k.n;
+    var cost = k.n - _s4ShiftReduction(p, card);
     for (final r in state.reductions) {
       if (r.player == p && matches(r.filter, card, controller: p, place: Place.hand)) {
         cost -= r.n;
@@ -268,10 +270,11 @@ extension GameTurnActions on Game {
     final id = m.card;
     final c = db[s.obj(id).card]!;
     // Pay (CR 4.3.2.4); payment modifiers for "the next X" are used up (CR 4.3.6).
+    final entersExerted = _s4BeforePlay(m);
     var paid = -1;
     switch (m.mode) {
       case PlayMode.ink:
-        paid = playCost(p, id);
+        paid = _s4AltPay(m) ? -1 : playCost(p, id);
         _payInk(p, paid);
       case PlayMode.shift:
         final k = _shiftOf(id)!;
@@ -297,13 +300,14 @@ extension GameTurnActions on Game {
     if (paid >= 0) _emit(_Ev(kind: _EvKind.inkPaid, card: id, player: p, amount: paid));
     final ri = s.reductions.indexWhere((r) => r.player == p && matches(r.filter, id, controller: p, place: Place.hand));
     if (ri >= 0) s.reductions.removeAt(ri);
-    _enterPlay(p, id, shiftOnto: m.mode == PlayMode.shift ? m.onto : null, shiftOnto2: m.mode == PlayMode.shift ? m.onto2 : null, singers: m.singers, how: m.mode);
+    _enterPlay(p, id, shiftOnto: m.mode == PlayMode.shift ? m.onto : null, shiftOnto2: m.mode == PlayMode.shift ? m.onto2 : null, singers: m.singers, how: m.mode, exerted: entersExerted);
     if (m.mode == PlayMode.shift && _shiftOf(id)?.shiftVariant == ShiftVariant.temporary && s.obj(id).zone == Place.play) s.obj(id).temporaryShift = true;
     if (c.type != CardType.action) return;
   }
 
   /// A card enters play (CR 4.3.3), or an action resolves and goes to the discard.
   void _enterPlay(int p, CardId id, {CardId? shiftOnto, CardId? shiftOnto2, List<CardId> singers = const [], PlayMode how = PlayMode.ink, bool free = false, bool exerted = false}) {
+    if (free && _s4CantPlay(p, id)) return;
     final s = state;
     final c = db[s.obj(id).card]!;
     final verb = switch (how) {
@@ -331,7 +335,7 @@ extension GameTurnActions on Game {
       }
       final eff = LorcanaParser.parse(c).abilities.whereType<ActionEffect>().firstOrNull;
       if (eff != null) {
-        _resolveEffect(eff.effect, _Ctx(this, controller: p, source: id, isAction: true));
+        _resolveEffect(eff.effect, _Ctx(this, controller: p, source: id, isAction: true)..s4['sung'] = singers.isEmpty ? 0 : 1);
       }
       if (s.obj(id).zone == Place.play) _moveTo(id, Place.discard);
       return;
@@ -368,7 +372,7 @@ extension GameTurnActions on Game {
       under.under = [];
       final o = s.obj(id);
       o.under = stack;
-      o.exerted = wasExerted;
+      o.exerted = wasExerted || exerted;
       o.dry = wasDry;
       o.damage = damage;
       o.at = at;
@@ -514,17 +518,19 @@ extension GameTurnActions on Game {
   // -------------------------------------------------------------------------------------------
 
   int _moveCost(int p, CardId character, CardId location) {
+    if (_s4MovesFree(character, location)) return 0;
     final m = (db[state.obj(location).card]!.moveCost ?? 0) - _s3MoveLess(p, character, location);
     return m < 0 ? 0 : m;
   }
 
   void _moveCharacter(int p, CardId character, CardId location, {required bool pay}) {
     if (pay) _payInk(p, _moveCost(p, character, location));
+    final from = state.obj(character).at;
     if (pay) _s3Moved(p, character, location);
     state.obj(character).at = location;
     state.version++;
     log('${nameOf(character)} moves to ${nameOf(location)}.', player: p, card: character, kind: 'move');
-    _emit(_Ev(kind: _EvKind.moves, card: character, other: location, player: p));
+    _emit(_Ev(kind: _EvKind.moves, card: character, other: location, player: p, amount: from == null ? 0 : 1));
   }
 
   // -------------------------------------------------------------------------------------------
@@ -535,7 +541,7 @@ extension GameTurnActions on Game {
     final s = state;
     final o = s.objOrNull(id);
     if (o == null || o.zone != Place.play || o.owner != p) return 'That card isn’t yours in play';
-    final abs = parsed(id).abilities;
+    final abs = abilitiesOf(id);
     if (index < 0 || index >= abs.length) return 'No such ability';
     final a = abs[index];
     final c = chars(id);
@@ -555,6 +561,8 @@ extension GameTurnActions on Game {
     }
     if (_inkReady(p) < cost.ink) return 'Not enough ink';
     if (cost.discard > s.player(p).hand.length) return 'Not enough cards in hand';
+    final s4 = _s4CostProblem(p, id, index, cost);
+    if (s4 != null) return s4;
     if (cost.exertOther != null &&
         matching(
           cost.exertOther!,
@@ -570,7 +578,7 @@ extension GameTurnActions on Game {
 
   void _activate(int p, CardId id, int index) {
     final s = state;
-    final a = parsed(id).abilities[index];
+    final a = abilitiesOf(id)[index];
     final o = s.obj(id);
     if (a is KeywordAbility) {
       // Boost (CR 8.4.1).
@@ -624,6 +632,7 @@ extension GameTurnActions on Game {
       _s3CostBanished(ctx, pick.first);
       _banish(pick.first);
     }
+    _s4PayCost(p, id, index, cost, ctx);
     final lki = chars(id);
     if (cost.banishSelf) _banish(id);
     log('${s.player(p).name} uses ${a.text.split(' - ').first.split(':').first} (${lki.card.name}).', player: p, card: id, kind: 'ability');

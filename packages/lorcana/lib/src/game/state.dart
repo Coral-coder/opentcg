@@ -128,14 +128,18 @@ class Player {
 /// What a triggered ability is about (CR 6.2): the card, the other card, the player, an amount,
 /// and the card's last known values if it left play (CR 6.7.7).
 class EventInfo {
-  const EventInfo({this.card, this.other, this.player, this.amount = 0, this.strength = 0, this.location});
+  const EventInfo({this.card, this.other, this.player, this.amount = 0, this.strength = 0, this.location, this.under = const [], this.hereExerted = 0});
   final CardId? card, other;
   final int? player;
   final int amount;
   final int strength;
   final CardId? location;
 
-  String digest() => '${card ?? ''}/${other ?? ''}/${player ?? ''}/$amount/$strength/${location ?? ''}';
+  /// A banished card's stack and the exerted characters at a banished location (CR 6.7.7).
+  final List<CardId> under;
+  final int hereExerted;
+
+  String digest() => '${card ?? ''}/${other ?? ''}/${player ?? ''}/$amount/$strength/${location ?? ''}/${under.join(',')}/$hereExerted';
 }
 
 /// A triggered ability waiting in the bag (CR 7.7).
@@ -283,6 +287,9 @@ class GameState {
 
   /// Cards banished this turn as "fullName|owner|c" (c: in a challenge), for conditions.
   List<String> banishedThisTurn = [];
+
+  /// Cards that left any discard this turn ("if 1 or more cards have left a player's discard").
+  int leftDiscardThisTurn = 0;
   int version = 0;
   List<LogEntry> log = [];
 
@@ -314,6 +321,7 @@ class GameState {
       ..lingering = List.of(lingering)
       ..banishedInChallengeThisTurn = banishedInChallengeThisTurn
       ..banishedThisTurn = List.of(banishedThisTurn)
+      ..leftDiscardThisTurn = leftDiscardThisTurn
       ..version = version + 1
       ..log = List.of(log);
     return s;
@@ -323,7 +331,7 @@ class GameState {
 
   /// Canonical text of everything that matters for the rules.
   String digest() {
-    final b = StringBuffer('l1|$seed|${rng.state}|$nextId|$nextTs|$turn|$active|$firstPlayer|${phase.index}|${winner ?? ''}|$nextBagId|${bagTurn ?? ''}|$banishedInChallengeThisTurn|${banishedThisTurn.map((x) => '${x.length}:$x').join(',')}\n');
+    final b = StringBuffer('l1|$seed|${rng.state}|$nextId|$nextTs|$turn|$active|$firstPlayer|${phase.index}|${winner ?? ''}|$nextBagId|${bagTurn ?? ''}|$banishedInChallengeThisTurn|${banishedThisTurn.map((x) => '${x.length}:$x').join(',')}|$leftDiscardThisTurn\n');
     for (final p in players) {
       b.writeln(p.digest());
     }

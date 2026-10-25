@@ -29,6 +29,7 @@ part 'zones.dart';
 part 'board.dart';
 part 'statics.dart';
 part 'wave2_s3.dart';
+part 'wave2_s4.dart';
 
 class NeedDecision implements Exception {
   NeedDecision(this.decision);
@@ -281,6 +282,7 @@ class Game implements TcgMatch {
     }
     s.banishedInChallengeThisTurn = 0;
     _resetTurnRecords();
+    s.leftDiscardThisTurn = 0;
     s.banishedThisTurn = [];
     for (final q in s.players) {
       q.discardedThisTurn = 0;
@@ -448,6 +450,7 @@ class Game implements TcgMatch {
       }
     }
     if (to == Place.discard && from != Place.discard) pl.discardedThisTurn++;
+    if (from == Place.discard && to != Place.discard) s.leftDiscardThisTurn++;
     o.zone = to;
     o.zcc++;
     o.temporaryShift = false;

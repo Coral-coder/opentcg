@@ -78,6 +78,8 @@ extension _MoreStatics on _CardParser {
         ];
 
   List<StaticEffect>? _moreStaticEffect(String t) {
+    final s4 = _s4StaticEffect(t);
+    if (s4 != null) return s4;
     // Self cost reductions phrased "you may pay" (and the "you play N {i} less" misprint).
     var m = rx(t, r'you (?:may pay|play) (\d+) ink less to play this (?:character|item|location|action|song)');
     if (m != null) return [CostReduction(const Filter(), Fixed(int.parse(m[1])), self: true)];
@@ -107,6 +109,8 @@ extension _MoreStatics on _CardParser {
   }
 
   List<StaticEffect>? _morePredicate(String p, Filter? f) {
+    final s4 = _s4Predicate(p, f);
+    if (s4 != null) return s4;
     final rule = switch (p) {
       'can challenge ready characters' => Rule.canChallengeReady,
       'can challenge ready damaged characters' => Rule.canChallengeReadyDamaged,
@@ -224,6 +228,8 @@ extension _MoreStatics on _CardParser {
   }
 
   CountOf? _moreCountOf(String s, int per) {
+    final s4 = _s4CountOf(s, per);
+    if (s4 != null) return s4;
     if (s == 'card in your inkwell') return CountOf(const Filter(types: _allTypes), place: Place.inkwell, per: per);
     if (rx(s, r'exerted character (?:opponents|opposing players) have in play') != null) {
       return CountOf(const Filter(exerted: true, owner: Owner.opposing), whose: Owner.opposing, per: per);

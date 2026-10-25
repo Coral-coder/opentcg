@@ -30,6 +30,9 @@ enum _EvKind {
   exerted,
   returnedFromDiscard,
   dealsChallengeDamage,
+
+  /// A card is chosen for an action or ability (by anyone).
+  chosen,
 }
 
 /// The event kind each [Happening] waits for.
@@ -229,6 +232,8 @@ extension GameBag on Game {
         return true;
       case MovedHere():
         return e.kind == _EvKind.moves && e.other == src && !floating;
+      case S4Trigger():
+        return _s4TriggerMatches(t, e, src, you, floating: floating);
     }
   }
 
