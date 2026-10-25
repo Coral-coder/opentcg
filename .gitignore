@@ -7,3 +7,4 @@ build/
 .claude/worktrees/
 pubspec_overrides.yaml
 .lorcana-images/
+__pycache__/
