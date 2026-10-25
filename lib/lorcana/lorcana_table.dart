@@ -584,8 +584,9 @@ class _Look {
   static _Look of(_TableView v, CardId id) {
     final s = v.session;
     final mine = s.match.state.obj(id).owner == s.localSeat;
-    final actions = v.playable.actionsOf(id);
     final aim = v.aim;
+    // While aiming, only the possible targets are marked.
+    final actions = aim == null ? v.playable.actionsOf(id) : const <CardAction>{};
     final target = aim != null && aim.targets.containsKey(id) ? aim.kind : null;
     final yourTurn = s.isLocalTurn && s.match.pending == null && !s.match.over;
     final dim = aim != null ? (target == null && aim.source != id) : (yourTurn && mine && actions.isEmpty);

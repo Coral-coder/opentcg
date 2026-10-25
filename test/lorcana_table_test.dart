@@ -129,4 +129,56 @@ void main() {
     expect(find.byTooltip('Can go in your inkwell'), findsNothing, reason: 'once per turn');
     store.endSession();
   });
+
+  testWidgets('a challenge with two targets lights them up, and tapping one challenges it', (tester) async {
+    tester.view.physicalSize = const Size(390, 844) * 2;
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final store = LorcanaStore.shared;
+    await tester.runAsync(() => store.init());
+    final rng = SeededRng(5);
+    final s = store.newGame(names: const ['Player 1', 'Player 2'], decks: [randomDeck(db, {Ink.amber, Ink.steel}, rng), randomDeck(db, {Ink.emerald, Ink.amethyst}, rng)], seed: 5, hotseat: true);
+    while (s.match.pending != null) {
+      final d = s.match.pending!.decision;
+      s.perform(AnswerMove(d.player, s.match.defaultAnswer(d)));
+    }
+    final g = s.match;
+    final me = s.localSeat, opp = 1 - me;
+    int put(int seat, bool Function(LCard) want, {bool exerted = false}) {
+      final id = g.state.player(seat).deck.firstWhere((id) => want(g.card(id)));
+      g.state.player(seat).deck.remove(id);
+      g.state.player(seat).play.add(id);
+      g.state.obj(id)
+        ..zone = Place.play
+        ..dry = true
+        ..exerted = exerted;
+      return id;
+    }
+
+    // A ready attacker of ours and two exerted characters of theirs.
+    final attacker = put(me, (c) => c.type == CardType.character && (c.strength ?? 0) >= 3);
+    final a = put(opp, (c) => c.type == CardType.character, exerted: true);
+    final b = put(opp, (c) => c.type == CardType.character, exerted: true);
+    g.state.version++;
+    final pl = playableActions(g, me);
+    expect(pl.targetsOf(attacker, CardAction.challenge).keys, containsAll([a, b]));
+
+    await tester.pumpWidget(MaterialApp(home: const LorcanaTable()));
+    await tester.pump();
+    await tester.tap(find.byKey(ValueKey(attacker)));
+    await tester.pumpAndSettle();
+    expect(find.text('Challenge…'), findsOneWidget);
+    await tester.tap(find.text('Challenge…'));
+    await tester.pumpAndSettle();
+    expect(find.text('Choose an exerted character or location to challenge'), findsOneWidget);
+    // The two targets wear the challenge mark; the attacker is the one aiming.
+    expect(find.byTooltip('Can challenge'), findsNWidgets(2));
+    final before = g.actions.length;
+    await tester.tap(find.byKey(ValueKey(b)));
+    await tester.pumpAndSettle();
+    expect(g.actions.length, before + 1);
+    expect(g.actions.last, isA<ChallengeMove>().having((m) => m.target, 'target', b));
+    expect(find.text('Choose an exerted character or location to challenge'), findsNothing);
+    store.endSession();
+  });
 }
