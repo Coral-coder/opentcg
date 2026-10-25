@@ -9,7 +9,7 @@ the same deterministic lockstep core and app shell, with a rules engine per game
 | `lib/lorcana/` | Lorcana's menu, table, card view, store and session (on tcg_app's `MatchSession`). |
 | `packages/lorcana/` | Disney Lorcana rules engine (pure Dart, deterministic), built on `tcg_core`. |
 | `docs/lorcana-comprehensive-rules-2.2.0.txt` | The official Comprehensive Rules (v2.2.0, effective July 9, 2026), text extracted from disneylorcana.com. |
-| `data/` | Card data snapshots. |
+| `data/` | Card data snapshots: `lorcana-cards.raw.json` (lorcana-api.com bulk), `lorcast-cards.json` (api.lorcast.com, fills move costs and missing text), and the built `lorcana-cards.json` / `lorcana-coverage.json`. |
 
 Shared packages (`tcg_core`, `tcg_app`, `mtg_ui`) come from openmtg as git dependencies, all
 pinned to the same openmtg commit (`ref:` in `pubspec.yaml` and `packages/lorcana/pubspec.yaml`;

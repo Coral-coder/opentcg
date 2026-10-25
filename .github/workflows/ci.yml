@@ -1,0 +1,57 @@
+# Checks every push and pull request: each game engine's tests, its chaos harness (bot games
+# replayed from their logs, fingerprints compared), the same games compiled to JavaScript
+# (fingerprints must match the Dart VM's, so browsers and phones stay in lockstep), the card
+# coverage floor, then the app's analyzer, widget tests and a web build.
+name: CI
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lorcana:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: packages/lorcana
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: dart pub get
+      - run: dart analyze --fatal-warnings
+      - run: dart test --reporter expanded
+      - name: Chaos harness (300 bot games, each replayed)
+        run: dart run bin/chaos.dart --games 300 --seed ${{ github.run_number }}
+      - name: Same games on the Dart VM and in JavaScript
+        run: tool/xplat_check.sh
+      - name: Card coverage (must not shrink)
+        run: |
+          dart run bin/gaps.dart ../../data/lorcana-cards.json 0 | head -1 | tee coverage.txt
+          supported=$(cut -d/ -f1 coverage.txt)
+          echo "### Lorcana: $(cat coverage.txt)" >> "$GITHUB_STEP_SUMMARY"
+          floor=$(cat test/fixtures/coverage-floor.txt)
+          if [ "$supported" -lt "$floor" ]; then echo "::error::Lorcana coverage fell to $supported (floor $floor)"; exit 1; fi
+
+  app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: lorcana
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze --no-fatal-infos
+      - run: flutter test --reporter expanded
+      - run: flutter build web --release --base-href /opentcg/

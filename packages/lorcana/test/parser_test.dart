@@ -34,10 +34,16 @@ void main() {
     expect(db['Finders Keepers']!.isSong, isFalse);
   });
 
+  test('a song whose bulk text is only its reminder takes its rules text from Lorcast', () {
+    expect(db["I'm Still Here"]!.text, isNot(startsWith('- A character with cost')));
+    expect(parse('A Very Merry Unbirthday').unsupported, isNot(contains('Action without its effect text in the data')));
+  });
+
   test('unsupported text is recorded per card', () {
-    final p = parse("I'm Still Here");
+    // A made-up card, so this keeps testing the recording as real cards become supported.
+    final p = LorcanaParser.parse(const LCard(fullName: 'Test Card - Unreadable', type: CardType.character, cost: 2, inkable: true, inks: [Ink.amber], strength: 1, willpower: 1, lore: 1, text: 'FROBNICATE Whenever the moon is full, rearrange the stars.'));
     expect(p.supported, isFalse);
-    expect(p.unsupported, isNotEmpty);
+    expect(p.unsupported.single, contains('rearrange the stars'));
     expect(parse('Source of the Vine').unsupported.single, contains('SIPHON'));
   });
 

@@ -34,7 +34,9 @@ class LCardDb {
 
   /// Builds the database from the raw bulk list (one entry per printing). Printings of the same
   /// full name become one card; its rules text and stats come from the newest printing.
-  static LCardDb fromRaw(List<dynamic> raw, {String version = ''}) {
+  /// [fill]: per full name, values from a second source for fields the bulk data lacks (a
+  /// location's move cost, an action's text); used only where the bulk data has nothing.
+  static LCardDb fromRaw(List<dynamic> raw, {String version = '', Map<String, ({int? moveCost, String text})> fill = const {}}) {
     final groups = <String, List<Map<String, dynamic>>>{};
     for (final r in raw) {
       final m = (r as Map).cast<String, dynamic>();
@@ -73,9 +75,9 @@ class LCardDb {
           strength: type == CardType.character ? n('Strength') : null,
           willpower: type == CardType.character || type == CardType.location ? n('Willpower') : null,
           lore: type == CardType.character || type == CardType.location ? n('Lore') : null,
-          moveCost: type == CardType.location ? n('Move_Cost') : null,
+          moveCost: type == CardType.location ? (n('Move_Cost') ?? fill[name]?.moveCost) : null,
           classifications: classes,
-          text: ((m['Body_Text'] as String?) ?? '').trim(),
+          text: _hasRules((m['Body_Text'] as String?) ?? '') ? ((m['Body_Text'] as String?) ?? '').trim() : (fill[name]?.text ?? ((m['Body_Text'] as String?) ?? '').trim()),
           franchise: (m['Franchise'] as String?) ?? '',
           printings: [
             for (final p in ps)
@@ -91,6 +93,13 @@ class LCardDb {
       );
     }
     return LCardDb(out, version: version);
+  }
+
+  /// Whether [text] says more than reminder text (some songs in the bulk data carry only their
+  /// singing reminder, "- A character with cost N or more can {e} to sing this song for free.").
+  static bool _hasRules(String text) {
+    final t = text.replaceAll(RegExp(r'\([^)]*\)'), '').replaceAll(RegExp(r'^-? *A character with cost \d+ or more can \{e\} to sing this song for free\.?', multiLine: true, caseSensitive: false), '');
+    return t.trim().isNotEmpty;
   }
 
   static String _cleanName(String s) => s.trim().replaceAll(RegExp(r'\s+'), ' ').replaceAll(' – ', ' - ');
