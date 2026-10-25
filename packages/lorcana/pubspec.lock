@@ -316,9 +316,11 @@ packages:
   tcg_core:
     dependency: "direct main"
     description:
-      path: "../../../openmtg/packages/tcg_core"
-      relative: true
-    source: path
+      path: "packages/tcg_core"
+      ref: "4bc649b56d3b6e02493497d38911f0ac40c3e177"
+      resolved-ref: "4bc649b56d3b6e02493497d38911f0ac40c3e177"
+      url: "https://github.com/Coral-coder/openmtg.git"
+    source: git
     version: "1.0.0"
   term_glyph:
     dependency: transitive

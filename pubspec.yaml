@@ -13,14 +13,17 @@ dependencies:
   tcg_core:
     git:
       url: https://github.com/Coral-coder/openmtg.git
+      ref: 4bc649b56d3b6e02493497d38911f0ac40c3e177
       path: packages/tcg_core
   tcg_app:
     git:
       url: https://github.com/Coral-coder/openmtg.git
+      ref: 4bc649b56d3b6e02493497d38911f0ac40c3e177
       path: packages/tcg_app
   mtg_ui:
     git:
       url: https://github.com/Coral-coder/openmtg.git
+      ref: 4bc649b56d3b6e02493497d38911f0ac40c3e177
       path: packages/mtg_ui
   lorcana:
     path: packages/lorcana

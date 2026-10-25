@@ -11,8 +11,14 @@ the same deterministic lockstep core and app shell, with a rules engine per game
 | `docs/lorcana-comprehensive-rules-2.2.0.txt` | The official Comprehensive Rules (v2.2.0, effective July 9, 2026), text extracted from disneylorcana.com. |
 | `data/` | Card data snapshots. |
 
-Shared packages (`tcg_core`, `tcg_app`) come from openmtg as git dependencies. For local work
-next to an openmtg checkout, a git-ignored `pubspec_overrides.yaml` points them at `../openmtg`.
+Shared packages (`tcg_core`, `tcg_app`, `mtg_ui`) come from openmtg as git dependencies, all
+pinned to the same openmtg commit (`ref:` in `pubspec.yaml` and `packages/lorcana/pubspec.yaml`;
+they must match, or pub refuses to resolve). To pick up newer openmtg work, change that commit in
+both files and run `flutter pub get`.
+
+For local work next to an openmtg checkout, a git-ignored `pubspec_overrides.yaml` points them
+at `../openmtg` instead. That rewrites `pubspec.lock` with local paths, so don't commit the lock
+from such a checkout.
 
 Private: card data and images for games without a fan content policy are bundled here, which is
 why this repository isn't public. Note that anything hosted from it (a website) is public.
