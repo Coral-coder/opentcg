@@ -49,6 +49,7 @@ String _static(StaticEffect e) => switch (e) {
   MayEnterExerted(:final then) => 'may enter exerted${then == null ? '' : ' to ${describeEffect(then)}'}',
   DeckLimit(:final max) => 'deck limit ${max ?? 'any'}',
   ShiftName(:final name) => 'counts as named ${name ?? 'anything'} for Shift',
+  S3Static() => e.describe(_s3),
 };
 
 String _cond(Cond c) => switch (c) {
@@ -78,6 +79,7 @@ String _cond(Cond c) => switch (c) {
   Challenging(:final defender) => 'challenging ${defender.describe()}',
   ThisTurnCond(:final what, :final cmp, :final n) => '${what.name} this turn ${cmp.name} $n',
   BanishedThisTurn(:final filter, :final inChallenge) => '${filter.describe()} banished${inChallenge ? ' in a challenge' : ''} this turn',
+  S3Cond() => c.describe(_s3),
 };
 
 String _zone(ZoneEffect e) => switch (e) {
@@ -104,6 +106,7 @@ String _amt(Amount a) => switch (a) {
   DamageOn(:final target) => 'damage on ${_tgt(target)}',
   DamageOnSelf(:final per, :final times) => '$times×(damage on this / $per)',
   UnderSelf(:final times) => '$times×cards under this',
+  S3Amount() => a.describe(_s3),
 };
 
 String _tgt(Target t) => switch (t) {
@@ -115,8 +118,11 @@ String _tgt(Target t) => switch (t) {
   LocationOf(:final of) => 'location of ${_tgt(of)}',
 };
 
+const _s3 = S3Printers(describeEffect, _cond, _amt, _tgt);
+
 String describeEffect(Effect e) => switch (e) {
   ZoneEffect() => _zone(e),
+  S3Effect() => e.describe(_s3),
   Seq(:final steps) => steps.map(describeEffect).join('; '),
   May(e: final x) => 'MAY(${describeEffect(x)})',
   If(:final cond, :final then, :final otherwise) => 'IF ${_cond(cond)} THEN ${describeEffect(then)}${otherwise == null ? '' : ' ELSE ${describeEffect(otherwise)}'}',

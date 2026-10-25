@@ -32,6 +32,9 @@ extension GameQuery on Game {
         }
       }
     }
+    for (final id in _s3InkableFromDiscard(p)) {
+      add(InkMove(p, id));
+    }
     for (final id in pl.play) {
       add(QuestMove(p, id));
       for (final t in _challengeTargets(p, id)) {

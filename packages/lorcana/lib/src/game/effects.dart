@@ -32,6 +32,7 @@ extension GameEffects on Game {
     DamageOn() => _boardAmount(a, ctx),
     DamageOnSelf(:final per, :final times) => times * ((state.objOrNull(ctx.source)?.damage ?? 0) ~/ per),
     UnderSelf(:final times) => times * (state.objOrNull(ctx.source)?.under.length ?? 0),
+    S3Amount() => _s3Amount(a, ctx),
   };
 
   int _statOf(Target t, Stat stat, _Ctx ctx) {
@@ -86,6 +87,8 @@ extension GameEffects on Game {
         return _evalZoneCond(c, ctx);
       case TurnStatCond() || ShiftedCond() || HandCompare() || SelfDamage() || StrongestCond():
         return _evalBoardCond(c, ctx);
+      case S3Cond():
+        return _s3Cond(c, ctx);
       default:
         return _evalMoreCond(c, ctx);
     }
@@ -212,6 +215,8 @@ extension GameEffects on Game {
     switch (e) {
       case ZoneEffect():
         _resolveZone(e, ctx);
+      case S3Effect():
+        _resolveS3(e, ctx);
       case Seq(:final steps):
         for (final s in steps) {
           _resolveEffect(s, ctx);
@@ -318,13 +323,17 @@ extension GameEffects on Game {
         }
         ctx.didIt = ids.isNotEmpty;
       case Exert(:final target):
-        for (final id in _resolveTargets(target, ctx)) {
+        final ids = _resolveTargets(target, ctx);
+        for (final id in ids) {
           log('${nameOf(id)} is exerted.', card: id, kind: 'exert');
           _exertCard(id);
         }
+        ctx.didIt = ids.isNotEmpty;
         state.version++;
       case Ready(:final target):
-        for (final id in _resolveTargets(target, ctx)) {
+        final ids = _resolveTargets(target, ctx);
+        ctx.didIt = ids.isNotEmpty;
+        for (final id in ids) {
           state.obj(id).exerted = false;
           log('${nameOf(id)} is readied.', card: id, kind: 'ready');
           _emit(_Ev(kind: _EvKind.readied, card: id, player: state.obj(id).owner));
@@ -390,6 +399,7 @@ extension GameEffects on Game {
       case LookTop(:final n, :final pick, :final pickCount, :final restBottom, :final reorderOnly, :final mustPick, :final restInk):
         _lookTop(ctx, n, pick, pickCount, restBottom, reorderOnly, mustPick: mustPick, restInk: restInk);
       case Mill(:final who, :final n):
+        ctx.didIt = true;
         for (final p in _players(who, ctx)) {
           for (var i = 0; i < n && state.player(p).deck.isNotEmpty; i++) {
             _moveTo(state.player(p).deck.first, Place.discard);
@@ -499,6 +509,7 @@ extension GameEffects on Game {
       final c = chars(id);
       if (c.has(Kw.resist)) dmg -= c.n(Kw.resist);
       if (c.rules.contains(Rule.cantBeDealtDamage)) dmg = 0;
+      dmg = _s3PreventDamage(id, dmg);
     }
     if (dmg <= 0) return;
     o.damage += dmg;

@@ -77,6 +77,7 @@ extension GameBag on Game {
   /// Finds the triggered abilities [e] meets and adds them to the bag (CR 7.7.3), in turn
   /// order and play order so every device adds them alike.
   void _emit(_Ev e) {
+    _s3OnEvent(e);
     _trackTurn(e);
     final s = state;
     final info =
@@ -159,6 +160,8 @@ extension GameBag on Game {
         if (f.other && id == src) return false;
         if (f.classes.isNotEmpty && !f.classes.any(c.hasClass)) return false;
         if (f.named != null && !f.nameMatches(c.names)) return false;
+        if (f.notNamed != null && c.names.any((n) => n.toLowerCase() == f.notNamed!.toLowerCase())) return false;
+        if (f.ink != null && !c.inks.contains(f.ink)) return false;
         if (f.withKw != null && !LorcanaParser.parse(c).abilities.any((a) => a is KeywordAbility && a.keyword.kw == f.withKw)) return false;
         return true;
       }
@@ -189,6 +192,7 @@ extension GameBag on Game {
         if (filter.costMax != null && c.cost > filter.costMax!) return false;
         if (filter.withKw != null && !LorcanaParser.parse(c).abilities.any((a) => a is KeywordAbility && a.keyword.kw == filter.withKw)) return false;
         if (filter.named != null && !filter.nameMatches(c.names)) return false;
+        if (filter.ink != null && !c.inks.contains(filter.ink)) return false;
         if ((filter.strengthMin != null || filter.strengthMax != null) && o.zone == Place.play) {
           final st = chars(e.card!).strength;
           if (filter.strengthMin != null && st < filter.strengthMin!) return false;

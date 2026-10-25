@@ -6,6 +6,7 @@ import 'cards/card.dart';
 
 part 'ir_zones.dart';
 part 'ir_board.dart';
+part 'ir_wave2_s3.dart';
 
 /// Keywords (CR 8.1.1).
 enum Kw { alert, bodyguard, boost, challenger, evasive, reckless, resist, rush, shift, singer, singTogether, support, vanish, ward }
@@ -69,6 +70,9 @@ class Filter {
     this.atThisLocation = false,
     this.atSourcesLocation = false,
     this.song,
+    this.notNamed,
+    this.ink,
+    this.willpowerMin,
   });
 
   final Set<CardType> types;
@@ -99,6 +103,15 @@ class Filter {
     return names.any((n) => n.toLowerCase() == want || alts.contains(n.toLowerCase()));
   }
 
+  /// "Characters not named Mor'du".
+  final String? notNamed;
+
+  /// "Steel characters": of this ink (CR 5.2.5; a dual-ink card is both).
+  final Ink? ink;
+
+  /// "A character with 4 {w} or more".
+  final int? willpowerMin;
+
   Filter copyWith({
     Set<CardType>? types,
     Owner? owner,
@@ -116,6 +129,9 @@ class Filter {
     bool? atThisLocation,
     bool? atSourcesLocation,
     bool? song,
+    String? notNamed,
+    Ink? ink,
+    int? willpowerMin,
   }) => Filter(
     types: types ?? this.types,
     owner: owner ?? this.owner,
@@ -133,6 +149,9 @@ class Filter {
     atThisLocation: atThisLocation ?? this.atThisLocation,
     atSourcesLocation: atSourcesLocation ?? this.atSourcesLocation,
     song: song ?? this.song,
+    notNamed: notNamed ?? this.notNamed,
+    ink: ink ?? this.ink,
+    willpowerMin: willpowerMin ?? this.willpowerMin,
   );
 
   String describe() {
@@ -144,14 +163,17 @@ class Filter {
     if (exerted == false) b.add('ready');
     if (damaged == true) b.add('damaged');
     if (damaged == false) b.add('undamaged');
+    if (ink != null) b.add(ink!.label);
     if (classes.isNotEmpty) b.add(classes.join('/'));
     b.add(song == true ? 'song' : types.map((t) => t.name).join('/'));
     if (song == false) b.add('non-song');
     if (named != null) b.add('named $named');
+    if (notNamed != null) b.add('not named $notNamed');
     if (costMax != null) b.add('cost≤$costMax');
     if (costMin != null) b.add('cost≥$costMin');
     if (strengthMax != null) b.add('S≤$strengthMax');
     if (strengthMin != null) b.add('S≥$strengthMin');
+    if (willpowerMin != null) b.add('W≥$willpowerMin');
     if (withKw != null) b.add('with ${withKw!.name}');
     if (atLocation == true) b.add('at a location');
     if (atThisLocation) b.add('here');

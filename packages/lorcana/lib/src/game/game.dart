@@ -28,6 +28,7 @@ part 'testing.dart';
 part 'zones.dart';
 part 'board.dart';
 part 'statics.dart';
+part 'wave2_s3.dart';
 
 class NeedDecision implements Exception {
   NeedDecision(this.decision);
@@ -167,6 +168,7 @@ class Game implements TcgMatch {
   bool askYesNo(int player, String prompt, {CardId? source}) => ask(Decision(kind: DecisionKind.yesNo, player: player, prompt: prompt, source: source)).first == 1;
 
   void _exec(LMove move) {
+    _s3BeforeAction(move);
     switch (move) {
       case StartMove():
         _start(move);
@@ -295,7 +297,7 @@ class Game implements TcgMatch {
     for (final id in [...pl.play, ...pl.inkwell]) {
       final o = s.obj(id);
       if (!o.exerted) continue;
-      if (cantReady.contains(id) || chars(id).rules.contains(Rule.cantReady)) continue;
+      if (cantReady.contains(id) || chars(id).rules.contains(Rule.cantReady) || _s3CantReady(id)) continue;
       o.exerted = false;
       if (o.zone == Place.play) readied.add(id);
     }

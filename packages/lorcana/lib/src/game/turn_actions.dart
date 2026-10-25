@@ -25,7 +25,7 @@ extension GameTurnActions on Game {
     switch (move) {
       case InkMove(:final card):
         final o = s.objOrNull(card);
-        if (o == null || o.zone != Place.hand || o.owner != p) return 'That card isn’t in your hand';
+        if (o == null || (o.zone != Place.hand && !(o.zone == Place.discard && _s3InkFromDiscard(p))) || o.owner != p) return 'That card isn’t in your hand';
         if (!db[o.card]!.inkable) return 'That card has no inkwell symbol';
         if (s.player(p).inkedThisTurn >= _inkAllowance(p)) return 'You’ve already put a card into your inkwell this turn';
         return null;
@@ -40,7 +40,7 @@ extension GameTurnActions on Game {
         if (s.obj(card).exerted) return '${c.card.name} is exerted';
         if (c.has(Kw.reckless)) return '${c.card.name} is Reckless and can’t quest';
         if (c.rules.contains(Rule.cantQuest)) return '${c.card.name} can’t quest';
-        return null;
+        return _s3QuestProblem(p, card);
       case ChallengeMove(:final card, :final target):
         return _challengeProblem(p, card, target);
       case MoveMove(:final card, :final location):
@@ -74,7 +74,7 @@ extension GameTurnActions on Game {
   }
 
   int _inkAllowance(int p) =>
-      1 + _statics().where((e) => e.$2.effect is ExtraInk && e.$3 == p && (e.$2.condition == null || _evalCond(e.$2.condition!, _Ctx(this, controller: p, source: e.$1)))).length;
+      1 + _s3ExtraInk(p) + _statics().where((e) => e.$2.effect is ExtraInk && e.$3 == p && (e.$2.condition == null || _evalCond(e.$2.condition!, _Ctx(this, controller: p, source: e.$1)))).length;
 
   int _inkReady(int p) => state.player(p).inkwell.where((id) => !state.obj(id).exerted).length;
 
@@ -197,7 +197,7 @@ extension GameTurnActions on Game {
   /// The cost [singer] counts as for singing (Singer N; CR 8.11).
   int _singCost(CardId singer) {
     final c = chars(singer);
-    return c.has(Kw.singer) ? c.n(Kw.singer) : c.cost;
+    return (c.has(Kw.singer) ? c.n(Kw.singer) : c.cost) + _s3SingBonus(singer);
   }
 
   bool _canExertToPay(int p, CardId id) {
@@ -206,6 +206,8 @@ extension GameTurnActions on Game {
   }
 
   String? _playProblem(PlayMove m) {
+    final s3 = _s3PlayProblem(m);
+    if (s3 != null) return s3;
     final s = state;
     final p = m.seat;
     final o = s.objOrNull(m.card);
@@ -256,6 +258,7 @@ extension GameTurnActions on Game {
         break;
       }
     }
+    cost -= _s3ShiftLess(p);
     return cost < 0 ? 0 : cost;
   }
 
@@ -283,6 +286,7 @@ extension GameTurnActions on Game {
         } else {
           paid = _shiftCost(p, id, k);
           _payInk(p, paid);
+          _s3ShiftUsed(p);
         }
       case PlayMode.sing:
         for (final singer in m.singers) {
@@ -387,6 +391,7 @@ extension GameTurnActions on Game {
       }
     }
     if (_entersExertedByOpponents(p, id)) s.obj(id).exerted = true;
+    _s3Entering(p, id);
     for (final a in LorcanaParser.parse(c).abilities) {
       if (a is! Static || a.effect is! MayEnterExerted || s.obj(id).exerted) continue;
       final then = (a.effect as MayEnterExerted).then;
@@ -452,7 +457,7 @@ extension GameTurnActions on Game {
       return 'Only characters and locations can be challenged';
     }
     if (dc.rules.contains(Rule.cantBeChallenged)) return '${dc.card.name} can’t be challenged';
-    final limited = _challengeLimiter(attacker, target);
+    final limited = _challengeLimiter(attacker, target) ?? _s3ChallengeProblem(p, attacker, target);
     if (limited != null) return limited;
     // Evasive (CR 8.6) unless Alert (8.2).
     if (dc.has(Kw.evasive) && !ac.has(Kw.evasive) && !ac.has(Kw.alert)) return '${dc.card.name} is Evasive';
@@ -501,6 +506,7 @@ extension GameTurnActions on Game {
       _dealDamage(attacker, noDamageA ? 0 : toAttacker, source: target, challenge: true);
     }
     _check();
+    _s3ChallengeOver();
   }
 
   // -------------------------------------------------------------------------------------------
@@ -508,12 +514,13 @@ extension GameTurnActions on Game {
   // -------------------------------------------------------------------------------------------
 
   int _moveCost(int p, CardId character, CardId location) {
-    final m = db[state.obj(location).card]!.moveCost ?? 0;
+    final m = (db[state.obj(location).card]!.moveCost ?? 0) - _s3MoveLess(p, character, location);
     return m < 0 ? 0 : m;
   }
 
   void _moveCharacter(int p, CardId character, CardId location, {required bool pay}) {
     if (pay) _payInk(p, _moveCost(p, character, location));
+    if (pay) _s3Moved(p, character, location);
     state.obj(character).at = location;
     state.version++;
     log('${nameOf(character)} moves to ${nameOf(location)}.', player: p, card: character, kind: 'move');
@@ -539,6 +546,8 @@ extension GameTurnActions on Game {
       return null;
     }
     if (a is! Activated) return 'That isn’t an activated ability';
+    final s3 = _s3ActivateProblem(p, id, index, a);
+    if (s3 != null) return s3;
     final cost = a.cost;
     if (cost.exert) {
       if (o.exerted) return '${c.card.name} is exerted';
@@ -581,6 +590,7 @@ extension GameTurnActions on Game {
     a as Activated;
     final cost = a.cost;
     final ctx = _Ctx(this, controller: p, source: id);
+    _s3Activating(id, index, a);
     if (cost.exert) _exertCard(id);
     _payInk(p, cost.ink);
     if (cost.discard > 0) {
@@ -611,6 +621,7 @@ extension GameTurnActions on Game {
           if (x != id) x,
       ];
       final pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Banish one for the cost', options: opts, min: 1, max: 1, source: id));
+      _s3CostBanished(ctx, pick.first);
       _banish(pick.first);
     }
     final lki = chars(id);
