@@ -99,10 +99,9 @@ class _LorcanaRulesPrimerState extends State<LorcanaRulesPrimer> {
     final t = GameTheme.of(context);
     final last = _page == _pages.length - 1;
     return Scaffold(
-      backgroundColor: t.bg,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('How to play'),
-        backgroundColor: t.panel,
         actions: [IconButton(icon: const Icon(Icons.help_outline), tooltip: 'Quick reference', onPressed: () => showLorcanaQuickReference(context))],
       ),
       body: SafeArea(

@@ -7,6 +7,7 @@ import 'lorcana_card.dart';
 import 'lorcana_cards_screen.dart';
 import 'lorcana_decks.dart';
 import 'lorcana_store.dart';
+import 'lorcana_theme.dart';
 
 /// The saved decks: make a new one, copy a starter deck, import a list; open one to edit it.
 class LorcanaDecksScreen extends StatefulWidget {
@@ -19,7 +20,7 @@ class _LorcanaDecksScreenState extends State<LorcanaDecksScreen> {
   final store = LorcanaStore.shared;
 
   Future<void> _edit(LorcanaDeck d) async {
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => LorcanaDeckEditor(deck: d)));
+    await Navigator.of(context).push(lorcanaRoute<void>(LorcanaDeckEditor(deck: d)));
     if (mounted) setState(() {});
   }
 
@@ -32,9 +33,9 @@ class _LorcanaDecksScreenState extends State<LorcanaDecksScreen> {
   Future<void> _starter() async {
     final pair = await showDialog<Set<Ink>>(
       context: context,
-      builder: (c) => SimpleDialog(title: const Text('Starter deck'), children: [
+      builder: (c) => LorcanaScope(child: SimpleDialog(title: const Text('Starter deck'), children: [
         for (final p in allInkPairs()) SimpleDialogOption(onPressed: () => Navigator.pop(c, p), child: Text(inkPairName(p))),
-      ]),
+      ])),
     );
     if (pair == null || !mounted) return;
     await _edit(store.decks.create('Starter: ${inkPairName(pair)}', starterDeck(store.db, pair)));
@@ -60,8 +61,8 @@ class _LorcanaDecksScreenState extends State<LorcanaDecksScreen> {
     final t = GameTheme.of(context);
     final decks = store.decks.decks;
     return Scaffold(
-      backgroundColor: t.bg,
-      appBar: AppBar(title: const Text('Decks'), backgroundColor: t.panel),
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(title: const Text('Decks')),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 560),
@@ -98,7 +99,7 @@ class _DeckTile extends StatelessWidget {
       color: t.panel,
       child: ListTile(
         onTap: onOpen,
-        leading: Row(mainAxisSize: MainAxisSize.min, children: [for (final i in inks) Padding(padding: const EdgeInsets.only(right: 2), child: CircleAvatar(radius: 7, backgroundColor: inkColors[i]))]),
+        leading: Row(mainAxisSize: MainAxisSize.min, children: [for (final i in inks) Padding(padding: const EdgeInsets.only(right: 2), child: InkBlot(inks: [i], size: 18))]),
         title: Text(deck.name, style: t.style(15, weight: FontWeight.w700)),
         subtitle: Text('${deck.cards.length} cards · ${problems.isEmpty ? 'ready to play' : problems.first}', style: t.style(12, color: problems.isEmpty ? t.ok : t.muted), maxLines: 2, overflow: TextOverflow.ellipsis),
         trailing: PopupMenuButton<String>(
@@ -117,10 +118,10 @@ class _DeckTile extends StatelessWidget {
               case 'delete':
                 final ok = await showDialog<bool>(
                   context: context,
-                  builder: (c) => AlertDialog(title: Text('Delete “${deck.name}”?'), actions: [
+                  builder: (c) => LorcanaScope(child: AlertDialog(title: Text('Delete “${deck.name}”?'), actions: [
                     TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Keep')),
                     TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Delete')),
-                  ]),
+                  ])),
                 );
                 if (ok == true) store.decks.delete(deck);
             }
@@ -157,8 +158,7 @@ class _LorcanaDeckEditorState extends State<LorcanaDeckEditor> {
 
   Future<void> _add() async {
     final inks = deckInks(store.db, deck.cards).toSet();
-    await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => LorcanaCardsScreen(
+    await Navigator.of(context).push(lorcanaRoute<void>(LorcanaCardsScreen(
         title: 'Add cards',
         initial: CardQuery(inks: inks.length == 2 ? inks : null, supportedOnly: true),
         onPick: (c) {
@@ -196,10 +196,9 @@ class _LorcanaDeckEditorState extends State<LorcanaDeckEditor> {
     }
     final peak = curve.fold<int>(1, (a, b) => b > a ? b : a);
     return Scaffold(
-      backgroundColor: t.bg,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Text(deck.name),
-        backgroundColor: t.panel,
         actions: [IconButton(icon: const Icon(Icons.ios_share), tooltip: 'Export list', onPressed: () => showExport(context, deck))],
       ),
       floatingActionButton: FloatingActionButton.extended(onPressed: _add, icon: const Icon(Icons.add), label: const Text('Add cards')),
@@ -262,7 +261,7 @@ class _CardRow extends StatelessWidget {
     return ListTile(
       dense: true,
       contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-      onTap: c == null ? null : () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => LorcanaCardDetail(card: c))),
+      onTap: c == null ? null : () => Navigator.of(context).push(lorcanaRoute<void>(LorcanaCardDetail(card: c))),
       leading: CircleAvatar(
         radius: 14,
         backgroundColor: c == null || c.inks.isEmpty ? Colors.grey : inkColors[c.inks.first],
@@ -284,7 +283,7 @@ Future<void> showExport(BuildContext context, LorcanaDeck deck) {
   final text = formatDeckList(LorcanaStore.shared.db, deck.cards);
   return showDialog<void>(
     context: context,
-    builder: (c) => AlertDialog(
+    builder: (c) => LorcanaScope(child: AlertDialog(
       title: Text(deck.name),
       content: SizedBox(width: 420, child: SingleChildScrollView(child: SelectableText(text))),
       actions: [
@@ -297,7 +296,7 @@ Future<void> showExport(BuildContext context, LorcanaDeck deck) {
         ),
         TextButton(onPressed: () => Navigator.pop(c), child: const Text('Close')),
       ],
-    ),
+    )),
   );
 }
 
@@ -306,7 +305,7 @@ Future<String?> askText(BuildContext context, String title, String label, String
   final ctl = TextEditingController(text: initial);
   return showDialog<String>(
     context: context,
-    builder: (c) => AlertDialog(
+    builder: (c) => LorcanaScope(child: AlertDialog(
       title: Text(title),
       content: SizedBox(
         width: 420,
@@ -316,6 +315,6 @@ Future<String?> askText(BuildContext context, String title, String label, String
         TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')),
         TextButton(onPressed: () => Navigator.pop(c, ctl.text.trim().isEmpty && !multiline ? null : ctl.text), child: const Text('OK')),
       ],
-    ),
+    )),
   );
 }

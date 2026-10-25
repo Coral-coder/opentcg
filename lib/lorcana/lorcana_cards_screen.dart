@@ -4,6 +4,7 @@ import 'package:tcg_app/tcg_app.dart';
 
 import 'lorcana_card.dart';
 import 'lorcana_store.dart';
+import 'lorcana_theme.dart';
 
 /// What the card browser shows.
 class CardQuery {
@@ -102,8 +103,8 @@ class _LorcanaCardsScreenState extends State<LorcanaCardsScreen> {
         );
     Widget row(List<Widget> kids) => SizedBox(height: 44, child: ListView(scrollDirection: Axis.horizontal, children: kids));
     return Scaffold(
-      backgroundColor: t.bg,
-      appBar: AppBar(title: Text(widget.title), backgroundColor: t.panel),
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(title: Text(widget.title)),
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
@@ -181,7 +182,7 @@ class _LorcanaCardsScreenState extends State<LorcanaCardsScreen> {
 
   void _open(BuildContext context, LCard c) {
     final pick = widget.onPick;
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => LorcanaCardDetail(card: c, onAdd: pick == null ? null : () => pick(c))));
+    Navigator.of(context).push(lorcanaRoute<void>(LorcanaCardDetail(card: c, onAdd: pick == null ? null : () => pick(c))));
   }
 }
 
@@ -206,8 +207,8 @@ class LorcanaCardDetail extends StatelessWidget {
       if (c.moveCost != null) 'Move cost ${c.moveCost}',
     ].join(' · ');
     return Scaffold(
-      backgroundColor: t.bg,
-      appBar: AppBar(title: Text(c.name), backgroundColor: t.panel),
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(title: Text(c.name)),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 520),
@@ -220,7 +221,7 @@ class LorcanaCardDetail extends StatelessWidget {
               style: t.small,
             ),
             const SizedBox(height: 4),
-            Wrap(spacing: 6, children: [for (final i in c.inks) Chip(avatar: CircleAvatar(backgroundColor: inkColors[i], radius: 6), label: Text(i.label))]),
+            Wrap(spacing: 6, children: [for (final i in c.inks) Chip(avatar: InkBlot(inks: [i], size: 16), label: Text(i.label))]),
             Text(stats, style: t.body),
             if (c.text.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text(c.text, style: t.body)),
             const SizedBox(height: 12),

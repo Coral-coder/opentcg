@@ -84,7 +84,7 @@ void main() {
 
   testWidgets('the guided game plays on the real table, by tapping what glows', (tester) async {
     SharedPreferences.setMockInitialValues({});
-    tester.view.physicalSize = const Size(430, 932) * 2; // 390 wide overflows the table's player strip (not the tutorial's)
+    tester.view.physicalSize = const Size(390, 844) * 2;
     tester.view.devicePixelRatio = 2;
     addTearDown(tester.view.reset);
     await tester.runAsync(() => LorcanaStore.shared.init());
@@ -140,11 +140,24 @@ void main() {
               final id = (ok.firstWhere((x) => glows.contains((x as dynamic).card), orElse: () => m) as dynamic).card as int;
               final card = find.byWidgetPredicate((w) => w is TutorialGlow && w.id == id);
               await tester.ensureVisible(card.first);
+              final before = g.actions.length;
               await tester.tap(card.first);
               await wait(500);
+              // A character whose only move is to quest quests on the tap itself.
+              if (g.actions.length > before) {
+                expect(m, isA<QuestMove>(), reason: 'step ${st.title}: only a quest happens on one tap');
+                await wait();
+                continue;
+              }
               final button = find.byWidgetPredicate((w) => w is TutorialGlow && w.on);
               expect(button, findsOneWidget, reason: 'step ${st.title}: the move is lit on the sheet');
               await tester.tap(button);
+              await wait(500);
+              // "Challenge…" with several targets: tap the one the step wants.
+              if (find.textContaining('Choose an exerted character').evaluate().isNotEmpty) {
+                final target = (ok.firstWhere((x) => x is ChallengeMove) as ChallengeMove).target;
+                await tester.tap(find.byKey(ValueKey(target)));
+              }
             }
           }
       }

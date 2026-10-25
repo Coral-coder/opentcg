@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart' hide Ink;
 import 'package:tcg_app/tcg_app.dart';
 
+import '../lorcana_theme.dart';
+
 /// The keywords, in a few words each (what the full rules say, plainly).
 const lorcanaKeywords = <(String, String)>[
   ('Bodyguard', 'May enter play exerted. While it’s in play, an opponent who challenges one of your characters must challenge a Bodyguard if they can.'),
@@ -30,7 +32,7 @@ void showLorcanaQuickReference(BuildContext context) {
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
-    builder: (sheet) => FractionallySizedBox(heightFactor: 0.85, child: const LorcanaQuickReference()),
+    builder: (sheet) => const LorcanaScope(child: FractionallySizedBox(heightFactor: 0.85, child: LorcanaQuickReference())),
   );
 }
 

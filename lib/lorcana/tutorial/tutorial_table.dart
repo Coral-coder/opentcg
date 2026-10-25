@@ -5,6 +5,7 @@ import 'package:tcg_app/tcg_app.dart';
 import '../lorcana_session.dart';
 import '../lorcana_store.dart';
 import '../lorcana_table.dart';
+import '../lorcana_theme.dart';
 import 'rules_primer.dart';
 import 'tutorial_controller.dart';
 import 'tutorial_script.dart';
@@ -19,7 +20,7 @@ Future<void> openLorcanaTutorial(BuildContext context) async {
   store.session = s;
   final controller = TutorialController(s);
   s.perform(TutorialScript.start);
-  await Navigator.of(context).push(MaterialPageRoute(builder: (_) => TutorialTable(controller: controller)));
+  await Navigator.of(context).push(lorcanaRoute<void>(TutorialTable(controller: controller), sky: false));
   controller.dispose();
   if (store.session == s) store.endSession();
 }
@@ -148,9 +149,9 @@ class _Finished extends StatelessWidget {
               constraints: const BoxConstraints(maxWidth: 380),
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: ThemedPanel(
+                child: GildedPanel(
                   title: s.title,
-                  color: t.accent,
+                  glow: t.accent,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -170,7 +171,7 @@ class _Finished extends StatelessWidget {
                         onPressed: () {
                           Navigator.of(context)
                             ..pop()
-                            ..push(MaterialPageRoute(builder: (_) => const LorcanaRulesPrimer()));
+                            ..push(lorcanaRoute<void>(const LorcanaRulesPrimer()));
                         },
                       ),
                     ],
@@ -193,8 +194,8 @@ class LorcanaLearnScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = GameTheme.of(context);
     return Scaffold(
-      backgroundColor: t.bg,
-      appBar: AppBar(title: const Text('Learn to play'), backgroundColor: t.panel),
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(title: const Text('Learn to play')),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 520),
@@ -210,11 +211,11 @@ class LorcanaLearnScreen extends StatelessWidget {
                 icon: Icons.menu_book,
                 color: t.accent2,
                 onPressed: () {
-                  Navigator.of(context).push(MaterialPageRoute(builder: (c) => LorcanaRulesPrimer(onGuidedGame: () => openLorcanaTutorial(context))));
+                  Navigator.of(context).push(lorcanaRoute<void>(LorcanaRulesPrimer(onGuidedGame: () => openLorcanaTutorial(context))));
                 },
               ),
               const SizedBox(height: 18),
-              ThemedPanel(child: Text('During any game, tap ? at the top of the table for the turn and every keyword.', style: t.small)),
+              GildedPanel(child: Text('During any game, tap ? at the top of the table for the turn and every keyword.', style: t.small)),
             ],
           ),
         ),

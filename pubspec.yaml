@@ -47,3 +47,12 @@ flutter:
   assets:
     - data/lorcana-cards.json
     - data/pokemon-cards.json
+  # Display faces for Lorcana's storybook look (SIL Open Font License; see fonts/OFL-*.txt).
+  fonts:
+    - family: Cinzel
+      fonts:
+        - asset: fonts/Cinzel.ttf
+    - family: CinzelDecorative
+      fonts:
+        - asset: fonts/CinzelDecorative-Bold.ttf
+          weight: 700
