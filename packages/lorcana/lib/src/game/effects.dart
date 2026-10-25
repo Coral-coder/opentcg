@@ -162,6 +162,12 @@ extension GameEffects on Game {
                 Decision(kind: DecisionKind.cards, player: ctx.controller, prompt: 'Choose ${upTo ? 'up to ' : ''}$count ${filter.describe()}', options: cands, min: min, max: max, source: ctx.source),
               );
         ctx.slots[slot] = pick;
+        for (final id in pick) {
+          final owner = state.obj(id).owner;
+          if (slot == _supportSlot) _emit(_Ev(kind: _EvKind.supportChosen, card: id, player: owner));
+          // "Whenever an opponent chooses this character for an action or ability".
+          if (owner != ctx.controller) _emit(_Ev(kind: _EvKind.chosenByOpponent, card: id, player: ctx.controller));
+        }
         if (ctx.isAction) {
           for (final id in pick) {
             if (state.obj(id).owner != ctx.controller && chars(id).has(Kw.vanish)) _emit(_Ev(kind: _EvKind.vanish, card: id, player: state.obj(id).owner));
@@ -224,10 +230,7 @@ extension GameEffects on Game {
           } else {
             pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Choose $n card${n == 1 ? '' : 's'} to discard', options: List.of(hand), min: n, max: n, source: ctx.source));
           }
-          for (final id in pick) {
-            _moveTo(id, Place.discard);
-            log('${state.player(p).name} discards ${nameOf(id)}.', player: p, card: id);
-          }
+          _discardCards(p, pick);
         }
         ctx.didIt = true;
       case GainLore(:final who, :final amount):
@@ -250,7 +253,10 @@ extension GameEffects on Game {
           final o = state.obj(id);
           final n = all ? o.damage : _evalAmount(amount, ctx).clamp(0, o.damage);
           o.damage -= n;
-          if (n > 0) log('${nameOf(id)}: $n damage removed.', card: id, kind: 'heal', amount: n);
+          if (n > 0) {
+            log('${nameOf(id)}: $n damage removed.', card: id, kind: 'heal', amount: n);
+            _emit(_Ev(kind: _EvKind.damageRemoved, card: id, player: ctx.controller, amount: n));
+          }
         }
         state.version++;
       case MoveDamage(:final from, :final to, :final amount):
@@ -272,13 +278,15 @@ extension GameEffects on Game {
         final ids = _resolveTargets(target, ctx, fromDiscard: target is This || target is EventCard);
         for (final id in ids) {
           log('${nameOf(id)} returns to ${state.player(state.obj(id).owner).name}’s hand.', card: id, kind: 'return');
+          final wasInPlay = state.obj(id).zone == Place.play;
           _leavePlay(id, Place.hand);
+          if (wasInPlay) _emit(_Ev(kind: _EvKind.returnedToHand, card: id, player: state.obj(id).owner));
         }
         ctx.didIt = ids.isNotEmpty;
       case Exert(:final target):
         for (final id in _resolveTargets(target, ctx)) {
-          state.obj(id).exerted = true;
           log('${nameOf(id)} is exerted.', card: id, kind: 'exert');
+          _exertCard(id);
         }
         state.version++;
       case Ready(:final target):
@@ -342,6 +350,7 @@ extension GameEffects on Game {
         for (final id in pick) {
           _moveTo(id, Place.hand);
           log('${nameOf(id)} returns to ${state.player(ctx.controller).name}’s hand.', card: id, kind: 'return');
+          _emit(_Ev(kind: _EvKind.returnedFromDiscard, card: id, player: ctx.controller));
         }
         ctx.didIt = pick.isNotEmpty;
       case LookTop(:final n, :final pick, :final pickCount, :final restBottom, :final reorderOnly):
@@ -452,6 +461,9 @@ extension GameEffects on Game {
     state.version++;
     log('${nameOf(id)} takes $dmg damage.', card: id, kind: 'damage', amount: dmg);
     _emit(_Ev(kind: _EvKind.dealtDamage, card: id, other: source, player: o.owner, amount: dmg));
+    if (challenge && state.objOrNull(source)?.zone == Place.play) {
+      _emit(_Ev(kind: _EvKind.dealsChallengeDamage, card: source, other: id, player: state.obj(source).owner, amount: dmg));
+    }
   }
 
   /// Banishes a card from play (it goes to the discard with its stack).
@@ -463,7 +475,8 @@ extension GameEffects on Game {
     final inChallenge = dmg != null && dmg.$2;
     final banisher = dmg?.$1 ?? by;
     log('${c.card.fullName} is banished.', player: o.owner, card: id, kind: 'banish');
-    final info = EventInfo(card: id, other: banisher, player: o.owner, strength: c.strength);
+    // Where it was, for "whenever a character is banished while here".
+    final info = EventInfo(card: id, other: banisher, player: o.owner, strength: c.strength, location: o.at);
     _leavePlay(id, Place.discard);
     if (inChallenge && c.type == CardType.character) state.banishedInChallengeThisTurn++;
     _emit(_Ev(kind: inChallenge ? _EvKind.banishedInChallenge : _EvKind.banished, card: id, other: banisher, player: o.owner, info: info, cardType: c.type));
@@ -474,7 +487,11 @@ extension GameEffects on Game {
 
   void _leavePlay(CardId id, Place to, {bool bottom = false, bool exerted = false}) {
     _lastDamageBy.remove(id);
+    final o = state.obj(id);
+    final wasInPlay = o.zone == Place.play && state.player(o.owner).play.contains(id);
     _moveTo(id, to, bottom: bottom, exerted: exerted);
+    // "When this character leaves play" (CR 7.4.3).
+    if (wasInPlay) _emit(_Ev(kind: _EvKind.leftPlay, card: id, player: o.owner));
   }
 
   String _describeEffect(Effect e) => switch (e) {

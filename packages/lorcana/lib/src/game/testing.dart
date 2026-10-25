@@ -17,7 +17,7 @@ extension GameTesting on Game {
     final o = Obj(id: state.nextId++, card: c.fullName, owner: owner, zone: Place.hand);
     state.objects[o.id] = o;
     state.player(owner).hand.add(o.id);
-    _moveTo(o.id, zone);
+    _moveTo(o.id, zone, setup: true);
     if (zone == Place.play) {
       o.dry = !drying && c.type == CardType.character || c.type != CardType.character;
       o.exerted = exerted;

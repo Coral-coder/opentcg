@@ -529,31 +529,118 @@ class OnPlay extends Trigger {
 }
 
 /// "Whenever you play a song", "whenever an opponent plays…": [filter] on the played card.
+/// [nth]: only the nth action that player plays this turn ("whenever you play a second action
+/// in a turn").
 class CardPlayed extends Trigger {
-  const CardPlayed(this.filter, {this.by = Owner.yours});
+  const CardPlayed(this.filter, {this.by = Owner.yours, this.nth = 0});
   final Filter filter;
   final Owner by;
+  final int nth;
 }
 
 enum Event { quests, challenges, isChallenged, banished, banishedInChallenge, banishesInChallenge, sings, movesToLocation, dealtDamage, readied, exerted }
 
 /// A card in [subject] does something. [subject] null: this card.
 class CardEvent extends Trigger {
-  const CardEvent(this.event, {this.subject});
+  const CardEvent(this.event, {this.subject, this.other, this.where, this.here = false});
   final Event event;
   final Filter? subject;
+
+  /// The other card in the event: the challenged character ("challenges a damaged character").
+  final Filter? other;
+
+  /// What the event card must be as the event happens, whoever it is ("quests while at a
+  /// location", "quests while he has 5 strength or more").
+  final Filter? where;
+
+  /// The event card is at this location ("whenever a character quests while here"), as it was
+  /// when the event happened.
+  final bool here;
 }
 
-/// "At the start of your turn" / "at the end of your turn" (CR 3.2.1.4, 3.4.1.1).
+/// "At the start of your turn" / "at the end of your turn" (CR 3.2.1.4, 3.4.1.1). [yours]
+/// false: every turn, or only opponents' turns with [opponents].
 class TurnStep extends Trigger {
-  const TurnStep({required this.start, this.yours = true});
-  final bool start, yours;
+  const TurnStep({required this.start, this.yours = true, this.opponents = false});
+  final bool start, yours, opponents;
 }
 
-/// "Whenever you draw a card", "whenever an opponent draws".
+/// "Whenever you draw a card", "whenever an opponent draws". [nth]: only the nth card that
+/// player draws this turn; [theirTurn]: only during the drawing player's turn.
 class Draws extends Trigger {
-  const Draws(this.by);
+  const Draws(this.by, {this.nth = 0, this.theirTurn = false});
   final Owner by;
+  final int nth;
+  final bool theirTurn;
+}
+
+/// The further events a triggered ability can wait for (CR 6.2).
+enum Happening {
+  /// A card is put into a player's inkwell (any way; CR 4.2, 7.5).
+  inked,
+
+  /// Damage is removed from a card (the amount removed).
+  damageRemoved,
+
+  /// A card leaves play, any way (CR 7.4.3).
+  leftPlay,
+
+  /// A card is returned from play to its owner's hand.
+  returnedToHand,
+
+  /// A card is put under the event card (Boost, CR 8.4).
+  putUnder,
+
+  /// A song is sung, once per song however many sing it.
+  songSung,
+
+  /// A character sings a song with Sing Together (CR 8.12).
+  sungTogether,
+
+  /// An opponent of the card's owner chooses it for an action or ability.
+  chosenByOpponent,
+
+  /// A character is chosen for Support (CR 8.13).
+  supportChosen,
+
+  /// A card is played paying ink (the amount paid).
+  inkPaid,
+
+  /// A character is shifted onto the event card (CR 8.10).
+  shiftedOnto,
+
+  /// The event card is played with Shift.
+  shifted,
+
+  /// A card is discarded from a hand.
+  discarded,
+
+  /// A player discards one or more cards at once (the number).
+  discardedCards,
+
+  /// A card becomes exerted.
+  exerted,
+
+  /// A card is returned from a discard to its owner's hand.
+  returnedFromDiscard,
+
+  /// The event card deals damage to another character in a challenge (the amount).
+  dealsChallengeDamage,
+}
+
+/// [what] happens. The event card is this card when [self], else any card matching [subject]
+/// (null: any card); [by] is the player the event belongs to (who inked, removed damage,
+/// paid, discarded), relative to the ability's controller. [min]/[max] bound the event's
+/// amount; [nth] picks the nth such event that player has this turn.
+class On extends Trigger {
+  const On(this.what, {this.self = false, this.subject, this.by = Owner.any, this.min = 0, this.max, this.nth = 0});
+  final Happening what;
+  final bool self;
+  final Filter? subject;
+  final Owner by;
+  final int min;
+  final int? max;
+  final int nth;
 }
 
 /// "When you move a character here" (locations).

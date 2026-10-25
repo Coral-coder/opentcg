@@ -74,6 +74,11 @@ class Player {
   /// Cards drawn this turn, characters of theirs banished this turn (for conditions).
   int drawnThisTurn = 0;
 
+  /// Cards put into their inkwell this turn, any way; actions played this turn (for "the
+  /// second card you've put into your inkwell this turn", "a second action in a turn").
+  int inkPutThisTurn = 0;
+  int actionsThisTurn = 0;
+
   List<CardId> zone(Place z) => switch (z) {
     Place.deck => deck,
     Place.hand => hand,
@@ -92,9 +97,12 @@ class Player {
     ..lost = lost
     ..altered = altered
     ..inkedThisTurn = inkedThisTurn
-    ..drawnThisTurn = drawnThisTurn;
+    ..drawnThisTurn = drawnThisTurn
+    ..inkPutThisTurn = inkPutThisTurn
+    ..actionsThisTurn = actionsThisTurn;
 
-  String digest() => '${name.length}:$name|${deck.join(',')}|${hand.join(',')}|${play.join(',')}|${inkwell.join(',')}|${discard.join(',')}|$lore|$lost|$altered|$inkedThisTurn|$drawnThisTurn';
+  String digest() =>
+      '${name.length}:$name|${deck.join(',')}|${hand.join(',')}|${play.join(',')}|${inkwell.join(',')}|${discard.join(',')}|$lore|$lost|$altered|$inkedThisTurn|$drawnThisTurn|$inkPutThisTurn|$actionsThisTurn';
 }
 
 /// What a triggered ability is about (CR 6.2): the card, the other card, the player, an amount,
