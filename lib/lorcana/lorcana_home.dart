@@ -6,6 +6,7 @@ import 'package:tcg_core/tcg_core.dart' show SeededRng;
 import 'package:tcg_app/tcg_app.dart';
 
 import 'lorcana_card.dart';
+import 'lorcana_lobbies.dart';
 import 'lorcana_store.dart';
 import 'lorcana_table.dart';
 
@@ -38,6 +39,12 @@ class _LorcanaHomeState extends State<LorcanaHome> {
     final decks = [randomDeck(store.db, mine, rng), randomDeck(store.db, theirs, rng)];
     store.newGame(names: hotseat ? const ['Player 1', 'Player 2'] : const ['You', 'Computer'], decks: decks, seed: seed, hotseat: hotseat);
     _openTable();
+  }
+
+  void _openLobby(Widget lobby) {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => lobby)).then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   void _openTable() {
@@ -95,6 +102,12 @@ class _LorcanaHomeState extends State<LorcanaHome> {
             const SizedBox(height: 18),
             ThemedButton('Play the computer', tall: true, icon: Icons.smart_toy, onPressed: () => _start(hotseat: false)),
             const SizedBox(height: 10),
+            ThemedButton('Play online with a code', subtitle: 'Browser or phone, anywhere', tall: true, icon: Icons.public, color: t.accent2, onPressed: () => _openLobby(LorcanaRemoteLobby(inks: mine))),
+            const SizedBox(height: 10),
+            if (nearbyPlaySupported) ...[
+              ThemedButton('Play nearby', subtitle: 'Wi‑Fi or Bluetooth', tall: true, icon: Icons.wifi_tethering, color: t.accent2, onPressed: () => _openLobby(LorcanaLocalLobby(inks: mine))),
+              const SizedBox(height: 10),
+            ],
             ThemedButton('Two players, one device', tall: true, icon: Icons.people, outlined: true, onPressed: () => _start(hotseat: true)),
             const SizedBox(height: 18),
             ThemedPanel(child: Text('$ok of $total cards fully supported. Decks are 60 random supported cards of the chosen inks.', style: t.small)),

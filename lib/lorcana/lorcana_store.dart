@@ -5,10 +5,11 @@ import 'package:lorcana/lorcana.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tcg_app/tcg_app.dart';
 
+import 'lorcana_links.dart';
 import 'lorcana_session.dart';
 
 /// Lorcana's card database (bundled with the app), the saved local game and the current session.
-class LorcanaStore {
+class LorcanaStore with LorcanaLinks {
   LorcanaStore._();
   static final shared = LorcanaStore._();
 
@@ -24,6 +25,7 @@ class LorcanaStore {
     final raw = await rootBundle.loadString('data/lorcana-cards.json');
     _db = LCardDb.fromJson(jsonDecode(raw) as Map<String, dynamic>);
     _prefs = await SharedPreferences.getInstance();
+    await initLinks(_prefs!);
   }
 
   /// Supported cards / all cards, for the menu.
@@ -74,8 +76,18 @@ class LorcanaStore {
     s.onFinished = () => _prefs?.remove(_savedKey);
   }
 
-  void endSession() {
+  /// A match linked to another device (relay code, Wi‑Fi or Bluetooth) becomes the session.
+  LorcanaSession startLinkedGame(LockstepMatch match) {
+    final s = LorcanaSession.linked(link: match);
     session?.dispose();
+    session = s;
+    return s;
+  }
+
+  void endSession() {
+    final s = session;
     session = null;
+    s?.dispose();
+    s?.link?.dispose();
   }
 }

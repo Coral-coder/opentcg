@@ -21,10 +21,15 @@ void main() {
   });
 
   testWidgets('Lorcana loads its cards and starts a game against the computer', (tester) async {
+    // A tall phone, so the whole menu (with the online buttons) is laid out.
+    tester.view.physicalSize = const Size(780, 1800);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
     await tester.runAsync(() => LorcanaStore.shared.init());
     await tester.pumpWidget(ThemeScope(theme: Themes.classic, child: MaterialApp(theme: Themes.classic.material(), home: const LorcanaHome())));
     await tester.pump();
     expect(find.textContaining('cards fully supported'), findsOneWidget);
+    expect(find.text('Play online with a code'), findsOneWidget);
     await tester.tap(find.text('Play the computer'));
     await tester.pump(const Duration(milliseconds: 300));
     final s = LorcanaStore.shared.session!;
