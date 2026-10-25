@@ -33,6 +33,12 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  # Magic's engine, for the test that a Magic device and a Lorcana device refuse to pair.
+  rules:
+    git:
+      url: https://github.com/Coral-coder/openmtg.git
+      ref: 4bc649b56d3b6e02493497d38911f0ac40c3e177
+      path: packages/rules
 
 flutter:
   uses-material-design: true

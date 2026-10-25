@@ -7,6 +7,11 @@ import 'package:tcg_app/tcg_app.dart';
 class LorcanaSession extends MatchSession<Game> {
   LorcanaSession.local({required super.ruleset, required super.mode, required super.playerNames, required super.seed, required super.decks}) : super.local();
 
+  /// Linked to another device: the LockstepMatch owns the match.
+  LorcanaSession.linked({required super.link}) : super.linked(playerNames: [for (final p in (link.game! as Game).state.players) p.name]) {
+    _lastLog = state.log.length;
+  }
+
   List<LogEntry> recent = [];
   int _lastLog = 0;
 
@@ -15,6 +20,12 @@ class LorcanaSession extends MatchSession<Game> {
   @override
   void afterMoves({required bool remote, bool reset = false}) {
     if (reset) {
+      // A replaced match (rewind after reconnecting, resume): names may differ, history isn't news.
+      if (isLinked) {
+        playerNames
+          ..clear()
+          ..addAll([for (final p in state.players) p.name]);
+      }
       _lastLog = state.log.length;
       recent = [];
       return;

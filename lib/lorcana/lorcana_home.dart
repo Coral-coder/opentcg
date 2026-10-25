@@ -8,6 +8,7 @@ import 'package:tcg_app/tcg_app.dart';
 import 'lorcana_cards_screen.dart';
 import 'lorcana_deck_choice.dart';
 import 'lorcana_decks_screen.dart';
+import 'lorcana_lobbies.dart';
 import 'lorcana_store.dart';
 import 'lorcana_table.dart';
 
@@ -84,6 +85,12 @@ class _LorcanaHomeState extends State<LorcanaHome> {
             const SizedBox(height: 18),
             ThemedButton('Play the computer', tall: true, icon: Icons.smart_toy, onPressed: playable ? () => _start(hotseat: false) : null),
             const SizedBox(height: 10),
+            ThemedButton('Play online with a code', subtitle: 'Browser or phone, anywhere', tall: true, icon: Icons.public, color: t.accent2, onPressed: () => _push(LorcanaRemoteLobby(deck: mine))),
+            const SizedBox(height: 10),
+            if (nearbyPlaySupported) ...[
+              ThemedButton('Play nearby', subtitle: 'Wi‑Fi or Bluetooth', tall: true, icon: Icons.wifi_tethering, color: t.accent2, onPressed: () => _push(LorcanaLocalLobby(deck: mine))),
+              const SizedBox(height: 10),
+            ],
             ThemedButton('Two players, one device', tall: true, icon: Icons.people, outlined: true, onPressed: playable ? () => _start(hotseat: true) : null),
             const SizedBox(height: 10),
             Row(children: [

@@ -142,7 +142,9 @@ class _TopBar extends StatelessWidget {
         IconButton(icon: Icon(Icons.close, color: t.accent), tooltip: 'Leave the table', onPressed: () => Navigator.of(context).maybePop()),
         Expanded(
           child: Text(
-            session.thinking ? '${session.playerNames[session.opponentSeat]} is thinking…' : 'Turn ${st.turn} · ${st.player(st.active).name}',
+            session.isLinked
+                ? '${session.link?.status ?? ''} · turn ${st.turn}'
+                : (session.thinking ? '${session.playerNames[session.opponentSeat]} is thinking…' : 'Turn ${st.turn} · ${st.player(st.active).name}'),
             style: t.style(13, weight: FontWeight.w700, color: t.muted),
           ),
         ),
@@ -336,12 +338,13 @@ class _PromptBar extends StatelessWidget {
       line = 'Your turn: ink a card, play cards, quest or challenge. Tap a card to see what it can do.';
       buttons.add(Expanded(child: ThemedButton('End turn', icon: Icons.skip_next, tall: true, onPressed: () => session.perform(EndTurnMove(session.localSeat)))));
     } else {
-      line = '${g.state.player(g.state.active).name}’s turn.';
+      line = session.isLinked ? 'Waiting for ${g.state.player(g.state.active).name}…' : '${g.state.player(g.state.active).name}’s turn.';
     }
     return Container(
       padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
       decoration: BoxDecoration(color: t.panel.withValues(alpha: 0.95), border: Border(top: BorderSide(color: t.accent, width: 2))),
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (session.notice != null) Text(session.notice!, style: t.style(12, color: t.highlight)),
         if (session.lastError != null) Text(session.lastError!, style: t.style(13, weight: FontWeight.w700, color: t.danger)),
         Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Text(line, style: t.style(14, weight: FontWeight.w600), maxLines: 3, overflow: TextOverflow.ellipsis)),
         if (buttons.isNotEmpty) Row(children: buttons),
