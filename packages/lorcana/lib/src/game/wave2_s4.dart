@@ -737,6 +737,10 @@ extension GameS4 on Game {
     for (final (src, e, ctl) in _s4Statics()) {
       if (e is OpponentsCantPlay && ctl != p && _s4Printed(e.filter.copyWith(owner: Owner.any), id, ctl)) return src;
     }
+    // Slice 1 parses the conditional and cost-limited forms ("… while this is exerted").
+    for (final (src, e, ctl) in _w1Active()) {
+      if (e is W1OpponentsCantPlay && ctl != p && _s4Printed(e.filter.copyWith(owner: Owner.any), id, ctl)) return src;
+    }
     return null;
   }
 
@@ -778,9 +782,12 @@ extension GameS4 on Game {
   /// A card's abilities: printed, then granted by statics ("characters gain "{e} - draw a card"
   /// while here") and by effects for a while ("… this turn"). Activations index into this list.
   List<Ability> abilitiesOf(CardId id) {
+    // Printed, then slice 1's grants (by effects and statics, kept by a card that just left
+    // play), then this file's.
     final printed = parsed(id).abilities;
-    if (state.obj(id).zone != Place.play) return printed;
-    final out = <Ability>[...printed];
+    final w1 = _w1Granted(id);
+    if (state.obj(id).zone != Place.play) return w1.isEmpty ? printed : [...printed, ...w1];
+    final out = <Ability>[...printed, ...w1];
     for (final (src, e, ctl) in _s4Statics()) {
       if (e is GrantAbility && (e.affected == null ? src == id : matches(e.affected!, id, controller: ctl, source: src))) out.add(e.ability);
     }

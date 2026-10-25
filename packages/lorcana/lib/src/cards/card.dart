@@ -86,7 +86,12 @@ class LCard {
 
   bool get isSong => type == CardType.action && classifications.contains('Song');
   bool get isCharacter => type == CardType.character;
-  bool hasClass(String c) => classifications.any((x) => x.toLowerCase() == c.toLowerCase());
+  /// Has classification [c]. "ink:steel" (how filters write "Steel characters") asks for an ink.
+  bool hasClass(String c) {
+    final lc = c.toLowerCase();
+    if (lc.startsWith('ink:')) return inks.any((i) => i.name == lc.substring(4));
+    return classifications.any((x) => x.toLowerCase() == lc);
+  }
 
   String? get image => printings.isEmpty ? null : printings.last.image;
 

@@ -13,6 +13,7 @@ part 'triggers.dart';
 part 'statics.dart';
 part 'wave2_s3.dart';
 part 'wave2_s4.dart';
+part 'wave2_s1.dart';
 
 class ParsedCard {
   const ParsedCard(this.card, this.abilities, this.unsupported);
@@ -23,7 +24,7 @@ class ParsedCard {
 }
 
 /// Bumped whenever parsing could change how a card plays.
-const lorcanaEngineVersion = 2;
+const lorcanaEngineVersion = 3;
 
 class LorcanaParser {
   static final Map<String, ParsedCard> _cache = {};
@@ -152,6 +153,8 @@ class _CardParser {
     final s4 = _s4Action(p);
     if (s4 != null) return s4;
     final t = _lower(p.body);
+    final w1 = _w1Action(p, t);
+    if (w1 != null) return w1;
     final e = effects(t, _Ctx());
     if (e == null) return null;
     return [ActionEffect(p.printed, e)];
@@ -162,6 +165,8 @@ class _CardParser {
     if (s3 != null) return s3;
     final t = _lower(p.body);
     final printed = p.printed;
+    final w1 = _w1Paragraph(p, t);
+    if (w1 != null) return w1;
     // Activated: "[Cost] - [Effect]" (CR 6.3.1).
     final dash = t.indexOf(' - ');
     if (dash > 0) {
@@ -317,6 +322,8 @@ class _CardParser {
     var h = h0.trim();
     final s3 = _s3TriggerHead(h);
     if (s3 != null) return s3;
+    final w1 = _w1TriggerHead(h);
+    if (w1 != null) return w1;
     final more = _moreTriggerHead(h);
     if (more != null) return more;
     // "When you play this character and whenever she quests" (CR 6.2.6).
@@ -435,12 +442,14 @@ class _CardParser {
     }
     final es = _staticEffect(t);
     if (es == null) return null;
-    return [for (final x in es) Static(printed, x, condition: cond, inHand: x is CostReduction && x.self)];
+    return [for (final x in es) Static(printed, x, condition: cond, inHand: (x is CostReduction && x.self) || (x is W1Static && x.inHand))];
   }
 
   List<StaticEffect>? _staticEffect(String t0) {
     final s3 = _s3StaticEffect(t0);
     if (s3 != null) return s3;
+    final w1 = _w1StaticEffect(t0);
+    if (w1 != null) return w1;
     final more = _moreStaticEffect(t0);
     if (more != null) return more;
     var t = t0;
@@ -559,6 +568,8 @@ class _CardParser {
     if (s3 != null) return s3;
     final s4 = _s4Condition(s);
     if (s4 != null) return s4;
+    final w1 = _w1Condition(s);
+    if (w1 != null) return w1;
     final board = _boardCondition(s);
     if (board != null) return board;
     final more = _moreCondition(s);
@@ -602,6 +613,8 @@ class _CardParser {
   // -------------------------------------------------------------------------------------------
 
   Effect? effects(String text, _Ctx ctx) {
+    final w1 = _w1Effects(text, ctx);
+    if (w1 != null) return w1;
     final zone = _zoneEffects(text, ctx);
     if (zone != null) return zone;
     // "Choose one: - A. - B." (CR 6.1.5.2).
@@ -807,6 +820,8 @@ class _CardParser {
     if (s3 != null) return s3;
     final s4 = _s4Clause(c, ctx);
     if (s4 != null) return s4;
+    final w1 = _w1Clause(c, ctx);
+    if (w1 != null) return w1;
     final zone = _zoneFirst(c, ctx);
     if (zone != null) return zone;
     List<String>? m;
@@ -1151,6 +1166,8 @@ class _CardParser {
   Filter? filter(String s0, Owner owner, {bool cardTypes = false, bool chosenPhrase = false}) {
     final s4 = _s4Filter(s0.trim(), owner, cardTypes, chosenPhrase);
     if (s4 != null) return s4;
+    final w1 = _w1Filter(s0, owner, cardTypes, chosenPhrase);
+    if (w1 != null) return w1;
     var s = s0.trim();
     var f = Filter(owner: owner);
     // Suffixes.

@@ -8,6 +8,7 @@ part 'ir_zones.dart';
 part 'ir_board.dart';
 part 'ir_wave2_s3.dart';
 part 'ir_wave2_s4.dart';
+part 'ir_wave2_s1.dart';
 
 /// Keywords (CR 8.1.1).
 enum Kw { alert, bodyguard, boost, challenger, evasive, reckless, resist, rush, shift, singer, singTogether, support, vanish, ward }

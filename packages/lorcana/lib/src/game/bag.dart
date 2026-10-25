@@ -33,6 +33,7 @@ enum _EvKind {
 
   /// A card is chosen for an action or ability (by anyone).
   chosen,
+  boosted,
 }
 
 /// The event kind each [Happening] waits for.
@@ -82,6 +83,7 @@ extension GameBag on Game {
   void _emit(_Ev e) {
     _s3OnEvent(e);
     _trackTurn(e);
+    _w1Observe(e);
     final s = state;
     final info =
         e.info ??
@@ -106,7 +108,7 @@ extension GameBag on Game {
       final leaving = (e.kind == _EvKind.banished || e.kind == _EvKind.banishedInChallenge || _selfOutsidePlay.contains(e.kind)) && e.card != null && s.obj(e.card!).owner == p ? e.card : null;
       if (leaving != null && !sources.contains(leaving)) sources.add(leaving);
       for (final src in sources) {
-        final abs = LorcanaParser.parse(db[s.obj(src).card]!).abilities;
+        final abs = _w1Abilities(src, leaving: src == leaving);
         for (var i = 0; i < abs.length; i++) {
           final a = abs[i];
           if (a is KeywordAbility && a.keyword.kw == Kw.support && e.kind == _EvKind.quests && e.card == src) {
@@ -161,7 +163,7 @@ extension GameBag on Game {
         if (f.owner == Owner.yours && o.owner != you) return false;
         if (f.owner == Owner.opposing && o.owner == you) return false;
         if (f.other && id == src) return false;
-        if (f.classes.isNotEmpty && !f.classes.any(c.hasClass)) return false;
+        if (f.classes.isNotEmpty && !f.classes.any((x) => c.hasClass(x) || _w1HasClass(id, x))) return false;
         if (f.named != null && !f.nameMatches(c.names)) return false;
         if (f.notNamed != null && c.names.any((n) => n.toLowerCase() == f.notNamed!.toLowerCase())) return false;
         if (f.ink != null && !c.inks.contains(f.ink)) return false;
@@ -234,6 +236,8 @@ extension GameBag on Game {
         return e.kind == _EvKind.moves && e.other == src && !floating;
       case S4Trigger():
         return _s4TriggerMatches(t, e, src, you, floating: floating);
+      case W1Trigger():
+        return _w1TriggerMatches(t, e, you);
     }
   }
 

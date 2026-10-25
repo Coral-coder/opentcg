@@ -282,6 +282,11 @@ class GameState {
   List<NextReduction> reductions = [];
   List<Lingering> lingering = [];
 
+  /// What game/wave2_s1.dart keeps: abilities, keywords, rules and classifications granted for a
+  /// while, and notes about the turn (who sang the last song, who discarded).
+  List<W1Grant> w1Grants = [];
+  Map<String, List<int>> w1 = {};
+
   /// Opposing characters banished in a challenge this turn, and characters banished this turn.
   int banishedInChallengeThisTurn = 0;
 
@@ -319,6 +324,8 @@ class GameState {
       ..timed = List.of(timed)
       ..reductions = List.of(reductions)
       ..lingering = List.of(lingering)
+      ..w1Grants = List.of(w1Grants)
+      ..w1 = {for (final e in w1.entries) e.key: List.of(e.value)}
       ..banishedInChallengeThisTurn = banishedInChallengeThisTurn
       ..banishedThisTurn = List.of(banishedThisTurn)
       ..leftDiscardThisTurn = leftDiscardThisTurn
@@ -350,6 +357,12 @@ class GameState {
     }
     for (final l in lingering) {
       b.writeln('ling:${l.digest()}');
+    }
+    for (final g in w1Grants) {
+      b.writeln('w1g:${g.digest()}');
+    }
+    for (final k in w1.keys.toList()..sortStable((a, b) => a.compareTo(b))) {
+      b.writeln('w1:${k.length}:$k=${w1[k]!.join(',')}');
     }
     return b.toString();
   }

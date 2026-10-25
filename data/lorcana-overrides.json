@@ -1,5 +1,9 @@
 {
   "_about": "Corrected card text, keyed by full name, for cards whose text is mangled in both sources (lorcana-cards.raw.json and lorcast-cards.json). bin/build_db.dart uses the text here instead. Only the official printed wording goes here, with what was wrong.",
+  "Falling Down The Rabbit Hole": {
+    "text": "Each player chooses one of their characters and puts them into their inkwell facedown and exerted.",
+    "why": "The bulk text says \"facedown and excreted\". Lorcast's text for the card (listed as \"Falling Down the Rabbit Hole\", so the name-matched fill misses it) and the printed card say \"facedown and exerted\"."
+  },
   "Mulan - Imperial General": {
     "text": "Shift 5 (You may pay 5 {i} to play this on top of one of your characters named Mulan.)\nEvasive (Only characters with Evasive can challenge this character.)\nEXCEPTIONAL LEADER Whenever this character challenges another character, your other characters gain \"This character can challenge ready characters\" this turn.",
     "why": "Bulk text has a stray quote after the story name (EXCEPTIONAL LEADER\"); Lorcast's text."

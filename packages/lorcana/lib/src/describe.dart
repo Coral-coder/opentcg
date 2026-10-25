@@ -21,6 +21,7 @@ String _trig(Trigger t) => switch (t) {
   Draws(:final by, :final nth, :final theirTurn) => '${by.name} draw${nth > 0 ? ' #$nth' : ''}${theirTurn ? ' in their turn' : ''}',
   MovedHere() => 'moved here',
   S4Trigger() => t.describeWith(describeEffect),
+  W1Trigger() => t.describe(),
   On(:final what, :final self, :final subject, :final by, :final min, :final max, :final nth) =>
     '${what.name}(${self ? 'this' : (subject?.describe() ?? 'any')}${by == Owner.any ? '' : ' by ${by.name}'}${min > 0 ? ' ≥$min' : ''}${max != null ? ' ≤$max' : ''}${nth > 0 ? ' #$nth' : ''})',
 };
@@ -55,6 +56,7 @@ String _static(StaticEffect e) => switch (e) {
   S4Static() => e.describeWith(describeEffect),
   ShiftName(:final name) => 'counts as named ${name ?? 'anything'} for Shift',
   S3Static() => e.describe(_s3),
+  W1Static() => e.describe(),
 };
 
 String _cond(Cond c) => switch (c) {
@@ -86,6 +88,7 @@ String _cond(Cond c) => switch (c) {
   S4Cond() => c.describeWith(describeEffect),
   BanishedThisTurn(:final filter, :final inChallenge) => '${filter.describe()} banished${inChallenge ? ' in a challenge' : ''} this turn',
   S3Cond() => c.describe(_s3),
+  W1Cond() => c.describe(),
 };
 
 String _zone(ZoneEffect e) => switch (e) {
@@ -114,6 +117,7 @@ String _amt(Amount a) => switch (a) {
   S4Amount() => a.describeWith(describeEffect),
   UnderSelf(:final times) => '$times×cards under this',
   S3Amount() => a.describe(_s3),
+  W1Amount() => a.describe(),
 };
 
 String _tgt(Target t) => switch (t) {
@@ -131,6 +135,7 @@ String describeEffect(Effect e) => switch (e) {
   ZoneEffect() => _zone(e),
   S3Effect() => e.describe(_s3),
   S4Effect() => e.describeWith(describeEffect),
+  W1Effect() => e.describe(),
   Seq(:final steps) => steps.map(describeEffect).join('; '),
   May(e: final x) => 'MAY(${describeEffect(x)})',
   If(:final cond, :final then, :final otherwise) => 'IF ${_cond(cond)} THEN ${describeEffect(then)}${otherwise == null ? '' : ' ELSE ${describeEffect(otherwise)}'}',

@@ -106,6 +106,7 @@ extension GameChars on Game {
           default:
         }
       }
+      _w1ApplyChars(id, ch);
       _applyChallengerMods(id, ch);
       _s3Chars(id, ch);
       // "This character can't gain Evasive": only a printed Evasive stays.
@@ -139,7 +140,7 @@ extension GameChars on Game {
       }
     }
     out.sortStable((a, b) => a.$4 - b.$4);
-    return [for (final x in out) (x.$1, x.$2, x.$3)];
+    return _w1DropLost([for (final x in out) (x.$1, x.$2, x.$3)]);
   }
 
   /// Does [id] match [f], from the point of view of [controller] and the [source] card?
@@ -153,7 +154,7 @@ extension GameChars on Game {
     if (f.owner == Owner.yours && o.owner != controller) return false;
     if (f.owner == Owner.opposing && o.owner == controller) return false;
     if (f.other && id == source) return false;
-    if (f.classes.isNotEmpty && !f.classes.any(c.hasClass) && !_s4GainedClass(id, f.classes)) return false;
+    if (f.classes.isNotEmpty && !f.classes.any((x) => c.hasClass(x) || _w1HasClass(id, x)) && !_s4GainedClass(id, f.classes)) return false;
     if (f.named != null && !f.nameMatches(c.names)) return false;
     if (f.notNamed != null && c.names.any((n) => n.toLowerCase() == f.notNamed!.toLowerCase())) return false;
     if (f.ink != null && !c.inks.contains(f.ink)) return false;
