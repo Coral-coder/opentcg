@@ -150,6 +150,8 @@ void main() {
     await tester.tap(find.text('My Emerald/Sapphire').last);
     await tester.pumpAndSettle();
     await _save(tester, 'lorcana-home');
+    // Below the tutorial's first-visit offer on a phone.
+    await tester.scrollUntilVisible(find.text('Play the computer'), 200);
     await tester.tap(find.text('Play the computer'));
     await tester.pump(const Duration(milliseconds: 300));
     final s = store.session!;

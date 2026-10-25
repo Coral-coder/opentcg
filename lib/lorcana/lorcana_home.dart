@@ -12,6 +12,7 @@ import 'lorcana_lobbies.dart';
 import 'lorcana_store.dart';
 import 'lorcana_table.dart';
 import 'lorcana_theme.dart';
+import 'tutorial/tutorial_table.dart';
 
 /// Lorcana's menu: play the computer or a friend on this device with saved, starter or random
 /// decks; build decks and browse the cards.
@@ -102,6 +103,32 @@ class _LorcanaHomeState extends State<LorcanaHome> {
                   }),
                   const SizedBox(height: 16),
                 ],
+                // The first visit offers the guided game, until it's taken or dismissed.
+                if (!store.tutorialOffered) ...[
+                  GildedPanel(
+                    title: 'New to Lorcana?',
+                    glow: t.accent,
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      Text('Play a short guided game: it shows you how to ink, play, quest, challenge and sing, step by step.', style: t.body),
+                      const SizedBox(height: 12),
+                      Row(children: [
+                        Expanded(child: GoldButton('Not now', color: const Color(0xFF3E4C9E), onPressed: () => setState(store.markTutorialOffered))),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          flex: 2,
+                          child: GoldButton('Start the guided game', icon: Icons.school, onPressed: () async {
+                            store.markTutorialOffered();
+                            await openLorcanaTutorial(context);
+                            if (mounted) setState(() {});
+                          }),
+                        ),
+                      ]),
+                    ]),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                GoldButton('Learn to play', subtitle: 'A guided first game, the rules in 9 pages', icon: Icons.school, color: const Color(0xFF7B5BD6), onPressed: () => _push(const LorcanaLearnScreen())),
+                const SizedBox(height: 16),
                 GildedPanel(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     DeckChooser(label: 'Your deck', value: mine, onChanged: (c) => setState(() => mine = c)),

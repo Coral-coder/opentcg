@@ -9,6 +9,9 @@ import 'lorcana_playable.dart';
 import 'lorcana_session.dart';
 import 'lorcana_store.dart';
 import 'lorcana_theme.dart';
+import 'tutorial/quick_reference.dart';
+import 'tutorial/tutorial_controller.dart';
+import 'tutorial/tutorial_script.dart' show CoachStep;
 
 /// The Lorcana table: the opponent's lore and play area on top, yours below, your hand and what
 /// to do now at the bottom. Everything you can do this moment glows and carries a badge (worked
@@ -81,7 +84,7 @@ class _LorcanaTableState extends State<LorcanaTable> {
                     Expanded(child: _PlayArea(view: view, player: me, cardWidth: cardW)),
                     _PlayerStrip(session: s, player: me, onCard: (id) => _showCard(context, s, pl, id)),
                     _Hand(view: view, cardWidth: handW),
-                    _PromptBar(session: s, playable: pl, aim: _aim, onDecide: () => _ask(context, s), onCancelAim: () => setState(() => _aim = null)),
+                    _PromptBar(session: s, playable: pl, aim: _aim, onDecide: () => _ask(context, s), onMove: (m) => _perform(s, m), onCancelAim: () => setState(() => _aim = null)),
                   ]);
                 }),
               ),
@@ -106,14 +109,30 @@ class _LorcanaTableState extends State<LorcanaTable> {
     final d = s.match.pending?.decision;
     if (d == null || d.player != s.localSeat || _dialogOpen) return;
     _dialogOpen = true;
-    final answer = await showDialog<List<int>>(context: context, barrierDismissible: false, builder: (_) => LorcanaScope(child: _DecisionDialog(session: s, decision: d)));
+    final note = TutorialScope.maybeOf(context)?.dialogNote;
+    final answer = await showDialog<List<int>>(context: context, barrierDismissible: false, builder: (_) => LorcanaScope(child: _DecisionDialog(session: s, decision: d, note: note)));
     _dialogOpen = false;
-    if (answer != null) s.perform(AnswerMove(s.localSeat, answer));
+    // A tutorial that wants another answer asks again.
+    if (answer != null && mounted && !_perform(s, AnswerMove(s.localSeat, answer))) setState(() {});
   }
 
-  void _perform(LorcanaSession s, LMove m) {
+  /// Makes [m] for the local player, unless the tutorial running this table wants another move
+  /// (then it says which). Every move goes through here: the sheet's buttons, a one-tap quest, an
+  /// aimed target, End turn and the choice dialog. Uses the table's own context, which the
+  /// tutorial's scope is above (a sheet or dialog is not).
+  bool _perform(LorcanaSession s, LMove m) {
+    final tut = TutorialScope.maybeOf(context);
+    final hint = tut?.blocked(m);
+    if (hint != null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(hint), duration: const Duration(seconds: 3)));
+      return false;
+    }
     setState(() => _aim = null);
-    s.perform(m);
+    final ok = s.perform(m);
+    if (ok) tut?.performed(m);
+    return ok;
   }
 
   /// One tap: picks the target of a challenge/move/song/shift being aimed; a character whose
@@ -123,7 +142,10 @@ class _LorcanaTableState extends State<LorcanaTable> {
     final aim = _aim;
     if (aim != null) {
       final m = aim.targets[id];
-      if (m != null) return _perform(s, m);
+      if (m != null) {
+        _perform(s, m);
+        return;
+      }
       setState(() => _aim = null);
       if (id == aim.source) return;
     }
@@ -136,7 +158,10 @@ class _LorcanaTableState extends State<LorcanaTable> {
   }
 
   void _choose(LorcanaSession s, _Option o) {
-    if (o.move != null) return _perform(s, o.move!);
+    if (o.move != null) {
+      _perform(s, o.move!);
+      return;
+    }
     setState(() => _aim = o.aim);
   }
 
@@ -153,6 +178,12 @@ class _LorcanaTableState extends State<LorcanaTable> {
       } else {
         out.add(_Option(_label(g, m, id), kind, move: m));
       }
+    }
+    // From the other end: an opposing card your characters can challenge, a location of yours
+    // they can move to.
+    for (final m in pl.moves) {
+      if (m is ChallengeMove && m.target == id) out.add(_Option('Challenge it with ${g.card(m.card).fullName}', CardAction.challenge, move: m));
+      if (m is MoveMove && m.location == id) out.add(_Option('Move ${g.card(m.card).fullName} here', CardAction.move, move: m));
     }
     // The obvious thing first: play, quest, challenge…; ink last (ties keep the engine's order).
     final order = [for (var i = 0; i < out.length; i++) i]..sort((a, b) {
@@ -205,6 +236,8 @@ class _LorcanaTableState extends State<LorcanaTable> {
   void _showCard(BuildContext context, LorcanaSession s, Playable pl, CardId id) {
     final g = s.match;
     final options = _options(g, pl, id);
+    final tut = TutorialScope.maybeOf(context);
+    bool wanted(_Option o) => tut != null && (o.move != null ? tut.wants(o.move!) : o.aim!.targets.values.any(tut.wants));
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -234,10 +267,14 @@ class _LorcanaTableState extends State<LorcanaTable> {
                   for (final o in options)
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
-                      child: GoldButton(o.label, icon: actionIcon(o.kind), color: o.kind == CardAction.ink ? const Color(0xFF3E6FD8) : null, onPressed: () {
-                        Navigator.pop(sheet);
-                        _choose(s, o);
-                      }),
+                      child: TutorialGlow(
+                        on: wanted(o),
+                        radius: 16,
+                        child: GoldButton(o.label, icon: actionIcon(o.kind), color: o.kind == CardAction.ink ? const Color(0xFF3E6FD8) : null, onPressed: () {
+                          Navigator.pop(sheet);
+                          _choose(s, o);
+                        }),
+                      ),
                     ),
                 ]),
               ),
@@ -316,6 +353,7 @@ class _TopBar extends StatelessWidget {
             Text('Race to 20 lore · you ${me.lore} — ${opp.lore} ${opp.name}', style: t.style(12, color: t.muted), maxLines: 1, overflow: TextOverflow.ellipsis),
           ]),
         ),
+        IconButton(icon: Icon(Icons.help_outline, color: t.accent), tooltip: 'How to play: the turn and every keyword', onPressed: () => showLorcanaQuickReference(context)),
         IconButton(icon: Icon(Icons.auto_stories, color: t.accent), tooltip: 'Game log', onPressed: () => _showLog(context, st)),
         PopupMenuButton<String>(
           icon: Icon(Icons.more_vert, color: t.accent),
@@ -768,7 +806,7 @@ class _TableCard extends StatelessWidget {
       child: _Arrive(
         child: Padding(
           padding: EdgeInsets.only(bottom: width * 0.08),
-          child: _CardDress(look: look, width: o.exerted ? h : width, questLore: c.loreAtLeast0, dryMark: c.type == CardType.character && !o.dry, child: turned),
+          child: TutorialGlow(id: id, radius: width * 0.07, child: _CardDress(look: look, width: o.exerted ? h : width, questLore: c.loreAtLeast0, dryMark: c.type == CardType.character && !o.dry, child: turned)),
         ),
       ),
     );
@@ -853,7 +891,7 @@ class _Hand extends StatelessWidget {
                 lift: playable ? 10 : 0,
                 onTap: () => view.onTap(id),
                 onLongPress: () => view.onLongPress(id),
-                child: _CardDress(look: look, width: cardWidth, child: LorcanaCardView(card: g.card(id), width: cardWidth)),
+                child: TutorialGlow(id: id, radius: cardWidth * 0.07, child: _CardDress(look: look, width: cardWidth, child: LorcanaCardView(card: g.card(id), width: cardWidth))),
               );
             }),
           ),
@@ -863,11 +901,12 @@ class _Hand extends StatelessWidget {
 }
 
 class _PromptBar extends StatelessWidget {
-  const _PromptBar({required this.session, required this.playable, required this.aim, required this.onDecide, required this.onCancelAim});
+  const _PromptBar({required this.session, required this.playable, required this.aim, required this.onDecide, required this.onMove, required this.onCancelAim});
   final LorcanaSession session;
   final Playable playable;
   final _Aim? aim;
   final VoidCallback onDecide, onCancelAim;
+  final void Function(LMove) onMove;
 
   @override
   Widget build(BuildContext context) {
@@ -891,7 +930,11 @@ class _PromptBar extends StatelessWidget {
     } else if (session.isLocalTurn) {
       line = 'Your turn';
       detail = playableSummary(playable);
-      button = GoldButton('End turn', icon: Icons.nights_stay, pulse: playable.usefulCount == 0, onPressed: () => session.perform(EndTurnMove(session.localSeat)));
+      button = TutorialGlow(
+        id: CoachStep.endTurnButton,
+        radius: 16,
+        child: GoldButton('End turn', icon: Icons.nights_stay, pulse: playable.usefulCount == 0, onPressed: () => onMove(EndTurnMove(session.localSeat))),
+      );
     } else {
       line = session.isLinked ? 'Waiting for ${g.state.player(g.state.active).name}…' : (session.thinking ? '${g.state.player(g.state.active).name} is thinking…' : '${g.state.player(g.state.active).name}’s turn');
     }
@@ -969,9 +1012,12 @@ class _News extends StatelessWidget {
 
 /// Answers a decision: pick cards, yes/no, an option, or confirm an order.
 class _DecisionDialog extends StatefulWidget {
-  const _DecisionDialog({required this.session, required this.decision});
+  const _DecisionDialog({required this.session, required this.decision, this.note});
   final LorcanaSession session;
   final Decision decision;
+
+  /// The tutorial's advice for this choice.
+  final String? note;
   @override
   State<_DecisionDialog> createState() => _DecisionDialogState();
 }
@@ -990,9 +1036,17 @@ class _DecisionDialogState extends State<_DecisionDialog> {
       if (source != null) Padding(padding: const EdgeInsets.only(right: 10), child: LorcanaCardView(card: source, width: 46)),
       Expanded(child: Text(d.prompt, style: t.style(17, weight: FontWeight.w700, color: t.highlight))),
     ]);
+    final note = widget.note == null
+        ? null
+        : Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: t.accent.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10), border: Border.all(color: t.accent)),
+            child: Text(widget.note!, style: t.style(13, weight: FontWeight.w600)),
+          );
     switch (d.kind) {
       case DecisionKind.yesNo:
-        return AlertDialog(title: title, actions: [
+        return AlertDialog(title: title, content: note, actions: [
           TextButton(onPressed: () => Navigator.pop(context, const [0]), child: const Text('No')),
           SizedBox(width: 120, child: GoldButton('Yes', onPressed: () => Navigator.pop(context, const [1]))),
         ]);
@@ -1000,6 +1054,7 @@ class _DecisionDialogState extends State<_DecisionDialog> {
         return AlertDialog(
           title: title,
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            ?note,
             for (var i = 0; i < d.labels.length; i++) Padding(padding: const EdgeInsets.only(top: 8), child: GoldButton(d.labels[i], onPressed: () => Navigator.pop(context, [i]))),
           ]),
         );
@@ -1016,7 +1071,9 @@ class _DecisionDialogState extends State<_DecisionDialog> {
           content: SizedBox(
             width: 540,
             child: SingleChildScrollView(
-              child: Wrap(spacing: 8, runSpacing: 8, children: [
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                ?note,
+                Wrap(spacing: 8, runSpacing: 8, children: [
                 for (var i = 0; i < d.options.length; i++)
                   Builder(builder: (context) {
                     final id = d.options[i];
@@ -1042,6 +1099,7 @@ class _DecisionDialogState extends State<_DecisionDialog> {
                       ),
                     );
                   }),
+                ]),
               ]),
             ),
           ),

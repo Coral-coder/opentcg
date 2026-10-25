@@ -25,7 +25,10 @@ class LorcanaCardView extends StatelessWidget {
     final h = width * 7 / 5;
     final url = card.printings.isEmpty ? '' : card.printings.last.image;
     final frame = _TextFrame(card: card, width: width);
-    return SizedBox(
+    return Semantics(
+      label: card.fullName,
+      image: true,
+      child: SizedBox(
       width: width,
       height: h,
       child: ClipRRect(
@@ -40,6 +43,7 @@ class LorcanaCardView extends StatelessWidget {
                 errorBuilder: (context, e, st) => frame,
               ),
       ),
+    ),
     );
   }
 }
