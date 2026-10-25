@@ -30,6 +30,8 @@ extension GameEffects on Game {
     StatOf(:final target, :final stat) => _statOf(target, stat, ctx),
     HandSize(:final who, :final per) => per * _players(who, ctx).fold<int>(0, (s, p) => s + state.player(p).hand.length),
     DamageOn() => _boardAmount(a, ctx),
+    DamageOnSelf(:final per, :final times) => times * ((state.objOrNull(ctx.source)?.damage ?? 0) ~/ per),
+    UnderSelf(:final times) => times * (state.objOrNull(ctx.source)?.under.length ?? 0),
   };
 
   int _statOf(Target t, Stat stat, _Ctx ctx) {
@@ -84,6 +86,8 @@ extension GameEffects on Game {
         return _evalZoneCond(c, ctx);
       case TurnStatCond() || ShiftedCond() || HandCompare() || SelfDamage() || StrongestCond():
         return _evalBoardCond(c, ctx);
+      default:
+        return _evalMoreCond(c, ctx);
     }
   }
 
@@ -273,11 +277,16 @@ extension GameEffects on Game {
           }
         }
         state.version++;
-      case MoveDamage(:final from, :final to, :final amount):
+      case MoveDamage(:final from, :final to, :final amount, :final upTo):
         final a = _resolveTargets(from, ctx);
         final b = _resolveTargets(to, ctx);
         if (a.isEmpty || b.isEmpty) return;
-        final n = _evalAmount(amount, ctx).clamp(0, state.obj(a.first).damage);
+        var n = _evalAmount(amount, ctx).clamp(0, state.obj(a.first).damage);
+        // "Up to N" lets the player move fewer, none included (CR 6.1.3).
+        if (upTo && n > 0) {
+          final labels = [for (var k = n; k >= 0; k--) 'Move $k'];
+          n -= ask(Decision(kind: DecisionKind.option, player: ctx.controller, prompt: 'How much damage to move?', labels: labels, source: ctx.source)).first;
+        }
         state.obj(a.first).damage -= n;
         state.obj(b.first).damage += n;
         state.version++;
@@ -367,8 +376,8 @@ extension GameEffects on Game {
           _emit(_Ev(kind: _EvKind.returnedFromDiscard, card: id, player: ctx.controller));
         }
         ctx.didIt = pick.isNotEmpty;
-      case LookTop(:final n, :final pick, :final pickCount, :final restBottom, :final reorderOnly):
-        _lookTop(ctx, n, pick, pickCount, restBottom, reorderOnly);
+      case LookTop(:final n, :final pick, :final pickCount, :final restBottom, :final reorderOnly, :final mustPick, :final restInk):
+        _lookTop(ctx, n, pick, pickCount, restBottom, reorderOnly, mustPick: mustPick, restInk: restInk);
       case Mill(:final who, :final n):
         for (final p in _players(who, ctx)) {
           for (var i = 0; i < n && state.player(p).deck.isNotEmpty; i++) {
@@ -415,7 +424,7 @@ extension GameEffects on Game {
     state.version++;
   }
 
-  void _lookTop(_Ctx ctx, int n, Filter? pick, int pickCount, bool restBottom, bool reorderOnly) {
+  void _lookTop(_Ctx ctx, int n, Filter? pick, int pickCount, bool restBottom, bool reorderOnly, {bool mustPick = false, bool restInk = false}) {
     final p = ctx.controller;
     final deck = state.player(p).deck;
     final seen = deck.take(n).toList();
@@ -428,13 +437,21 @@ extension GameEffects on Game {
       ];
       if (ok.isNotEmpty) {
         final max = pickCount < ok.length ? pickCount : ok.length;
-        final take = ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Put up to $max into your hand', options: ok, min: 0, max: max, source: ctx.source));
+        final take = ask(Decision(kind: DecisionKind.cards, player: p, prompt: mustPick ? 'Put $max into your hand' : 'Put up to $max into your hand', options: ok, min: mustPick ? max : 0, max: max, source: ctx.source));
         for (final id in take) {
           _moveTo(id, Place.hand);
           rest.remove(id);
           log('${state.player(p).name} puts ${nameOf(id)} into their hand.', player: p, card: id, kind: 'draw');
         }
       }
+    }
+    if (restInk) {
+      for (final id in rest) {
+        _moveTo(id, Place.inkwell);
+        state.obj(id).exerted = true;
+      }
+      state.version++;
+      return;
     }
     if (rest.length > 1) {
       rest = ask(
@@ -470,6 +487,7 @@ extension GameEffects on Game {
     if (!put) {
       final c = chars(id);
       if (c.has(Kw.resist)) dmg -= c.n(Kw.resist);
+      if (c.rules.contains(Rule.cantBeDealtDamage)) dmg = 0;
     }
     if (dmg <= 0) return;
     o.damage += dmg;
@@ -495,6 +513,7 @@ extension GameEffects on Game {
     final info = EventInfo(card: id, other: banisher, player: o.owner, strength: c.strength, location: o.at);
     _leavePlay(id, Place.discard);
     if (inChallenge && c.type == CardType.character) state.banishedInChallengeThisTurn++;
+    state.banishedThisTurn.add('${c.card.fullName}|${o.owner}|${inChallenge ? 'c' : ''}');
     _emit(_Ev(kind: inChallenge ? _EvKind.banishedInChallenge : _EvKind.banished, card: id, other: banisher, player: o.owner, info: info, cardType: c.type));
     if (inChallenge && banisher != null && state.objOrNull(banisher)?.zone == Place.play) {
       _emit(_Ev(kind: _EvKind.banishesInChallenge, card: banisher, other: id, player: state.obj(banisher).owner));

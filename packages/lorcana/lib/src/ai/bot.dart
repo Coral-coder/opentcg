@@ -161,6 +161,8 @@ class LorcanaBot implements TcgBot {
       case DecisionKind.yesNo:
         return const [1];
       case DecisionKind.option:
+        // "Move up to N damage": all of it (the first label).
+        if (d.prompt.startsWith('How much damage to move')) return const [0];
         return [_rng.nextInt(d.labels.length)];
       case DecisionKind.order:
         return List.of(d.options);

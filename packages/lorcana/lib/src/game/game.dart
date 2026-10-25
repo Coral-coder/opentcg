@@ -27,6 +27,7 @@ part 'query.dart';
 part 'testing.dart';
 part 'zones.dart';
 part 'board.dart';
+part 'statics.dart';
 
 class NeedDecision implements Exception {
   NeedDecision(this.decision);
@@ -54,6 +55,10 @@ class Game implements TcgMatch {
   List<List<int>> _answers = const [];
   int _answerIndex = 0;
   final Map<CardId, (CardId, bool)> _lastDamageBy = {};
+
+  /// The challenger and the challenged card while challenge damage is worked out ("while being
+  /// challenged"); never set across a decision.
+  (CardId, CardId)? _challengePair;
 
   @override
   List<LMove> get moves => actions;
@@ -274,6 +279,12 @@ class Game implements TcgMatch {
     }
     s.banishedInChallengeThisTurn = 0;
     _resetTurnRecords();
+    s.banishedThisTurn = [];
+    for (final q in s.players) {
+      q.discardedThisTurn = 0;
+      q.actionsThisTurn = 0;
+      q.questsThisTurn = 0;
+    }
     // Ready (CR 3.2.1): ready everything, end "until the start of your turn" effects.
     s.timed.removeWhere((t) => t.lasting == Lasting.untilYourNextTurn && t.controller == p && t.turn < s.turn);
     final cantReady = <CardId>{
@@ -323,6 +334,7 @@ class Game implements TcgMatch {
     _turnTriggers(start: false);
     _resolveBag();
     if (s.over) return;
+    _endTemporaryShifts(p);
     s.timed.removeWhere((t) => t.lasting == Lasting.thisTurn || (t.lasting == Lasting.theirNextTurn && t.turn < s.turn && _ownerOfAffected(t) == p));
     s.reductions.clear();
     s.lingering.removeWhere((l) => !l.delayedEnd);
@@ -360,7 +372,7 @@ class Game implements TcgMatch {
     for (var loop = 0; loop < 50 && !s.over; loop++) {
       var changed = false;
       for (var p = 0; p < s.players.length; p++) {
-        if (s.player(p).lore >= 20 && !s.player(p).lost) {
+        if (s.player(p).lore >= loreToWin(p) && !s.player(p).lost) {
           s.winner = p;
           s.phase = Phase.over;
           log('${s.player(p).name} reaches ${s.player(p).lore} lore and wins!', player: p, kind: 'win');
@@ -433,8 +445,10 @@ class Game implements TcgMatch {
         }
       }
     }
+    if (to == Place.discard && from != Place.discard) pl.discardedThisTurn++;
     o.zone = to;
     o.zcc++;
+    o.temporaryShift = false;
     o.exerted = exerted;
     o.damage = 0;
     o.dry = false;

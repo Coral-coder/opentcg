@@ -44,7 +44,14 @@ extension GameChars on Game {
     }
     if (o.zone != Place.play || !_inProgress.add(id)) return ch;
     try {
+      // Statics conditioned on their own card's values ("while this character has 4 {s} or
+      // more") are applied after everything else, against the values so far.
+      final selfStat = <(CardId, Static, int)>[];
       for (final (src, st, ctl) in _statics()) {
+        if (st.condition is SelfStat || (st.condition is AllConds && (st.condition as AllConds).conds.any((c) => c is SelfStat))) {
+          selfStat.add((src, st, ctl));
+          continue;
+        }
         final e = st.effect;
         final Filter? affected = switch (e) {
           StaticMod(:final affected) => affected,
@@ -75,6 +82,29 @@ extension GameChars on Game {
         if (t.keyword != null) ch.addKeyword(t.keyword!);
         if (t.rule != null) ch.rules.add(t.rule!);
       }
+      for (final (src, st, ctl) in selfStat) {
+        final e = st.effect;
+        final Filter? affected = switch (e) {
+          StaticMod(:final affected) => affected,
+          StaticKeyword(:final affected) => affected,
+          StaticRule(:final affected) => affected,
+          _ => null,
+        };
+        if (affected == null ? src != id : !matches(affected, id, controller: ctl, source: src)) continue;
+        if (!_selfStatHolds(st.condition!, src, ctl, src == id ? ch : null)) continue;
+        switch (e) {
+          case StaticMod(:final stat, :final amount, :final negative):
+            _addStat(ch, stat, _evalAmount(amount, _Ctx(this, controller: ctl, source: src)) * (negative ? -1 : 1));
+          case StaticKeyword(:final keyword):
+            ch.addKeyword(keyword);
+          case StaticRule(:final rule):
+            ch.rules.add(rule);
+          default:
+        }
+      }
+      _applyChallengerMods(id, ch);
+      // "This character can't gain Evasive": only a printed Evasive stays.
+      if (ch.rules.contains(Rule.cantGainEvasive) && !LorcanaParser.parse(c).abilities.any((a) => a is KeywordAbility && a.keyword.kw == Kw.evasive)) ch.keywords.remove(Kw.evasive);
     } finally {
       _inProgress.remove(id);
     }

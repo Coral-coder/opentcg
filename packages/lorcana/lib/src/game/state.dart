@@ -40,6 +40,9 @@ class Obj {
 
   /// The [zcc] at which it entered play by Shift ("if you used Shift to play him"), else -1.
   int shiftedZcc = -1;
+  /// Played with Temporary Shift: goes back to the hand at the end of its player's turn
+  /// (CR 8.10.8.5).
+  bool temporaryShift = false;
 
   Obj clone() => Obj(id: id, card: card, owner: owner, zone: zone)
     ..zcc = zcc
@@ -52,11 +55,12 @@ class Obj {
     ..timestamp = timestamp
     ..enteredTurn = enteredTurn
     ..usedOn = Map.of(usedOn)
-    ..shiftedZcc = shiftedZcc;
+    ..shiftedZcc = shiftedZcc
+    ..temporaryShift = temporaryShift;
 
   String digest() {
     final used = (usedOn.keys.toList()..sortStable((a, b) => a - b)).map((k) => '$k:${usedOn[k]}').join(',');
-    return '$id.$zcc|${card.length}:$card|$owner|${zone.index}|$exerted|$damage|$dry|${at ?? ''}|${under.join(',')}|$faceDown|$timestamp|$enteredTurn|$used|$shiftedZcc';
+    return '$id.$zcc|${card.length}:$card|$owner|${zone.index}|$exerted|$damage|$dry|${at ?? ''}|${under.join(',')}|$faceDown|$timestamp|$enteredTurn|$used|$shiftedZcc${temporaryShift ? '|t' : ''}';
   }
 }
 
@@ -88,6 +92,9 @@ class Player {
   int inkPutThisTurn = 0;
   int actionsThisTurn = 0;
 
+  /// This turn: cards put into their discard, quests by their characters.
+  int discardedThisTurn = 0, questsThisTurn = 0;
+
   List<CardId> zone(Place z) => switch (z) {
     Place.deck => deck,
     Place.hand => hand,
@@ -110,10 +117,12 @@ class Player {
     ..turnStats = List.of(turnStats)
     ..playedThisTurn = List.of(playedThisTurn)
     ..inkPutThisTurn = inkPutThisTurn
-    ..actionsThisTurn = actionsThisTurn;
+    ..actionsThisTurn = actionsThisTurn
+    ..discardedThisTurn = discardedThisTurn
+    ..questsThisTurn = questsThisTurn;
 
   String digest() =>
-      '${name.length}:$name|${deck.join(',')}|${hand.join(',')}|${play.join(',')}|${inkwell.join(',')}|${discard.join(',')}|$lore|$lost|$altered|$inkedThisTurn|$drawnThisTurn|${turnStats.join(',')}|${playedThisTurn.join(',')}|$inkPutThisTurn|$actionsThisTurn';
+      '${name.length}:$name|${deck.join(',')}|${hand.join(',')}|${play.join(',')}|${inkwell.join(',')}|${discard.join(',')}|$lore|$lost|$altered|$inkedThisTurn|$drawnThisTurn|${turnStats.join(',')}|${playedThisTurn.join(',')}|$inkPutThisTurn|$actionsThisTurn|$discardedThisTurn|$questsThisTurn';
 }
 
 /// What a triggered ability is about (CR 6.2): the card, the other card, the player, an amount,
@@ -271,6 +280,9 @@ class GameState {
 
   /// Opposing characters banished in a challenge this turn, and characters banished this turn.
   int banishedInChallengeThisTurn = 0;
+
+  /// Cards banished this turn as "fullName|owner|c" (c: in a challenge), for conditions.
+  List<String> banishedThisTurn = [];
   int version = 0;
   List<LogEntry> log = [];
 
@@ -301,6 +313,7 @@ class GameState {
       ..reductions = List.of(reductions)
       ..lingering = List.of(lingering)
       ..banishedInChallengeThisTurn = banishedInChallengeThisTurn
+      ..banishedThisTurn = List.of(banishedThisTurn)
       ..version = version + 1
       ..log = List.of(log);
     return s;
@@ -310,7 +323,7 @@ class GameState {
 
   /// Canonical text of everything that matters for the rules.
   String digest() {
-    final b = StringBuffer('l1|$seed|${rng.state}|$nextId|$nextTs|$turn|$active|$firstPlayer|${phase.index}|${winner ?? ''}|$nextBagId|${bagTurn ?? ''}|$banishedInChallengeThisTurn\n');
+    final b = StringBuffer('l1|$seed|${rng.state}|$nextId|$nextTs|$turn|$active|$firstPlayer|${phase.index}|${winner ?? ''}|$nextBagId|${bagTurn ?? ''}|$banishedInChallengeThisTurn|${banishedThisTurn.map((x) => '${x.length}:$x').join(',')}\n');
     for (final p in players) {
       b.writeln(p.digest());
     }

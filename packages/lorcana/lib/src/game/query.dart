@@ -19,10 +19,16 @@ extension GameQuery on Game {
       for (final onto in shiftTargets(p, id)) {
         add(PlayMove(p, id, mode: PlayMode.shift, onto: onto));
       }
+      for (final (a, b) in duoShiftTargets(p, id)) {
+        add(PlayMove(p, id, mode: PlayMode.shift, onto: a, onto2: b));
+      }
       final c = db[s.obj(id).card]!;
       if (c.isSong) {
         for (final singer in pl.play) {
           add(PlayMove(p, id, mode: PlayMode.sing, singers: [singer]));
+        }
+        for (final group in _singTogetherGroups(p, id)) {
+          add(PlayMove(p, id, mode: PlayMode.sing, singers: group));
         }
       }
     }
@@ -42,6 +48,30 @@ extension GameQuery on Game {
       }
     }
     add(EndTurnMove(p));
+    return out;
+  }
+
+  /// Groups of two or more singers for a Sing Together song (CR 8.12): the fewest singers (the
+  /// costliest first) and the cheapest ones (the cheapest first) whose total cost reaches N.
+  List<List<CardId>> _singTogetherGroups(int p, CardId song) {
+    final k = LorcanaParser.parse(db[state.obj(song).card]!).abilities.whereType<KeywordAbility>().where((a) => a.keyword.kw == Kw.singTogether).firstOrNull;
+    if (k == null) return const [];
+    final able = [
+      for (final id in state.player(p).play)
+        if (chars(id).type == CardType.character && _canExertToPay(p, id) && !chars(id).rules.contains(Rule.cantSing)) id,
+    ];
+    final out = <List<CardId>>[];
+    for (final desc in [true, false]) {
+      final order = List.of(able)..sortStable((a, b) => desc ? _singCost(b) - _singCost(a) : _singCost(a) - _singCost(b));
+      final group = <CardId>[];
+      var total = 0;
+      for (final id in order) {
+        if (total >= k.keyword.n) break;
+        group.add(id);
+        total += _singCost(id);
+      }
+      if (group.length > 1 && total >= k.keyword.n && !out.any((g) => g.length == group.length && g.every(group.contains))) out.add(group);
+    }
     return out;
   }
 

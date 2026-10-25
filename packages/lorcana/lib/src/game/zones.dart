@@ -207,8 +207,9 @@ extension GameZones on Game {
           _send(id, discard ? ZoneDest.discard : ZoneDest.top, owner, ctx);
         }
       default:
+        // "…and the other into your inkwell facedown and exerted" is the only wording there is.
         for (final id in rest) {
-          _send(id, dest, owner, ctx);
+          _send(id, dest, owner, ctx, exerted: dest == ZoneDest.inkwell);
         }
     }
   }

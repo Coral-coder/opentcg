@@ -6,6 +6,7 @@ import 'package:tcg_core/tcg_core.dart';
 
 import 'cards/card.dart';
 import 'cards/card_db.dart';
+import 'ir.dart';
 import 'parser/parser.dart';
 
 /// Problems with [deck] for Constructed play, empty when it's legal.
@@ -27,7 +28,10 @@ List<String> validateDeck(LCardDb db, List<String> deck, {bool supportedOnly = t
   if (inks.length > 2) out.add('At most two ink types (${inks.map((i) => i.label).join(', ')}).');
   final names = counts.keys.toList()..sortStable((a, b) => a.compareTo(b));
   for (final n in names) {
-    if (counts[n]! > 4) out.add('At most 4 copies of $n (${counts[n]}).');
+    // "You may have up to 99 copies…" / "any number of cards named…" (CR 1.10.1.1 exception).
+    final limit = LorcanaParser.parse(db[n]!).abilities.whereType<Static>().map((a) => a.effect).whereType<DeckLimit>().firstOrNull;
+    final max = limit == null ? 4 : limit.max;
+    if (max != null && counts[n]! > max) out.add('At most $max copies of $n (${counts[n]}).');
   }
   return out;
 }
