@@ -132,6 +132,7 @@ extension GameTurnActions on Game {
         break;
       }
     }
+    cost += _w1CostDelta(p, id);
     return cost < 0 ? 0 : cost;
   }
 
@@ -139,7 +140,7 @@ extension GameTurnActions on Game {
     for (final a in LorcanaParser.parse(db[state.obj(id).card]!).abilities) {
       if (a is KeywordAbility && a.keyword.kw == Kw.shift) return a.keyword;
     }
-    return null;
+    return _w1HandShift(id);
   }
 
   /// Single cards [card] can be shifted onto (CR 8.10.1, 8.10.8.1–8.10.8.2, 8.10.8.4–8.10.8.6).
@@ -197,7 +198,7 @@ extension GameTurnActions on Game {
   /// The cost [singer] counts as for singing (Singer N; CR 8.11).
   int _singCost(CardId singer) {
     final c = chars(singer);
-    return c.has(Kw.singer) ? c.n(Kw.singer) : c.cost;
+    return (c.has(Kw.singer) ? c.n(Kw.singer) : c.cost) + _w1SingBonus(singer);
   }
 
   bool _canExertToPay(int p, CardId id) {
@@ -211,9 +212,11 @@ extension GameTurnActions on Game {
     final o = s.objOrNull(m.card);
     if (o == null || o.zone != Place.hand || o.owner != p) return 'That card isn’t in your hand';
     final c = db[o.card]!;
+    final w1 = _w1PlayProblem(p, m.card);
+    if (w1 != null) return w1;
     switch (m.mode) {
       case PlayMode.ink:
-        if (_inkReady(p) < playCost(p, m.card)) return 'Not enough ink (${playCost(p, m.card)} needed, ${_inkReady(p)} ready)';
+        if (_inkReady(p) < playCost(p, m.card) && !_w1CanBanishToPlay(p, m.card)) return 'Not enough ink (${playCost(p, m.card)} needed, ${_inkReady(p)} ready)';
         return null;
       case PlayMode.shift:
         final k = _shiftOf(m.card);
@@ -229,7 +232,7 @@ extension GameTurnActions on Game {
           if (_shiftDiscardOptions(p, m.card, d).length < d.count) return 'Not enough cards to discard for Shift';
           return null;
         }
-        if (_inkReady(p) < _shiftCost(p, m.card, k)) return 'Not enough ink to shift';
+        if (_inkReady(p) < _shiftCost(p, m.card, k, m.onto)) return 'Not enough ink to shift';
         return null;
       case PlayMode.sing:
         if (!c.isSong) return 'Only songs can be sung';
@@ -248,7 +251,7 @@ extension GameTurnActions on Game {
     }
   }
 
-  int _shiftCost(int p, CardId card, Keyword k) {
+  int _shiftCost(int p, CardId card, Keyword k, [CardId? onto]) {
     var cost = k.n;
     for (final r in state.reductions) {
       if (r.player == p && matches(r.filter, card, controller: p, place: Place.hand)) {
@@ -256,6 +259,7 @@ extension GameTurnActions on Game {
         break;
       }
     }
+    cost -= _w1ShiftDiscount(p, card, onto);
     return cost < 0 ? 0 : cost;
   }
 
@@ -269,7 +273,11 @@ extension GameTurnActions on Game {
     switch (m.mode) {
       case PlayMode.ink:
         paid = playCost(p, id);
-        _payInk(p, paid);
+        if (_w1PayByBanishing(p, id, paid)) {
+          paid = 0;
+        } else {
+          _payInk(p, paid);
+        }
       case PlayMode.shift:
         final k = _shiftOf(id)!;
         final d = k.shiftDiscard;
@@ -281,7 +289,7 @@ extension GameTurnActions on Game {
           }
           paid = 0;
         } else {
-          paid = _shiftCost(p, id, k);
+          paid = _shiftCost(p, id, k, m.onto);
           _payInk(p, paid);
         }
       case PlayMode.sing:
@@ -290,6 +298,7 @@ extension GameTurnActions on Game {
         }
     }
     // "Whenever you pay N ink or less to play a card" (CR 4.3.2.4).
+    if (paid >= 0) _w1Paid(p, id);
     if (paid >= 0) _emit(_Ev(kind: _EvKind.inkPaid, card: id, player: p, amount: paid));
     final ri = s.reductions.indexWhere((r) => r.player == p && matches(r.filter, id, controller: p, place: Place.hand));
     if (ri >= 0) s.reductions.removeAt(ri);
@@ -429,7 +438,7 @@ extension GameTurnActions on Game {
     return [
       for (final q in state.opponents(p))
         for (final id in state.player(q).play)
-          if (chars(id).type == CardType.location || (chars(id).type == CardType.character && (state.obj(id).exerted || _mayChallengeReady(rules, id)))) id,
+          if (chars(id).type == CardType.location || (chars(id).type == CardType.character && (state.obj(id).exerted || _mayChallengeReady(rules, id) || _w1ChallengeReady(attacker, id)))) id,
     ];
   }
 
@@ -447,7 +456,7 @@ extension GameTurnActions on Game {
     if (!a.dry && !ac.has(Kw.rush)) return '${ac.card.name} is still drying (Rush lets a character challenge right away)';
     if (ac.rules.contains(Rule.cantChallenge)) return '${ac.card.name} can’t challenge';
     if (dc.type == CardType.character) {
-      if (!d.exerted && !_mayChallengeReady(ac.rules, target)) return 'Only exerted characters can be challenged';
+      if (!d.exerted && !_mayChallengeReady(ac.rules, target) && !_w1ChallengeReady(attacker, target)) return 'Only exerted characters can be challenged';
     } else if (dc.type != CardType.location) {
       return 'Only characters and locations can be challenged';
     }
@@ -528,7 +537,7 @@ extension GameTurnActions on Game {
     final s = state;
     final o = s.objOrNull(id);
     if (o == null || o.zone != Place.play || o.owner != p) return 'That card isn’t yours in play';
-    final abs = parsed(id).abilities;
+    final abs = abilitiesOf(id);
     if (index < 0 || index >= abs.length) return 'No such ability';
     final a = abs[index];
     final c = chars(id);
@@ -539,6 +548,8 @@ extension GameTurnActions on Game {
       return null;
     }
     if (a is! Activated) return 'That isn’t an activated ability';
+    final w1 = _w1ActivateProblem(a, o, index, p);
+    if (w1 != null) return w1;
     final cost = a.cost;
     if (cost.exert) {
       if (o.exerted) return '${c.card.name} is exerted';
@@ -561,7 +572,7 @@ extension GameTurnActions on Game {
 
   void _activate(int p, CardId id, int index) {
     final s = state;
-    final a = parsed(id).abilities[index];
+    final a = abilitiesOf(id)[index];
     final o = s.obj(id);
     if (a is KeywordAbility) {
       // Boost (CR 8.4.1).
@@ -576,6 +587,7 @@ extension GameTurnActions on Game {
       o.under.insert(0, top);
       log('${nameOf(id)} boosts: a card goes facedown under it.', player: p, card: id, kind: 'ability');
       _emit(_Ev(kind: _EvKind.putUnder, card: id, player: p));
+      _emit(_Ev(kind: _EvKind.boosted, card: id, player: p));
       return;
     }
     a as Activated;
@@ -613,6 +625,7 @@ extension GameTurnActions on Game {
       final pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Banish one for the cost', options: opts, min: 1, max: 1, source: id));
       _banish(pick.first);
     }
+    _w1PayActivate(a, p, id, index);
     final lki = chars(id);
     if (cost.banishSelf) _banish(id);
     log('${s.player(p).name} uses ${a.text.split(' - ').first.split(':').first} (${lki.card.name}).', player: p, card: id, kind: 'ability');

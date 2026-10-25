@@ -32,6 +32,7 @@ extension GameEffects on Game {
     DamageOn() => _boardAmount(a, ctx),
     DamageOnSelf(:final per, :final times) => times * ((state.objOrNull(ctx.source)?.damage ?? 0) ~/ per),
     UnderSelf(:final times) => times * (state.objOrNull(ctx.source)?.under.length ?? 0),
+    W1Amount() => _w1Amount(a, ctx),
   };
 
   int _statOf(Target t, Stat stat, _Ctx ctx) {
@@ -86,6 +87,8 @@ extension GameEffects on Game {
         return _evalZoneCond(c, ctx);
       case TurnStatCond() || ShiftedCond() || HandCompare() || SelfDamage() || StrongestCond():
         return _evalBoardCond(c, ctx);
+      case W1Cond():
+        return _evalW1Cond(c, ctx);
       default:
         return _evalMoreCond(c, ctx);
     }
@@ -167,7 +170,7 @@ extension GameEffects on Game {
         }
         final cands = [
           for (final id in matching(filter, controller: ctx.controller, source: ctx.source))
-            if (!(word && state.obj(id).owner != ctx.controller && chars(id).has(Kw.ward))) id,
+            if (!(word && state.obj(id).owner != ctx.controller && chars(id).has(Kw.ward)) && !_w1Unchoosable(id, ctx.controller)) id,
         ];
         final min = upTo ? 0 : (count < cands.length ? count : cands.length);
         final max = count < cands.length ? count : cands.length;
@@ -201,6 +204,8 @@ extension GameEffects on Game {
     switch (e) {
       case ZoneEffect():
         _resolveZone(e, ctx);
+      case W1Effect():
+        _resolveW1(e, ctx);
       case Seq(:final steps):
         for (final s in steps) {
           _resolveEffect(s, ctx);
@@ -271,6 +276,7 @@ extension GameEffects on Game {
           final n = all ? o.damage : _evalAmount(amount, ctx).clamp(0, o.damage);
           o.damage -= n;
           _noteDamageRemoved(id, n);
+          _w1CountHeal(ctx, id, n);
           if (n > 0) {
             log('${nameOf(id)}: $n damage removed.', card: id, kind: 'heal', amount: n);
             _emit(_Ev(kind: _EvKind.damageRemoved, card: id, player: ctx.controller, amount: n));
@@ -490,6 +496,7 @@ extension GameEffects on Game {
       if (c.rules.contains(Rule.cantBeDealtDamage)) dmg = 0;
     }
     if (dmg <= 0) return;
+    if (!put && _w1Redirect(id, dmg, source)) return;
     o.damage += dmg;
     _lastDamageBy[id] = (source, challenge);
     state.version++;
@@ -510,7 +517,7 @@ extension GameEffects on Game {
     final banisher = dmg?.$1 ?? by;
     log('${c.card.fullName} is banished.', player: o.owner, card: id, kind: 'banish');
     // Where it was, for "whenever a character is banished while here".
-    final info = EventInfo(card: id, other: banisher, player: o.owner, strength: c.strength, location: o.at);
+    final info = EventInfo(card: id, other: banisher, player: o.owner, amount: o.under.length, strength: c.strength, location: o.at);
     _leavePlay(id, Place.discard);
     if (inChallenge && c.type == CardType.character) state.banishedInChallengeThisTurn++;
     state.banishedThisTurn.add('${c.card.fullName}|${o.owner}|${inChallenge ? 'c' : ''}');

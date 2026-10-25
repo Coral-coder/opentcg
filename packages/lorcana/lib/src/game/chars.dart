@@ -102,6 +102,7 @@ extension GameChars on Game {
           default:
         }
       }
+      _w1ApplyChars(id, ch);
       _applyChallengerMods(id, ch);
       // "This character can't gain Evasive": only a printed Evasive stays.
       if (ch.rules.contains(Rule.cantGainEvasive) && !LorcanaParser.parse(c).abilities.any((a) => a is KeywordAbility && a.keyword.kw == Kw.evasive)) ch.keywords.remove(Kw.evasive);
@@ -134,7 +135,7 @@ extension GameChars on Game {
       }
     }
     out.sortStable((a, b) => a.$4 - b.$4);
-    return [for (final x in out) (x.$1, x.$2, x.$3)];
+    return _w1DropLost([for (final x in out) (x.$1, x.$2, x.$3)]);
   }
 
   /// Does [id] match [f], from the point of view of [controller] and the [source] card?
@@ -147,7 +148,7 @@ extension GameChars on Game {
     if (f.owner == Owner.yours && o.owner != controller) return false;
     if (f.owner == Owner.opposing && o.owner == controller) return false;
     if (f.other && id == source) return false;
-    if (f.classes.isNotEmpty && !f.classes.any(c.hasClass)) return false;
+    if (f.classes.isNotEmpty && !f.classes.any((x) => c.hasClass(x) || _w1HasClass(id, x))) return false;
     if (f.named != null && !c.names.any((n) => n.toLowerCase() == f.named!.toLowerCase())) return false;
     if (f.costMax != null && c.cost > f.costMax!) return false;
     if (f.costMin != null && c.cost < f.costMin!) return false;

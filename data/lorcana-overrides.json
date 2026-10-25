@@ -1,0 +1,9 @@
+{
+  "about": "Corrections to the rules text in lorcana-cards.raw.json, applied by packages/lorcana/bin/build_db.dart. Each entry replaces one card's text with the printed wording; 'why' says what the bulk data got wrong and where the wording was checked.",
+  "cards": {
+    "Falling Down The Rabbit Hole": {
+      "text": "Each player chooses one of their characters and puts them into their inkwell facedown and exerted.",
+      "why": "The bulk text says \"facedown and excreted\". Lorcast's text for the card (listed as \"Falling Down the Rabbit Hole\", so the name-matched fill misses it) and the printed card say \"facedown and exerted\"."
+    }
+  }
+}

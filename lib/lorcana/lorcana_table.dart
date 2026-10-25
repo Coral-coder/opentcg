@@ -123,7 +123,7 @@ class _LorcanaTableState extends State<LorcanaTable> {
       QuestMove(:final card) => 'Quest (+${g.chars(card).loreAtLeast0} lore)',
       ChallengeMove(:final card, :final target) => card == id ? 'Challenge ${name(target)}' : 'Challenged by ${name(card)}',
       MoveMove(:final card, :final location) => card == id ? 'Move to ${name(location)}' : 'Move ${name(card)} here',
-      ActivateMove(:final card, :final index) => 'Use: ${g.parsed(card).abilities[index].text}',
+      ActivateMove(:final card, :final index) => 'Use: ${g.abilitiesOf(card)[index].text}',
       _ => m.toString(),
     };
   }

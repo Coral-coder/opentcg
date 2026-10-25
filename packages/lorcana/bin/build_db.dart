@@ -26,7 +26,9 @@ void main(List<String> args) {
   // Both sources transcribe the same printed text, but each mangles a few cards (merged lines,
   // lost symbols). Keep the bulk text, and switch a card to Lorcast's wording only when that's
   // the one the parser reads in full.
-  final bulk = LCardDb.fromRaw(raw, version: '${raw.length}', fill: fill);
+  // Documented corrections to the bulk text (data/lorcana-overrides.json, beside the bulk file).
+  final overrides = _overrides(File('${File(args[0]).parent.path}/lorcana-overrides.json'));
+  final bulk = _corrected(LCardDb.fromRaw(raw, version: '${raw.length}', fill: fill), overrides);
   final alt = LCardDb.fromRaw(raw, version: '${raw.length}', fill: fill, preferFill: true);
   var switched = 0;
   final db = LCardDb([
@@ -46,4 +48,38 @@ void main(List<String> args) {
   }
   File('$out/lorcana-coverage.json').writeAsStringSync(jsonEncode(cov.toJson()));
   stdout.writeln('${db.length} cards, ${cov.supported} fully supported (${(100 * cov.supported / db.length).toStringAsFixed(1)}%) → $out');
+}
+
+/// Full name → corrected rules text.
+Map<String, String> _overrides(File f) {
+  if (!f.existsSync()) return const {};
+  final cards = (jsonDecode(f.readAsStringSync()) as Map)['cards'] as Map;
+  return {for (final e in cards.entries) e.key as String: ((e.value as Map)['text'] as String)};
+}
+
+LCardDb _corrected(LCardDb db, Map<String, String> overrides) {
+  if (overrides.isEmpty) return db;
+  for (final n in overrides.keys) {
+    if (db[n] == null) stderr.writeln('Override for an unknown card: $n');
+  }
+  return LCardDb([
+    for (final c in db.cards)
+      overrides[c.fullName] == null
+          ? c
+          : LCard(
+              fullName: c.fullName,
+              type: c.type,
+              cost: c.cost,
+              inkable: c.inkable,
+              inks: c.inks,
+              strength: c.strength,
+              willpower: c.willpower,
+              lore: c.lore,
+              moveCost: c.moveCost,
+              classifications: c.classifications,
+              text: overrides[c.fullName]!,
+              printings: c.printings,
+              franchise: c.franchise,
+            ),
+  ], version: db.version);
 }

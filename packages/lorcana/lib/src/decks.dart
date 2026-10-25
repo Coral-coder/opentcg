@@ -15,6 +15,10 @@ List<String> validateDeck(LCardDb db, List<String> deck, {bool supportedOnly = t
   if (deck.length < 60) out.add('A deck needs at least 60 cards (${deck.length} now).');
   final counts = <String, int>{};
   final inks = <Ink>{};
+  final anyInk = w1AnyInkClasses([
+    for (final n in deck)
+      if (db[n] != null) ...LorcanaParser.parse(db[n]!).abilities,
+  ]);
   for (final n in deck) {
     final c = db[n];
     if (c == null) {
@@ -22,7 +26,7 @@ List<String> validateDeck(LCardDb db, List<String> deck, {bool supportedOnly = t
       continue;
     }
     counts[c.fullName] = (counts[c.fullName] ?? 0) + 1;
-    inks.addAll(c.inks);
+    if (!w1InkExempt(c, anyInk, LorcanaParser.parse(c).abilities)) inks.addAll(c.inks);
     if (supportedOnly && !LorcanaParser.parse(c).supported) out.add('${c.fullName} isn’t fully supported yet.');
   }
   if (inks.length > 2) out.add('At most two ink types (${inks.map((i) => i.label).join(', ')}).');

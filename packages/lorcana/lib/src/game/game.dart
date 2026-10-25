@@ -28,6 +28,7 @@ part 'testing.dart';
 part 'zones.dart';
 part 'board.dart';
 part 'statics.dart';
+part 'wave2_s1.dart';
 
 class NeedDecision implements Exception {
   NeedDecision(this.decision);
@@ -279,6 +280,7 @@ class Game implements TcgMatch {
     }
     s.banishedInChallengeThisTurn = 0;
     _resetTurnRecords();
+    _w1StartTurn();
     s.banishedThisTurn = [];
     for (final q in s.players) {
       q.discardedThisTurn = 0;
@@ -337,6 +339,7 @@ class Game implements TcgMatch {
     _endTemporaryShifts(p);
     s.timed.removeWhere((t) => t.lasting == Lasting.thisTurn || (t.lasting == Lasting.theirNextTurn && t.turn < s.turn && _ownerOfAffected(t) == p));
     s.reductions.clear();
+    _w1EndTurn();
     s.lingering.removeWhere((l) => !l.delayedEnd);
     s.version++;
     _check();
@@ -426,6 +429,7 @@ class Game implements TcgMatch {
     final from = o.zone;
     final pl = s.player(o.owner);
     pl.zone(from).remove(id);
+    if (from == Place.discard && to != Place.discard) _w1LeftDiscard();
     // Leaving play: damage, states and gained effects go (CR 7.1.6); the stack goes along
     // (CR 5.1.1.7); characters at a location stay in play (CR 5.6.6).
     if (from == Place.play && to != Place.play) {
