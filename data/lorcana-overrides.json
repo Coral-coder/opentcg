@@ -1,0 +1,11 @@
+{
+  "_about": "Corrected card text, keyed by full name, for cards whose text is mangled in both sources (lorcana-cards.raw.json and lorcast-cards.json). bin/build_db.dart uses the text here instead. Only the official printed wording goes here, with what was wrong.",
+  "Swing Into Action": {
+    "text": "Chosen character gains Rush this turn. (They can challenge the turn they're played.)",
+    "was": "bulk: \"gins\" for \"gains\"; not in the Lorcast list"
+  },
+  "The Boss Is On A Roll": {
+    "text": "(A character with cost 3 or more can {e} to sing this song for free.)\nLook at the top 5 cards of your deck. Put any number of them on the top or the bottom of your deck in any order. Gain 1 lore.",
+    "was": "bulk: \"on the top of the bottom\" for \"on the top or the bottom\"; not in the Lorcast list"
+  }
+}

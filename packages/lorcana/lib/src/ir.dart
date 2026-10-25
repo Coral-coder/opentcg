@@ -6,6 +6,7 @@ import 'cards/card.dart';
 
 part 'ir_zones.dart';
 part 'ir_board.dart';
+part 'ir_wave2_s4.dart';
 
 /// Keywords (CR 8.1.1).
 enum Kw { alert, bodyguard, boost, challenger, evasive, reckless, resist, rush, shift, singer, singTogether, support, vanish, ward }
@@ -69,6 +70,9 @@ class Filter {
     this.atThisLocation = false,
     this.atSourcesLocation = false,
     this.song,
+    this.hasUnder,
+    this.withoutKw,
+    this.or,
   });
 
   final Set<CardType> types;
@@ -92,6 +96,12 @@ class Filter {
   final bool atSourcesLocation;
   final bool? song;
 
+  /// "With a card under them" (CR 8.4), "without Evasive", and "or item" (a card matching [or]
+  /// matches too: "chosen character with Bodyguard or item").
+  final bool? hasUnder;
+  final Kw? withoutKw;
+  final Filter? or;
+
   Filter copyWith({
     Set<CardType>? types,
     Owner? owner,
@@ -109,6 +119,9 @@ class Filter {
     bool? atThisLocation,
     bool? atSourcesLocation,
     bool? song,
+    bool? hasUnder,
+    Kw? withoutKw,
+    Filter? or,
   }) => Filter(
     types: types ?? this.types,
     owner: owner ?? this.owner,
@@ -126,6 +139,9 @@ class Filter {
     atThisLocation: atThisLocation ?? this.atThisLocation,
     atSourcesLocation: atSourcesLocation ?? this.atSourcesLocation,
     song: song ?? this.song,
+    hasUnder: hasUnder ?? this.hasUnder,
+    withoutKw: withoutKw ?? this.withoutKw,
+    or: or ?? this.or,
   );
 
   String describe() {
@@ -147,6 +163,9 @@ class Filter {
     if (atLocation == true) b.add('at a location');
     if (atThisLocation) b.add('here');
     if (atSourcesLocation) b.add('at its location');
+    if (hasUnder == true) b.add('with a card under');
+    if (withoutKw != null) b.add('without ${withoutKw!.name}');
+    if (or != null) b.add('or ${or!.describe()}');
     return b.join(' ');
   }
 }
@@ -741,13 +760,19 @@ class Triggered extends Ability {
 
 /// Activated ability costs (CR 4.4).
 class Cost {
-  const Cost({this.exert = false, this.ink = 0, this.banishSelf = false, this.discard = 0, this.exertOther, this.banishOther});
+  const Cost({this.exert = false, this.ink = 0, this.banishSelf = false, this.discard = 0, this.exertOther, this.banishOther, this.damageSelf = 0, this.discardFilters, this.oncePerTurn = false});
   final bool exert;
   final int ink;
   final bool banishSelf;
   final int discard;
   final Filter? exertOther;
   final Filter? banishOther;
+
+  /// "Deal 1 damage to this character", "choose and discard a character card" (any of these
+  /// filters), and an ability usable once per turn with no other cost ("once per turn, you may").
+  final int damageSelf;
+  final List<Filter>? discardFilters;
+  final bool oncePerTurn;
 }
 
 class Activated extends Ability {

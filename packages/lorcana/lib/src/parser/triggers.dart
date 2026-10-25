@@ -10,6 +10,8 @@ extension _Triggers on _CardParser {
   static const _self = r'this character|this item|this location|he|she|they|it';
 
   _Head? _moreTriggerHead(String h) {
+    final s4 = _s4TriggerHead(h);
+    if (s4 != null) return s4;
     // Printed typos.
     final fixed = h
         .replaceFirst(RegExp(r'^whenever your play '), 'whenever you play ')

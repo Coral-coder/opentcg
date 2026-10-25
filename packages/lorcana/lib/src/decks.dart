@@ -57,7 +57,9 @@ List<String> randomDeck(LCardDb db, Set<Ink> inks, SeededRng rng, {int size = 60
     while (n > 0) {
       final c = from[rng.nextInt(from.length)];
       final have = deck.where((x) => x == c.fullName).length;
-      final add = (4 - have).clamp(0, n);
+      // "You may only have 2 copies of The Glass Slipper in your deck".
+      final limit = LorcanaParser.parse(c).abilities.whereType<Static>().map((a) => a.effect).whereType<DeckLimit>().firstOrNull?.max;
+      final add = ((limit != null && limit < 4 ? limit : 4) - have).clamp(0, n);
       for (var i = 0; i < add; i++) {
         deck.add(c.fullName);
       }

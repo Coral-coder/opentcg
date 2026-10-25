@@ -38,7 +38,47 @@ void main(List<String> args) {
       else c,
   ], version: bulk.version);
   if (switched > 0) stdout.writeln('$switched cards use Lorcast\'s wording');
+  final fixed = _overrides(db, File('$out/lorcana-overrides.json'));
+  if (fixed.$2 > 0) stdout.writeln('${fixed.$2} cards use corrected text from lorcana-overrides.json');
   LorcanaParser.clearCache();
+  _write(fixed.$1, out);
+}
+
+/// Cards whose text both sources mangle, with the printed wording from [file] (keyed by full
+/// name; keys starting with "_" are notes).
+(LCardDb, int) _overrides(LCardDb db, File file) {
+  if (!file.existsSync()) return (db, 0);
+  final o = (jsonDecode(file.readAsStringSync()) as Map).cast<String, dynamic>();
+  var n = 0;
+  final cards = [
+    for (final c in db.cards)
+      if (o[c.fullName] case {'text': final String text}) (() {
+        n++;
+        return LCard(
+          fullName: c.fullName,
+          type: c.type,
+          cost: c.cost,
+          inkable: c.inkable,
+          inks: c.inks,
+          strength: c.strength,
+          willpower: c.willpower,
+          lore: c.lore,
+          moveCost: c.moveCost,
+          classifications: c.classifications,
+          text: text,
+          printings: c.printings,
+          franchise: c.franchise,
+        );
+      })()
+      else c,
+  ];
+  for (final k in o.keys) {
+    if (!k.startsWith('_') && db[k] == null) stderr.writeln('lorcana-overrides.json: no card named $k');
+  }
+  return (LCardDb(cards, version: db.version), n);
+}
+
+void _write(LCardDb db, String out) {
   File('$out/lorcana-cards.json').writeAsStringSync(jsonEncode(db.toJson()));
   final cov = Coverage();
   for (final c in db.cards) {

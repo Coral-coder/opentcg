@@ -75,7 +75,7 @@ class _LorcanaTableState extends State<LorcanaTable> {
 
   void _cardActions(BuildContext context, LorcanaSession s, int id) {
     final g = s.match;
-    final moves = s.isLocalTurn && g.pending == null ? [for (final m in g.legalMoves()) if (_mentions(m, id)) m] : const <LMove>[];
+    final moves = s.isLocalTurn && g.pending == null ? [for (final m in g.legalMoves()) if (_mentions(g, m, id)) m] : const <LMove>[];
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -104,7 +104,9 @@ class _LorcanaTableState extends State<LorcanaTable> {
     );
   }
 
-  static bool _mentions(LMove m, int id) => switch (m) {
+  // A card played from a discard or from under another card shows on the card that allows it.
+  static bool _mentions(Game g, LMove m, int id) => switch (m) {
+        PlayMove(:final card) when g.state.obj(card).zone != Place.hand => g.playEnabler(card) == id,
         InkMove(:final card) || PlayMove(:final card) || QuestMove(:final card) || ActivateMove(:final card) => card == id,
         ChallengeMove(:final card, :final target) => card == id || target == id,
         MoveMove(:final card, :final location) => card == id || location == id,
@@ -116,14 +118,16 @@ class _LorcanaTableState extends State<LorcanaTable> {
     return switch (m) {
       InkMove() => 'Put into your inkwell',
       PlayMove(:final mode, :final onto, :final singers) => switch (mode) {
+          PlayMode.ink when g.state.obj(m.card).zone != Place.hand => 'Play ${name(m.card)} (${g.playCost(m.seat, m.card)} ink)',
           PlayMode.ink => 'Play (${g.chars(m.card).cost} ink)',
+          PlayMode.shift when g.state.obj(m.card).zone != Place.hand => 'Shift ${name(m.card)} onto ${name(onto!)}',
           PlayMode.shift => 'Shift onto ${name(onto!)}',
           PlayMode.sing => 'Sing it with ${singers.map(name).join(' and ')}',
         },
       QuestMove(:final card) => 'Quest (+${g.chars(card).loreAtLeast0} lore)',
       ChallengeMove(:final card, :final target) => card == id ? 'Challenge ${name(target)}' : 'Challenged by ${name(card)}',
       MoveMove(:final card, :final location) => card == id ? 'Move to ${name(location)}' : 'Move ${name(card)} here',
-      ActivateMove(:final card, :final index) => 'Use: ${g.parsed(card).abilities[index].text}',
+      ActivateMove(:final card, :final index) => 'Use: ${g.abilitiesOf(card)[index].text}',
       _ => m.toString(),
     };
   }

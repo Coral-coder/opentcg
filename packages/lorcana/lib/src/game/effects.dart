@@ -11,6 +11,9 @@ class _Ctx {
   final bool isAction;
   final Map<int, List<CardId>> slots = {};
   bool didIt = false;
+
+  /// Numbers an effect notes as it resolves (game/wave2_s4.dart: "the lore lost", "sung").
+  final Map<String, int> s4 = {};
   int? chosenOpponent;
   int? sourceStrength;
 
@@ -32,6 +35,7 @@ extension GameEffects on Game {
     DamageOn() => _boardAmount(a, ctx),
     DamageOnSelf(:final per, :final times) => times * ((state.objOrNull(ctx.source)?.damage ?? 0) ~/ per),
     UnderSelf(:final times) => times * (state.objOrNull(ctx.source)?.under.length ?? 0),
+    S4Amount() => _s4Amount(a, ctx),
   };
 
   int _statOf(Target t, Stat stat, _Ctx ctx) {
@@ -182,6 +186,7 @@ extension GameEffects on Game {
           if (slot == _supportSlot) _emit(_Ev(kind: _EvKind.supportChosen, card: id, player: owner));
           // "Whenever an opponent chooses this character for an action or ability".
           if (owner != ctx.controller) _emit(_Ev(kind: _EvKind.chosenByOpponent, card: id, player: ctx.controller));
+          _s4Chosen(id, ctx);
         }
         if (ctx.isAction) {
           for (final id in pick) {
@@ -201,6 +206,8 @@ extension GameEffects on Game {
     switch (e) {
       case ZoneEffect():
         _resolveZone(e, ctx);
+      case S4Effect():
+        _resolveS4(e, ctx);
       case Seq(:final steps):
         for (final s in steps) {
           _resolveEffect(s, ctx);
@@ -266,6 +273,7 @@ extension GameEffects on Game {
         }
         ctx.didIt = ids.isNotEmpty;
       case RemoveDamage(:final target, :final amount, :final all):
+        if (_s4NoDamageRemoval()) break;
         for (final id in _resolveTargets(target, ctx)) {
           final o = state.obj(id);
           final n = all ? o.damage : _evalAmount(amount, ctx).clamp(0, o.damage);
@@ -278,6 +286,7 @@ extension GameEffects on Game {
         }
         state.version++;
       case MoveDamage(:final from, :final to, :final amount, :final upTo):
+        if (_s4NoDamageRemoval()) break;
         final a = _resolveTargets(from, ctx);
         final b = _resolveTargets(to, ctx);
         if (a.isEmpty || b.isEmpty) return;
@@ -510,7 +519,7 @@ extension GameEffects on Game {
     final banisher = dmg?.$1 ?? by;
     log('${c.card.fullName} is banished.', player: o.owner, card: id, kind: 'banish');
     // Where it was, for "whenever a character is banished while here".
-    final info = EventInfo(card: id, other: banisher, player: o.owner, strength: c.strength, location: o.at);
+    final info = EventInfo(card: id, other: banisher, player: o.owner, strength: c.strength, location: o.at, under: List.of(o.under), hereExerted: _s4ExertedHere(id));
     _leavePlay(id, Place.discard);
     if (inChallenge && c.type == CardType.character) state.banishedInChallengeThisTurn++;
     state.banishedThisTurn.add('${c.card.fullName}|${o.owner}|${inChallenge ? 'c' : ''}');

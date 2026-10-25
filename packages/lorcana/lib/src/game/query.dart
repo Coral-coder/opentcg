@@ -32,12 +32,13 @@ extension GameQuery on Game {
         }
       }
     }
+    _s4ExtraPlays(p, add);
     for (final id in pl.play) {
       add(QuestMove(p, id));
       for (final t in _challengeTargets(p, id)) {
         add(ChallengeMove(p, id, t));
       }
-      final abs = parsed(id).abilities;
+      final abs = abilitiesOf(id);
       for (var i = 0; i < abs.length; i++) {
         if (abs[i] is Activated || (abs[i] is KeywordAbility && (abs[i] as KeywordAbility).keyword.kw == Kw.boost)) add(ActivateMove(p, id, i));
       }

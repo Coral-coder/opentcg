@@ -20,6 +20,7 @@ String _trig(Trigger t) => switch (t) {
   TurnStep(:final start, :final yours, :final opponents) => '${start ? 'start' : 'end'} of ${yours ? 'your' : (opponents ? 'each opponent\'s' : 'each')} turn',
   Draws(:final by, :final nth, :final theirTurn) => '${by.name} draw${nth > 0 ? ' #$nth' : ''}${theirTurn ? ' in their turn' : ''}',
   MovedHere() => 'moved here',
+  S4Trigger() => t.describeWith(describeEffect),
   On(:final what, :final self, :final subject, :final by, :final min, :final max, :final nth) =>
     '${what.name}(${self ? 'this' : (subject?.describe() ?? 'any')}${by == Owner.any ? '' : ' by ${by.name}'}${min > 0 ? ' ≥$min' : ''}${max != null ? ' ≤$max' : ''}${nth > 0 ? ' #$nth' : ''})',
 };
@@ -31,6 +32,9 @@ String _cost(Cost c) => [
   if (c.discard > 0) 'discard ${c.discard}',
   if (c.exertOther != null) 'exert ${c.exertOther!.describe()}',
   if (c.banishOther != null) 'banish ${c.banishOther!.describe()}',
+  if (c.damageSelf > 0) '${c.damageSelf} damage to this',
+  if (c.discardFilters != null) 'discard ${c.discardFilters!.map((f) => f.describe()).join(' or ')}',
+  if (c.oncePerTurn) 'once per turn',
 ].join(', ');
 
 String _static(StaticEffect e) => switch (e) {
@@ -48,6 +52,7 @@ String _static(StaticEffect e) => switch (e) {
   OpposingInkExerted() => 'opposing ink enters exerted',
   MayEnterExerted(:final then) => 'may enter exerted${then == null ? '' : ' to ${describeEffect(then)}'}',
   DeckLimit(:final max) => 'deck limit ${max ?? 'any'}',
+  S4Static() => e.describeWith(describeEffect),
   ShiftName(:final name) => 'counts as named ${name ?? 'anything'} for Shift',
 };
 
@@ -77,6 +82,7 @@ String _cond(Cond c) => switch (c) {
   BeingChallenged() => 'being challenged',
   Challenging(:final defender) => 'challenging ${defender.describe()}',
   ThisTurnCond(:final what, :final cmp, :final n) => '${what.name} this turn ${cmp.name} $n',
+  S4Cond() => c.describeWith(describeEffect),
   BanishedThisTurn(:final filter, :final inChallenge) => '${filter.describe()} banished${inChallenge ? ' in a challenge' : ''} this turn',
 };
 
@@ -103,6 +109,7 @@ String _amt(Amount a) => switch (a) {
   HandSize(:final who, :final per) => '$per×hand(${who.name})',
   DamageOn(:final target) => 'damage on ${_tgt(target)}',
   DamageOnSelf(:final per, :final times) => '$times×(damage on this / $per)',
+  S4Amount() => a.describeWith(describeEffect),
   UnderSelf(:final times) => '$times×cards under this',
 };
 
@@ -116,6 +123,7 @@ String _tgt(Target t) => switch (t) {
 
 String describeEffect(Effect e) => switch (e) {
   ZoneEffect() => _zone(e),
+  S4Effect() => e.describeWith(describeEffect),
   Seq(:final steps) => steps.map(describeEffect).join('; '),
   May(e: final x) => 'MAY(${describeEffect(x)})',
   If(:final cond, :final then, :final otherwise) => 'IF ${_cond(cond)} THEN ${describeEffect(then)}${otherwise == null ? '' : ' ELSE ${describeEffect(otherwise)}'}',

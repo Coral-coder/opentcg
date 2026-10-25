@@ -44,7 +44,6 @@ void main() {
     final p = LorcanaParser.parse(const LCard(fullName: 'Test Card - Unreadable', type: CardType.character, cost: 2, inkable: true, inks: [Ink.amber], strength: 1, willpower: 1, lore: 1, text: 'FROBNICATE Whenever the moon is full, rearrange the stars.'));
     expect(p.supported, isFalse);
     expect(p.unsupported.single, contains('rearrange the stars'));
-    expect(parse('Source of the Vine').unsupported.single, contains('SIPHON'));
   });
 
   test('parsing is deterministic', () {

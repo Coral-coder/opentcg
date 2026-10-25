@@ -39,6 +39,7 @@ extension GameBoard on Game {
           add(e.player, TurnStat.banishedInChallenge);
         }
       default:
+        _s4Track(e);
     }
   }
 
