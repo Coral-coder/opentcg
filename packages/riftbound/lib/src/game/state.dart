@@ -10,7 +10,24 @@ import '../ir.dart';
 typedef ObjId = int;
 
 /// Zones (CR 105–108). Board objects are in [Zone.board] at a location ([Obj.loc]).
-enum Zone { mainDeck, hand, trash, banish, board, champion, legend, runeDeck, runes, battlefield, chain, gone }
+enum Zone {
+  mainDeck,
+  hand,
+  trash,
+  banish,
+  board,
+  champion,
+  legend,
+  runeDeck,
+  runes,
+  battlefield,
+  chain,
+  gone,
+
+  /// A battlefield's Facedown Zone (CR 107.3): [Obj.loc] is the battlefield, [Obj.enteredTurn]
+  /// the turn it was hidden.
+  facedown,
+}
 
 /// [Obj.loc] of a permanent in its controller's base (CR 107.1).
 const base = -1;
@@ -258,6 +275,10 @@ class GameState {
 
   /// Triggered abilities waiting to be put on the chain (CR 382), in order.
   List<ChainItem> waiting = [];
+
+  /// Small facts effects leave behind, by name ("readyEnter:0" = player 0's units enter ready
+  /// this turn). Looked up by key; the digest lists them sorted.
+  Map<String, int> marks = {};
   final List<LogEntry> log = [];
 
   bool get over => phase == Phase.over;
@@ -286,7 +307,8 @@ class GameState {
       ..priority = priority
       ..passes = passes
       ..showdown = showdown?.clone()
-      ..waiting = List.of(waiting);
+      ..waiting = List.of(waiting)
+      ..marks = Map.of(marks);
     s.log.addAll(log);
     return s;
   }
@@ -296,7 +318,8 @@ class GameState {
       ..write('rb1|$seed|${rng.state}|$nextId|$turn|$active|$firstPlayer|${phase.index}|${step.index}|${winner ?? ''}|$victoryScore|')
       ..write('${bfs.map((x) => x.digest()).join(';')}|')
       ..write('${chain.map((c) => c.digest()).join(';')}|$nextChainId|$priority|$passes|${showdown?.digest() ?? ''}|')
-      ..write('${waiting.map((c) => c.digest()).join(';')}|');
+      ..write('${waiting.map((c) => c.digest()).join(';')}|')
+      ..write('${(marks.keys.toList()..sortStable((a, b) => a.compareTo(b))).map((k) => '$k=${marks[k]}').join(',')}|');
     for (final p in players) {
       b.write('${p.digest()}#');
     }
