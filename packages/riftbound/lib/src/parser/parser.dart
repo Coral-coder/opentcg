@@ -6,9 +6,10 @@ import '../cards/card.dart';
 import '../ir.dart';
 
 part 'power.dart';
+part 'hidden.dart';
 
 /// Bumped whenever parsing or the engine changes what a saved game would replay to.
-const riftboundEngineVersion = 2;
+const riftboundEngineVersion = 3;
 
 class ParsedCard {
   ParsedCard(this.abilities, this.unsupported);
@@ -73,6 +74,9 @@ final _kwNames = {
   'temporary': Kw.temporary,
   'vision': Kw.vision,
   'backline': Kw.backline,
+  'hidden': Kw.hidden,
+  'ambush': Kw.ambush,
+  'unique': Kw.unique,
 };
 
 const _numbers = {'a': 1, 'an': 1, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5};
@@ -121,6 +125,8 @@ class _Line {
       if (cost == null || !_isSpell) return null;
       return [...out, RepeatCost(line, cost)];
     }
+    final h = _hLine(t, line);
+    if (h != null) return [...out, ...h];
     final a = _ability(t, line);
     if (a == null) return null;
     return [...out, a];
@@ -129,7 +135,13 @@ class _Line {
   static String _cap(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
 
   bool _validKeyword(Kw kw) => switch (kw) {
-        Kw.action || Kw.reaction => _isSpell,
+        Kw.action => _isSpell,
+        // Reaction is on cards of any type (CR 813.1.a); playing a unit with it keeps a unit's
+        // places (CR 813.3.a).
+        Kw.reaction => _isSpell || card.isPermanent,
+        Kw.hidden => card.isMainDeck,
+        Kw.ambush => card.type == CardType.unit,
+        Kw.unique => card.isMainDeck,
         Kw.accelerate || Kw.assault || Kw.shield || Kw.tank || Kw.ganking || Kw.backline => card.type == CardType.unit,
         Kw.deflect || Kw.temporary || Kw.vision => card.isPermanent,
       };
@@ -195,6 +207,8 @@ class _Line {
   }
 
   When? _when(String s) {
+    final hidden = _hWhen(s);
+    if (hidden != null) return hidden;
     final me = card.type == CardType.unit;
     final perm = card.isPermanent;
     return switch (s) {
@@ -225,6 +239,8 @@ class _Line {
   }
 
   Passive? _passive(String t) {
+    final hidden = _hPassive(t);
+    if (hidden != null) return hidden;
     if (card.type == CardType.gear && t == 'This enters exhausted.') return const EntersExhausted();
     var lm = RegExp(r'^While a friendly unit defends alone, it gets \+(\d+) \{M\}\.$').firstMatch(t);
     if (lm != null && (card.type == CardType.legend || card.isPermanent)) return DefendsAlone(int.parse(lm[1]!));
@@ -329,6 +345,8 @@ class _Line {
 
   List<Effect>? _sentenceCore(String s0) {
     var s = s0;
+    final hidden = _hSentence(s);
+    if (hidden != null) return hidden;
     if (s.startsWith('You may ')) {
       final inner = _sentence('${s[8].toUpperCase()}${s.substring(9)}');
       return inner == null ? null : [May(inner)];
@@ -465,6 +483,8 @@ class _Line {
   }
 
   Cond? _cond(String c) {
+    final hidden = _hCond(c);
+    if (hidden != null) return hidden;
     if (c == 'you have one or fewer cards in your hand') return const HandAtMost(1);
     final m = RegExp(r'^you have (\d+)\+ units at that battlefield$').firstMatch(c);
     if (m != null && _eventBf) return UnitsThere(int.parse(m[1]!));
@@ -476,6 +496,8 @@ class _Line {
     p = p.trim();
     final pw = _powerTarget(p);
     if (pw != null) return pw;
+    final hidden = _hTarget(p);
+    if (hidden != null) return hidden;
     if (p == 'me' && card.type == CardType.unit) return const Me();
     if (p == 'this' && card.type == CardType.gear) return const Me();
     if (p == 'it' || p == 'that unit') {

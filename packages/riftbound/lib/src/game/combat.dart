@@ -29,6 +29,8 @@ extension GameCombat on Game {
         }
       }
     }
+    // 5a. Facedown cards at battlefields their controller lost (CR 323.6.a).
+    if (_hCleanup()) changed = true;
     // 8. Contested status ends where the contesting player has no units and nothing is going on
     // (CR 190.3.b.1, 323.10).
     for (var i = 0; i < state.bfs.length; i++) {
@@ -173,6 +175,7 @@ extension GameCombat on Game {
       _draw(p, 1);
     } else {
       pl.points++;
+      _hScored(p);
       log('${pl.name} ${conquer ? 'conquers' : 'holds'} ${nameOf(b.obj)}: ${pl.points} point${pl.points == 1 ? '' : 's'}.', player: p, kind: conquer ? 'conquer' : 'hold', amount: 1);
     }
     // Score triggers (CR 473.2): the battlefield, units there, and "when you conquer / hold".
@@ -198,6 +201,7 @@ extension GameCombat on Game {
       for (final u in us) {
         if (state.obj(u).stunned) continue;
         if (parsed(u).abilities.any((a) => a is Static && a.passive is NoCombatDamage)) continue;
+        if (_hNoCombatDamage(u)) continue;
         t += mightUsed(u);
       }
       return t;
@@ -207,8 +211,9 @@ extension GameCombat on Game {
     final toAttackers = _assign(total(defenders), attackers);
     for (final e in [...toDefenders.entries, ...toAttackers.entries]) {
       if (e.value <= 0) continue;
-      state.obj(e.key).damage += e.value;
-      log('${nameOf(e.key)} takes ${e.value} combat damage.', player: state.obj(e.key).controller, card: e.key, kind: 'damage', amount: e.value);
+      final d = _hDamage(e.key, e.value);
+      state.obj(e.key).damage += d;
+      log('${nameOf(e.key)} takes $d combat damage.', player: state.obj(e.key).controller, card: e.key, kind: 'damage', amount: d);
     }
   }
 

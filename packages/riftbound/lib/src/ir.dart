@@ -6,6 +6,7 @@ library;
 import 'cards/card.dart';
 
 part 'ir_power.dart';
+part 'ir_hidden.dart';
 
 /// Keyword abilities (CR 805–826) the engine implements.
 enum Kw {
@@ -20,18 +21,35 @@ enum Kw {
   temporary,
   vision,
   backline,
+
+  /// CR 811: may be hidden facedown at a battlefield you control and played from there later.
+  hidden,
+
+  /// CR 822: may be played to a battlefield where you control units, with Reaction while so.
+  ambush,
+
+  /// CR 825: a deck can hold only one copy.
+  unique,
 }
 
 /// Who an effect's units belong to.
 enum Side { any, friendly, enemy }
 
 /// Where a unit must be for a filter.
-enum Where { anywhere, here, battlefield, base }
+enum Where {
+  anywhere,
+  here,
+  battlefield,
+  base,
+
+  /// "At a different location" from the source.
+  elsewhere,
+}
 
 /// A description of units (or gear) on the board: "an enemy unit at a battlefield with 3 {M} or
 /// less".
 class Filter {
-  const Filter({this.side = Side.any, this.where = Where.anywhere, this.gear = false, this.mightMax, this.mightMin, this.other = false, this.exhausted, this.attacking = false, this.defending = false, this.tag, this.buffed, this.pw});
+  const Filter({this.side = Side.any, this.where = Where.anywhere, this.gear = false, this.mightMax, this.mightMin, this.other = false, this.exhausted, this.attacking = false, this.defending = false, this.tag, this.buffed, this.pw, this.notTag});
   final Side side;
   final Where where;
 
@@ -48,6 +66,8 @@ class Filter {
 
   /// Empowered, "something", Might comparisons (ir_power.dart).
   final PowerFilter? pw;
+  /// "A non-Dragon unit": not of this tag.
+  final String? notTag;
 
   String describe() => [
         if (side != Side.any) side.name,
@@ -58,6 +78,7 @@ class Filter {
         if (attacking) 'attacking',
         if (defending) 'defending',
         ?tag,
+        if (notTag != null) 'non-$notTag',
         gear ? 'gear' : 'unit',
         if (where != Where.anywhere) '@${where.name}',
         if (mightMax != null) 'M≤$mightMax',
@@ -386,6 +407,17 @@ enum On {
 
   /// "When a player plays a unit here" (a battlefield; "it" is it).
   unitPlayedHere,
+  /// "When you play me from face down" / "When I'm played from [Hidden]" (CR 811).
+  playedFaceDown,
+
+  /// "When you play a card from [Hidden]".
+  youPlayFromHidden,
+
+  /// "When an enemy unit dies" ("it" is that unit).
+  enemyUnitDies,
+
+  /// "When an opponent scores".
+  opponentScores,
 }
 
 class When extends Trigger {

@@ -45,6 +45,7 @@ extension GameQuery on Game {
         if (passive is KwAnthem && passive.kw == k && matches(passive.filter, id, controller: state.obj(src).controller, source: src, here: state.obj(src).loc)) n += passive.n;
       }
       n += _powerKw(id, k, n);
+      n += _hKw(id, k);
     }
     return n;
   }
@@ -81,6 +82,7 @@ extension GameQuery on Game {
         }
       }
       m += _powerMight(id);
+      m += _hMight(id);
       if (isAttacking(id)) m += _kw(id, Kw.assault);
       if (isDefending(id)) m += _kw(id, Kw.shield);
     }
@@ -116,12 +118,16 @@ extension GameQuery on Game {
         if (o.loc == base) return false;
       case Where.base:
         if (o.loc != base) return false;
+      case Where.elsewhere:
+        // Two bases are different locations (CR 197).
+        if (o.loc == here && (here != base || o.controller == (source == null ? controller : state.obj(source).controller))) return false;
     }
     if (f.exhausted != null && o.exhausted != f.exhausted) return false;
     if (f.buffed != null && o.buffed != f.buffed) return false;
     if (f.attacking && !isAttacking(id)) return false;
     if (f.defending && !isDefending(id)) return false;
     if (f.tag != null && !c.hasTag(f.tag!)) return false;
+    if (f.notTag != null && c.hasTag(f.notTag!)) return false;
     if (f.mightMax != null && mightUsed(id) > f.mightMax!) return false;
     if (f.mightMin != null && mightUsed(id) < f.mightMin!) return false;
     if (pw != null && !_powerMatches(pw, id, controller: controller, source: source, here: here)) return false;
@@ -172,6 +178,7 @@ extension GameQuery on Game {
         }
       }
     }
+    out.addAll(_hCandidates(seat));
     if (state.chain.isNotEmpty || state.showdown != null) out.add(PassMove(seat));
     if (_neutralMain(seat)) out.add(EndTurnMove(seat));
     return out;

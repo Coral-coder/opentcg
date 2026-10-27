@@ -11,6 +11,10 @@ const grantedXpAbility = -10;
 /// earlier choice ("with less Might than it").
 final _powerTargetsOf = Expando<List<int>>();
 
+/// What the additional cost paid for the card being played takes off its cost (Poppy's {3},
+/// Kraken Hunter's {O} per buff), until it's paid for.
+final _powerPlayDiscount = Expando<({ObjId id, int energy, List<Domain?> power})>();
+
 extension GamePowerRules on Game {
   // -------------------------------------------------------------------------------------------
   // Gates (dependent keywords)
@@ -328,7 +332,85 @@ extension GamePowerRules on Game {
         }
       }
     }
+    final dc = _powerPlayDiscount[this];
+    if (dc != null && dc.id == id) {
+      e -= dc.energy;
+      for (final d in dc.power) {
+        final i = power.indexOf(d);
+        if (i >= 0) power.removeAt(i);
+      }
+    }
     return (energy: e < 0 ? 0 : e, power: power);
+  }
+
+  /// Additional costs paid in XP or buffs (CR 356.3), asked as [id] is played: whether its cost
+  /// is then ignored and whether one was paid. A discount it gives applies to the payment after.
+  ({bool ignore, bool paid}) _powerExtraCost(int p, ObjId id) {
+    _powerPlayDiscount[this] = null;
+    for (final a in parsed(id).abilities) {
+      if (a is! Static || a.passive is! PowerExtraCost) continue;
+      final x = a.passive as PowerExtraCost;
+      if (x.xp > 0) {
+        final pl = state.player(p);
+        if (pl.pw.xp < x.xp || !askYesNo(p, 'Spend ${x.xp} XP as an additional cost to play ${nameOf(id)}?', source: id)) continue;
+        pl.pw.xp -= x.xp;
+        log('${pl.name} spends ${x.xp} XP to play ${nameOf(id)}.', player: p, card: id, kind: 'xp');
+        if (x.energyLess > 0) _powerPlayDiscount[this] = (id: id, energy: x.energyLess, power: const []);
+        return (ignore: false, paid: true);
+      }
+      final c = card(id);
+      final per = x.powerPerBuff;
+      final max = !x.anyBuffs ? x.buffs : (per == null ? 0 : _powerOf(c, c.power).where((d) => d == per).length);
+      var spent = 0;
+      while (spent < max) {
+        final options = [for (final u in units(player: p)) if (_buffs(u) > 0) u];
+        if (options.isEmpty) break;
+        // Not optional while the card can't be paid for without it.
+        if (per != null) _powerPlayDiscount[this] = (id: id, energy: 0, power: List<Domain?>.filled(spent, per));
+        final must = !_canPayCard(p, c, id: id);
+        _powerPlayDiscount[this] = null;
+        final prompt = per != null ? 'Spend a buff to play ${nameOf(id)} for {${per.letter}} less?${must ? '' : ' (none to stop)'}' : 'Spend a buff to play ${nameOf(id)} without paying its cost?';
+        final pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: prompt, options: options, min: must ? 1 : 0, max: 1, source: id));
+        if (pick.isEmpty) break;
+        _spendBuff(pick.first, p);
+        spent++;
+      }
+      if (spent == 0) continue;
+      if (per != null) _powerPlayDiscount[this] = (id: id, energy: 0, power: List<Domain?>.filled(spent, per));
+      return (ignore: x.ignoreCost, paid: true);
+    }
+    return (ignore: false, paid: false);
+  }
+
+  /// Could [p] afford [id] by paying its XP or buff additional cost (it's ignored or cheaper)?
+  bool _powerExtraMayPay(int p, ObjId id) {
+    for (final a in parsed(id).abilities) {
+      if (a is! Static || a.passive is! PowerExtraCost) continue;
+      final x = a.passive as PowerExtraCost;
+      var buffs = 0;
+      for (final u in units(player: p)) {
+        buffs += _buffs(u);
+      }
+      if (x.xp > 0 ? state.player(p).pw.xp < x.xp : buffs == 0) continue;
+      if (x.ignoreCost) return true;
+      final per = x.powerPerBuff;
+      _powerPlayDiscount[this] = (id: id, energy: x.energyLess, power: per == null ? const [] : List<Domain?>.filled(buffs, per));
+      final ok = _canPayCard(p, card(id), id: id);
+      _powerPlayDiscount[this] = null;
+      if (ok) return true;
+    }
+    return false;
+  }
+
+  /// Battlefields [p] may also play unit [id] to: occupied ones where an enemy unit is alone, with
+  /// "I can be played …" on it or "Friendly units can be played …" on a permanent of theirs.
+  Iterable<int> _powerDestinations(int p, ObjId id) sync* {
+    bool me(Ability a) => a is Static && a.passive is PlayToLoneEnemy && !(a.passive as PlayToLoneEnemy).friendly;
+    final ok = parsed(id).abilities.any(me) || _passives().any((x) => x.$2 is PlayToLoneEnemy && (x.$2 as PlayToLoneEnemy).friendly && state.obj(x.$1).controller == p);
+    if (!ok || card(id).type != CardType.unit) return;
+    for (var i = 0; i < state.bfs.length; i++) {
+      if (unitsAt(i, player: state.other(p)).length == 1) yield i;
+    }
   }
 
   /// What [p] would pay to play card [id] now (the first way they can pay, else the first way):
@@ -365,6 +447,7 @@ extension GamePowerRules on Game {
   /// trash is marked to be banished (CR 829.1.b), and "When you play a card from anywhere other than
   /// your hand" triggers.
   void _leaveZoneForPlay(int p, ObjId id) {
+    _powerPlayDiscount[this] = null;
     final o = state.obj(id);
     if (o.zone == Zone.trash) {
       state.player(o.owner).trash.remove(id);
@@ -456,6 +539,8 @@ extension GamePowerRules on Game {
     }
     if (pw.atBattlefieldOnly && (src == null || src.loc == base)) return false;
     if (pw.inShowdown && (state.showdown == null || state.showdown!.bf != o.loc)) return false;
+    final mm = pw.mightMaxUnlessPaid;
+    if (mm != null && !(source != null && _hMarked('t:paid:$source')) && might(id) > mm) return false;
     return true;
   }
 
@@ -493,11 +578,7 @@ extension GamePowerRules on Game {
   bool _unchoosable(ObjId id, int p) {
     final o = state.objOrNull(id);
     if (o == null || o.controller == p) return false;
-    if (o.pw.untargetableTurn == state.turn) return true;
-    for (final a in parsed(id).abilities) {
-      if (a is Static && a.passive is CantBeChosen && _gateOk(id, a.gate)) return true;
-    }
-    return false;
+    return o.pw.untargetableTurn == state.turn;
   }
 
   /// Does unit [id] entering under [controller] enter ready ("Your units enter ready"; its own
@@ -548,6 +629,13 @@ extension GamePowerRules on Game {
     _firePw(On.youPlayAnotherUnit, player: p, except: id);
     for (final d in state.pw.delayed) {
       if (d.kind == 'buffPlayedThisTurn' && d.controller == p && d.turn == state.turn && isUnit(id)) _buffUnit(id, p);
+    }
+    // "The next time you play a unit this turn, ready it and [Buff] it" (Nami): once.
+    final next = state.pw.delayed.where((d) => d.kind == 'nextUnitReadyBuff' && d.controller == p && d.turn == state.turn).firstOrNull;
+    if (next != null && isUnit(id)) {
+      state.pw.delayed = [for (final d in state.pw.delayed) if (!identical(d, next)) d];
+      state.obj(id).exhausted = false;
+      _buffUnit(id, p);
     }
     final loc = state.obj(id).loc;
     if (loc != base) {
@@ -658,7 +746,7 @@ extension GamePowerRules on Game {
       };
 
   Target? _powerTargetOf(PowerEffect e) => switch (e) {
-        Empower(:final target) || Banish(:final target) || MoveAny(:final target) || Untargetable(:final target) || Pick(:final target) || SpendBuffOf(:final target) || BaseMightBecomes(:final target) => target,
+        Empower(:final target) || Banish(:final target) || MoveAny(:final target) || Untargetable(:final target) || PickIt(:final target) || SpendBuffOf(:final target) || BaseMightBecomes(:final target) => target,
         _ => null,
       };
 
@@ -698,10 +786,6 @@ extension GamePowerRules on Game {
         return units(player: p).any((u) => card(u).hasTag(tag));
       case OpponentNearVictory(:final n):
         return state.player(state.other(p)).points >= state.victoryScore - n;
-      case EnemyAloneHere():
-        final o = state.objOrNull(ctx.source);
-        if (o == null || o.zone != Zone.board) return false;
-        return unitsAt(o.loc, player: state.other(p)).length == 1;
       case AtBattlefield():
         final o = state.objOrNull(ctx.source);
         return o != null && o.zone == Zone.board && o.loc != base;
@@ -1014,9 +1098,10 @@ extension GamePowerRules on Game {
           _draw(o, 1);
         }
         gainXp(p, xp);
-      case EachKillsOne():
+      case EachKillsOne(:final notYouIfPaid):
         for (var i = 0; i < state.players.length; i++) {
           final q = (p + i) % state.players.length;
+          if (notYouIfPaid && q == p && _hMarked('t:paid:${ctx.source}')) continue;
           final mine = units(player: q);
           if (mine.isEmpty) continue;
           final pick = ask(Decision(kind: DecisionKind.cards, player: q, prompt: '${nameOf(ctx.source)}: choose one of your units to sacrifice', options: mine, source: ctx.source));
@@ -1082,7 +1167,7 @@ extension GamePowerRules on Game {
         for (final id in matching(filter, controller: p, source: ctx.source, here: ctx.loc)) {
           state.obj(id).mightMod += n;
         }
-      case Pick():
+      case PickIt():
         break;
       case LookBanishPlay(:final n, :final energyLess, :final empowerAfter):
         final deck = state.player(p).deck;

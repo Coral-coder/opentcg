@@ -162,6 +162,7 @@ class _RiftboundTableState extends State<RiftboundTable> {
         PlayMove() => Icons.play_arrow,
         ActivateMove() => Icons.bolt,
         MoveUnitsMove() => Icons.directions_run,
+        HideMove() => Icons.visibility_off,
         _ => Icons.check,
       },
       onPressed: () {
@@ -177,6 +178,10 @@ class _RiftboundTableState extends State<RiftboundTable> {
     if (!s.isLocalTurn) return 'Not your move right now.';
     final o = g.state.obj(id);
     if (o.controller != s.localSeat && o.owner != s.localSeat) return 'Your opponent’s card.';
+    if (o.zone == Zone.facedown) {
+      if (o.enteredTurn >= g.state.turn) return 'Hidden this turn: from your next turn on you can play it for free, even in reply to your opponent.';
+      return 'You can play it when you could play a Reaction.';
+    }
     final c = g.card(id);
     if (!RiftboundParser.parse(c).supported) return 'This card isn’t supported yet.';
     if (o.zone == Zone.hand || o.zone == Zone.champion) {
@@ -191,7 +196,9 @@ class _RiftboundTableState extends State<RiftboundTable> {
 
 /// What a move button says.
 String moveLabel(Game g, RMove m, int seat) => switch (m) {
+  PlayMove(:final card) when g.state.obj(card).zone == Zone.facedown => 'Play ${g.nameOf(card)} from facedown (free)',
   PlayMove(:final card) => 'Play ${g.nameOf(card)}${g.state.obj(card).zone == Zone.trash ? ' from the trash with Flow, then banish it' : ''} (${_cost(g, card, seat)})',
+  HideMove(:final card) => 'Hide ${g.nameOf(card)} facedown at your battlefield (1 Power; play it free from next turn)',
   ActivateMove(:final source, :final index) => _abilityLabel(g, source, index),
   MoveUnitsMove(:final units, :final to) => 'Move ${units.length == 1 ? g.nameOf(units.first) : '${units.length} units'} to ${to == base ? 'your base' : g.locName(to, seat)}',
   PassMove() => 'Pass',
@@ -588,6 +595,56 @@ class _Unit extends StatelessWidget {
   }
 }
 
+/// A facedown card at a battlefield: its owner sees it (dimmed, with an eye-off badge) and can
+/// tap it to play it; the opponent sees a card back.
+class _Facedown extends StatelessWidget {
+  const _Facedown({required this.session, required this.id, required this.acts, required this.width, required this.onCard});
+  final RiftboundSession session;
+  final int id;
+  final RiftboundPlayable acts;
+  final double width;
+  final void Function(int) onCard;
+  @override
+  Widget build(BuildContext context) {
+    final t = GameTheme.of(context);
+    final g = session.match;
+    final mine = g.state.obj(id).controller == session.localSeat;
+    final can = acts.hasAny(id);
+    final back = Container(
+      width: width,
+      height: width * 1.396,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(width * 0.06),
+        gradient: const LinearGradient(colors: [Color(0xFF0B2A3C), Color(0xFF081420)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+        border: Border.all(color: t.accent, width: 1.5),
+      ),
+      child: Center(child: Icon(Icons.help_outline, color: t.accent, size: width * 0.4)),
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: Semantics(
+        button: mine,
+        label: mine ? 'Facedown ${g.nameOf(id)}${can ? ', can play' : ''}' : 'A facedown card',
+        excludeSemantics: true,
+        child: GestureDetector(
+          onTap: mine ? () => onCard(id) : null,
+          onLongPress: mine ? () => onCard(id) : null,
+          child: _Glow(
+            on: can,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                if (mine) Opacity(opacity: 0.6, child: RiftboundCardView(card: g.card(id), width: width)) else back,
+                Positioned(right: -2, top: -2, child: Icon(Icons.visibility_off, size: 16, color: t.accent)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _Badge extends StatelessWidget {
   const _Badge({required this.text, required this.color, required this.border});
   final String text;
@@ -668,14 +725,21 @@ class _Battlefield extends StatelessWidget {
     final status = here
         ? (sd.combat ? 'COMBAT' : 'SHOWDOWN')
         : (b.contestedBy != null ? 'CONTESTED' : (owner == null ? 'Uncontrolled' : (owner == me ? 'You control it' : '${st.player(owner).name} controls it')));
+    // A card hidden here (CR 107.3) sits with its controller's units: face up for its owner,
+    // a card back for the opponent.
+    final hidden = g.facedownAt(index);
     Widget units(int p) {
       final ids = g.unitsAt(index, player: p);
-      if (ids.isEmpty) return SizedBox(height: width * 0.5);
+      final fd = hidden != null && st.obj(hidden).controller == p ? hidden : null;
+      if (ids.isEmpty && fd == null) return SizedBox(height: width * 0.5);
       return Wrap(
         alignment: WrapAlignment.center,
         spacing: 2,
         runSpacing: 4,
-        children: [for (final id in ids) _Unit(session: session, id: id, acts: acts, width: width, onCard: onCard)],
+        children: [
+          for (final id in ids) _Unit(session: session, id: id, acts: acts, width: width, onCard: onCard),
+          if (fd != null) _Facedown(session: session, id: fd, acts: acts, width: width * 0.8, onCard: onCard),
+        ],
       );
     }
 
@@ -751,21 +815,22 @@ class _Hand extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 8),
               children: [
                 for (final id in ids)
+                  // Playable or hideable cards rise and glow.
                   Padding(
-                    padding: EdgeInsets.only(right: 4, top: acts.canPlay(id) ? 0 : 8, bottom: acts.canPlay(id) ? 8 : 0),
+                    padding: EdgeInsets.only(right: 4, top: acts.hasAny(id) ? 0 : 8, bottom: acts.hasAny(id) ? 8 : 0),
                     child: Semantics(
                       button: true,
-                      label: '${g.nameOf(id)}${acts.canPlay(id) ? ', playable' : ''}${fromTrash.contains(id) ? ' from the trash (Flow)' : ''}',
+                      label: '${g.nameOf(id)}${acts.canPlay(id) ? ', playable' : (acts.hasAny(id) ? ', can be hidden' : '')}${fromTrash.contains(id) ? ' from the trash (Flow)' : ''}',
                       excludeSemantics: true,
                       child: GestureDetector(
                         onTap: () => onCard(id),
                         onLongPress: () => onCard(id),
                         child: Opacity(
-                          opacity: acts.canPlay(id) || acts.all.isEmpty ? 1 : 0.5,
+                          opacity: acts.hasAny(id) || acts.all.isEmpty ? 1 : 0.5,
                           child: Stack(
                             clipBehavior: Clip.none,
                             children: [
-                              _Glow(on: acts.canPlay(id), child: RiftboundCardView(card: g.card(id), width: width)),
+                              _Glow(on: acts.hasAny(id), child: RiftboundCardView(card: g.card(id), width: width)),
                               if (fromTrash.contains(id))
                                 Positioned(
                                   left: 0,

@@ -102,6 +102,29 @@ extension _PowerLine on _Line {
         Activated(line, const Cost(exhaust: true), [AddRes(energy: int.parse(m[2]!))], timing: Timing.reaction, gate: const EmpoweredGate()),
       ];
     }
+    // Additional costs of XP or buffs (CR 356.3).
+    m = RegExp(r'^You may spend (\d+) XP as an additional cost to play (?:me|this)(?:\. If you do, I cost \{(\d+)\} less)?\.?$').firstMatch(t);
+    if (m != null && card.isMainDeck) return [Static(line, PowerExtraCost(xp: int.parse(m[1]!), energyLess: int.tryParse(m[2] ?? '') ?? 0))];
+    m = RegExp(r"^As you play this, you may spend a buff as an additional cost\. If you do, ignore this spell's cost\.?$").firstMatch(t);
+    if (m != null && _isSpell) return [Static(line, const PowerExtraCost(buffs: 1, ignoreCost: true))];
+    m = RegExp(r'^As you play me, you may spend any number of buffs as an additional cost\. Reduce my cost by \{([A-Z])\} for each buff you spend\.?$').firstMatch(t);
+    if (m != null && _isUnit) {
+      final d = Domain.values.where((d) => d.letter == m![1]).firstOrNull;
+      return d == null ? null : [Static(line, PowerExtraCost(anyBuffs: true, powerPerBuff: d))];
+    }
+    m = RegExp(r"^When you play me, each player must kill one of their units\. If you paid my additional cost, you don't kill a unit this way\.?$").firstMatch(t);
+    if (m != null && _isUnit && card.text.contains('as an additional cost')) return [Triggered(line, const When(On.played), const [EachKillsOne(notYouIfPaid: true)])];
+    m = RegExp(r'^Choose an enemy unit at a battlefield with (\d+) \{M\} or less\. If you paid the additional cost, choose any enemy unit at a battlefield instead\. (Take control of it, exhaust it, and recall it)\.?$').firstMatch(t);
+    if (m != null && _isSpell && card.text.contains('as an additional cost')) {
+      final e = _effects('Choose an enemy unit at a battlefield. Take control of it. Exhaust it. Recall it.');
+      if (e == null || e.isEmpty || e.first is! Pick) return null;
+      final pick = e.first as Pick;
+      if (pick.targets.length != 1 || pick.targets.first is! Choose) return null;
+      final ch = pick.targets.first as Choose;
+      final f = ch.filter;
+      final nf = Filter(side: f.side, where: f.where, pw: PowerFilter(mightMaxUnlessPaid: int.parse(m[1]!)));
+      return [SpellBody(line, [Pick([Choose(nf, slot: ch.slot, upTo: ch.upTo)]), ...e.skip(1)])];
+    }
     final p = _powerStatic(t);
     if (p != null) return [Static(line, p)];
     return null;
@@ -227,9 +250,11 @@ extension _PowerLine on _Line {
     if (m != null && _isSpell) return SpellCostLess(int.parse(m[1]!), ifControlEmpowered: true);
     if (t == 'Units here have "{E}: Gain 1 XP."' && _isBattlefield) return const GrantXpAbility();
     if (t == '[Empower] costs of your units here cost {1} or {A} less.' && _isBattlefield) return const EmpowerCostLessHere();
-    if (t == "I can't be chosen by enemy spells and abilities." && _isUnit) return const CantBeChosen();
     if (t == 'If a spell or ability that chooses me would stun me, give me -{M}, or return me to hand, give me +3 {M} instead.' && _isUnit) return const ChosenHarmToMight(3);
     if (t == "Your spells and abilities can't be countered. If a spell or ability you control would give -{M} to a unit it chooses, it gives an additional -1 {M}." && card.isPermanent) return const MelAwakened();
+    if (t == 'I can be played to an occupied battlefield if an enemy unit is alone there.' && _isUnit) return const PlayToLoneEnemy();
+    if (t == 'Friendly units can be played to an occupied battlefield if an enemy unit is alone there.' && card.isPermanent) return const PlayToLoneEnemy(friendly: true);
+    if (t == "I can't be chosen by enemy spells and abilities." && _isUnit) return const CantBeChosen();
     if (t == 'Your conquer effects for conquering here trigger an additional time.' && _isUnit) return const ConquerTwiceHere();
     if (t == 'When a buffed unit you control would die, you may pay {A} and exhaust me to spend its buff and recall it exhausted instead.' && _isLegend) return const SaveBuffed();
     return null;
@@ -486,12 +511,12 @@ extension _PowerLine on _Line {
     m = RegExp(r'^Choose (a|an) (.+)$').firstMatch(s);
     if (m != null && !m[2]!.contains(' and a battlefield') && m[2] != 'opponent' && m[2] != 'player') {
       final t = _target('${m[1]} ${m[2]}');
-      return t == null ? null : [Pick(t)];
+      return t == null ? null : [PickIt(t)];
     }
     m = RegExp(r'^Choose a friendly unit and a battlefield$').firstMatch(s);
     if (m != null) {
       final t = _target('a friendly unit');
-      return t == null ? null : [Pick(t)];
+      return t == null ? null : [PickIt(t)];
     }
     if (s == 'Move all enemy units at that battlefield with less Might than the chosen unit to their base') {
       final it = _itSlot;
@@ -589,6 +614,7 @@ extension _PowerLine on _Line {
     if (s == 'Then for each unit this kills, do this: Gain 1 XP') return const [SplitMightDamage(-1, xpPerKill: 1)];
     // Delayed abilities this turn.
     if (s == 'When a friendly unit is played this turn, buff it') return const [Delayed('buffPlayedThisTurn')];
+    if (s == 'The next time you play a unit this turn, ready it and [Buff] it') return const [Delayed('nextUnitReadyBuff')];
     m = RegExp(r'^When it wins a combat this turn, gain (\d+) XP$').firstMatch(s);
     if (m != null) {
       final it = _itSlot;
@@ -641,7 +667,7 @@ bool? _powerMerge(List<Effect> out, List<Effect> next) {
     if (n.cond is IsEmpowered && (n.cond as IsEmpowered).slot == -99) {
       Effect? otherwise(Effect e) {
         if (e is! If) return null;
-        if (e.effects.isNotEmpty && e.effects.last is If && e.effects.any((x) => x is Pick)) {
+        if (e.effects.isNotEmpty && e.effects.last is If && e.effects.any((x) => x is PickIt)) {
           final inner = otherwise(e.effects.last);
           return inner == null ? null : If(e.cond, [...e.effects.take(e.effects.length - 1), inner]);
         }
@@ -705,7 +731,7 @@ bool? _powerMerge(List<Effect> out, List<Effect> next) {
   }
   // "If it's [Empowered], disempower it" after "if you control 7 or more runes, choose an enemy
   // gear": inside that If.
-  if (out.isNotEmpty && out.last is If && (out.last as If).effects.any((x) => x is Pick)) {
+  if (out.isNotEmpty && out.last is If && (out.last as If).effects.any((x) => x is PickIt)) {
     final i = out.removeLast() as If;
     final inner = [...i.effects];
     final r = _powerMerge(inner, next);

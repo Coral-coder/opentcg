@@ -104,7 +104,7 @@ String describeCostPart(CostPart c) => switch (c) {
 
 /// More conditions on a [Filter].
 class PowerFilter {
-  const PowerFilter({this.empowered, this.anyType = false, this.legends = false, this.lessMightThanSource = false, this.lessMightThanChosen, this.movedFromOrTo = false, this.atBattlefieldOnly = false, this.withChosen, this.inShowdown = false});
+  const PowerFilter({this.empowered, this.anyType = false, this.legends = false, this.lessMightThanSource = false, this.lessMightThanChosen, this.movedFromOrTo = false, this.atBattlefieldOnly = false, this.withChosen, this.inShowdown = false, this.mightMaxUnlessPaid});
   final bool? empowered;
 
   /// "Something": a unit or a gear.
@@ -131,6 +131,9 @@ class PowerFilter {
   /// "In a showdown": at the battlefield of the showdown going on.
   final bool inShowdown;
 
+  /// "With N {M} or less. If you paid the additional cost, choose any … instead" (Conscription).
+  final int? mightMaxUnlessPaid;
+
   String describe() => [
         if (empowered == true) 'empowered',
         if (empowered == false) 'not empowered',
@@ -142,6 +145,7 @@ class PowerFilter {
         if (atBattlefieldOnly) 'at my battlefield',
         if (withChosen != null) 'with #$withChosen',
         if (inShowdown) 'in a showdown',
+        if (mightMaxUnlessPaid != null) 'M<=$mightMaxUnlessPaid unless paid',
       ].join(' ');
 }
 
@@ -326,8 +330,8 @@ class LookBanishPlay extends PowerEffect {
 }
 
 /// "Choose a unit": a target for the sentences after it ("it").
-class Pick extends PowerEffect {
-  const Pick(this.target);
+class PickIt extends PowerEffect {
+  const PickIt(this.target);
   final Target target;
 }
 
@@ -402,7 +406,10 @@ class RevealHand extends PowerEffect {
 
 /// "Each player must kill one of their units" (Safety Inspector, without its extra cost).
 class EachKillsOne extends PowerEffect {
-  const EachKillsOne();
+  const EachKillsOne({this.notYouIfPaid = false});
+
+  /// "If you paid my additional cost, you don't kill a unit this way."
+  final bool notYouIfPaid;
 }
 
 /// "Move [target]" to a destination chosen as it resolves (any location it may go to).
@@ -512,11 +519,6 @@ class ControlTag extends PowerCond {
 class OpponentNearVictory extends PowerCond {
   const OpponentNearVictory(this.n);
   final int n;
-}
-
-/// "If an enemy unit is alone here".
-class EnemyAloneHere extends PowerCond {
-  const EnemyAloneHere();
 }
 
 /// "If I am at a battlefield".
@@ -668,11 +670,6 @@ class NoDamageOutsideCombat extends PowerPassive {
   const NoDamageOutsideCombat();
 }
 
-/// "I can't be chosen by enemy spells and abilities".
-class CantBeChosen extends PowerPassive {
-  const CantBeChosen();
-}
-
 /// "Units here have "{E}: Gain 1 XP."" (a battlefield granting an ability).
 class GrantXpAbility extends PowerPassive {
   const GrantXpAbility();
@@ -681,6 +678,27 @@ class GrantXpAbility extends PowerPassive {
 /// "[Empower] costs of your units here cost {1} or {A} less" (Risen Altar).
 class EmpowerCostLessHere extends PowerPassive {
   const EmpowerCostLessHere();
+}
+
+/// An additional cost of XP or buffs (CR 356.3): "You may spend 3 XP as an additional cost to play
+/// me. If you do, I cost {3} less."; "As you play this, you may spend a buff as an additional cost.
+/// If you do, ignore this spell's cost."; "…spend any number of buffs as an additional cost. Reduce
+/// my cost by {O} for each buff you spend."
+class PowerExtraCost extends PowerPassive {
+  const PowerExtraCost({this.xp = 0, this.buffs = 0, this.anyBuffs = false, this.ignoreCost = false, this.energyLess = 0, this.powerPerBuff});
+  final int xp;
+  final int buffs;
+  final bool anyBuffs;
+  final bool ignoreCost;
+  final int energyLess;
+  final Domain? powerPerBuff;
+}
+
+/// "I can be played to an occupied battlefield if an enemy unit is alone there"; with [friendly],
+/// "Friendly units can be …" (Arachnoid Horror).
+class PlayToLoneEnemy extends PowerPassive {
+  const PlayToLoneEnemy({this.friendly = false});
+  final bool friendly;
 }
 
 /// "This costs {N} less" (a spell's, gated by Level or a condition; the largest applies).
@@ -702,7 +720,9 @@ String describePowerPassive(PowerPassive p) => switch (p) {
       EmpowerTimes(:final n) => 'empowered up to $n times',
       ManyBuffs() => 'any number of buffs',
       NoDamageOutsideCombat() => 'no damage outside combat',
-      CantBeChosen() => 'can\'t be chosen by enemies',
+      PowerExtraCost(:final xp, :final buffs, :final anyBuffs, :final ignoreCost, :final energyLess, :final powerPerBuff) =>
+        'may spend ${xp > 0 ? '$xp XP' : anyBuffs ? 'any number of buffs' : '$buffs buff'} more${ignoreCost ? ': cost ignored' : ''}${energyLess > 0 ? ': costs {$energyLess} less' : ''}${powerPerBuff != null ? ': {${powerPerBuff.letter}} less per buff' : ''}',
+      PlayToLoneEnemy(:final friendly) => '${friendly ? 'friendly units' : 'I'} may be played where an enemy unit is alone',
       GrantXpAbility() => 'units here: {E}: gain 1 XP',
       EmpowerCostLessHere() => 'empower costs here {1} or {A} less',
       SpellCostLess(:final n) => 'this costs {$n} less',
