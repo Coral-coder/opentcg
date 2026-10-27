@@ -4,6 +4,9 @@
 library;
 
 import 'cards/card.dart';
+import 'describe.dart';
+
+part 'ir_general.dart';
 
 /// Keyword abilities (CR 805–826) the engine implements.
 enum Kw {
@@ -27,9 +30,9 @@ enum Side { any, friendly, enemy }
 enum Where { anywhere, here, battlefield, base }
 
 /// A description of units (or gear) on the board: "an enemy unit at a battlefield with 3 {M} or
-/// less".
+/// less". The fields after [buffed] come from the general grammar (parser/general.dart).
 class Filter {
-  const Filter({this.side = Side.any, this.where = Where.anywhere, this.gear = false, this.mightMax, this.mightMin, this.other = false, this.exhausted, this.attacking = false, this.defending = false, this.tag, this.buffed});
+  const Filter({this.side = Side.any, this.where = Where.anywhere, this.gear = false, this.mightMax, this.mightMin, this.other = false, this.exhausted, this.attacking = false, this.defending = false, this.tag, this.buffed, this.types, this.zone = FZone.board, this.tags = const [], this.domain, this.token, this.notTag, this.stunned, this.damaged, this.mighty, this.withKw, this.withoutKw, this.costMax, this.lessMightThanMe = false, this.inCombat = false, this.atSlot, this.myBf = false});
   final Side side;
   final Where where;
 
@@ -44,21 +47,129 @@ class Filter {
   final String? tag;
   final bool? buffed;
 
+  /// Card types when it isn't just units or just gear ("a unit or gear", "a card", "a spell");
+  /// overrides [gear].
+  final Set<CardType>? types;
+
+  /// Where the objects are: on the board, or cards in a trash or hand ([side] then means whose).
+  final FZone zone;
+
+  /// Any of these tags ("a Bird, Cat, Dog, or Poro").
+  final List<String> tags;
+  final Domain? domain;
+  final bool? token;
+
+  /// "Non-Recruit".
+  final String? notTag;
+  final bool? stunned, damaged;
+
+  /// Might 5 or more (CR 708).
+  final bool? mighty;
+  final Kw? withKw, withoutKw;
+
+  /// Energy cost at most.
+  final int? costMax;
+
+  /// "With less Might than me".
+  final bool lessMightThanMe;
+
+  /// In a combat (at the battlefield of the combat in progress).
+  final bool inCombat;
+
+  /// At the location of the object chosen in this slot (a battlefield, or a unit's location).
+  final int? atSlot;
+
+  /// "At my battlefield": the source's location, which must be a battlefield.
+  final bool myBf;
+
+  Set<CardType> get cardTypes => types ?? {gear ? CardType.gear : CardType.unit};
+
+  Filter copyWith({
+    Side? side,
+    Where? where,
+    bool? other,
+    bool? exhausted,
+    bool? buffed,
+    Set<CardType>? types,
+    FZone? zone,
+    List<String>? tags,
+    bool? token,
+    bool? stunned,
+    bool? damaged,
+    bool? mighty,
+    Kw? withKw,
+    Kw? withoutKw,
+    int? atSlot,
+    bool? myBf,
+    bool? attacking,
+    bool? defending,
+    bool? inCombat,
+    int? mightMax,
+    int? mightMin,
+  }) => Filter(
+    side: side ?? this.side,
+    where: where ?? this.where,
+    gear: gear,
+    mightMax: mightMax ?? this.mightMax,
+    mightMin: mightMin ?? this.mightMin,
+    other: other ?? this.other,
+    exhausted: exhausted ?? this.exhausted,
+    attacking: attacking ?? this.attacking,
+    defending: defending ?? this.defending,
+    tag: tag,
+    buffed: buffed ?? this.buffed,
+    types: types ?? this.types,
+    zone: zone ?? this.zone,
+    tags: tags ?? this.tags,
+    domain: domain,
+    token: token ?? this.token,
+    notTag: notTag,
+    stunned: stunned ?? this.stunned,
+    damaged: damaged ?? this.damaged,
+    mighty: mighty ?? this.mighty,
+    withKw: withKw ?? this.withKw,
+    withoutKw: withoutKw ?? this.withoutKw,
+    costMax: costMax,
+    lessMightThanMe: lessMightThanMe,
+    inCombat: inCombat ?? this.inCombat,
+    atSlot: atSlot ?? this.atSlot,
+    myBf: myBf ?? this.myBf,
+  );
+
   String describe() => [
         if (side != Side.any) side.name,
         if (other) 'other',
         if (exhausted == true) 'exhausted',
         if (exhausted == false) 'ready',
         if (buffed == true) 'buffed',
+        if (stunned == true) 'stunned',
+        if (damaged == true) 'damaged',
+        if (mighty == true) 'mighty',
+        if (token == true) 'token',
+        if (token == false) 'non-token',
         if (attacking) 'attacking',
         if (defending) 'defending',
+        if (inCombat) 'in combat',
         ?tag,
-        gear ? 'gear' : 'unit',
+        if (tags.isNotEmpty) tags.join('/'),
+        if (notTag != null) 'non-$notTag',
+        if (domain != null) domain!.label,
+        types == null ? (gear ? 'gear' : 'unit') : types!.map((t) => t.name).join('/'),
+        if (zone != FZone.board) 'in ${zone.name}',
         if (where != Where.anywhere) '@${where.name}',
+        if (myBf) '@my battlefield',
+        if (atSlot != null) '@location of #$atSlot',
         if (mightMax != null) 'M≤$mightMax',
         if (mightMin != null) 'M≥$mightMin',
+        if (costMax != null) 'cost≤$costMax',
+        if (lessMightThanMe) 'M<mine',
+        if (withKw != null) 'with ${withKw!.name}',
+        if (withoutKw != null) 'without ${withoutKw!.name}',
       ].join(' ');
 }
+
+/// Where a filter's objects are.
+enum FZone { board, trash, hand }
 
 /// What an effect acts on.
 sealed class Target {
@@ -235,8 +346,11 @@ class Counter extends Effect {
 
 /// "[Add] {N}" / "[Add] {A}": Energy or Power into the Rune Pool (CR 165).
 class AddRes extends Effect {
-  const AddRes({this.energy = 0, this.anyPower = 0, this.spellsOnly = false});
+  const AddRes({this.energy = 0, this.anyPower = 0, this.spellsOnly = false, this.power = const []});
   final int energy, anyPower;
+
+  /// Power of these domains ("[Add] {R}").
+  final List<Domain> power;
 
   /// "Use only to play spells."
   final bool spellsOnly;
@@ -341,6 +455,9 @@ enum On {
 
   /// "When an enemy unit attacks a battlefield you control" (once per attacking unit; "it" is it).
   enemyAttacksYourBf,
+
+  /// A [GenWhen] (ir_general.dart): its own event.
+  general,
 }
 
 class When extends Trigger {
@@ -351,8 +468,11 @@ class When extends Trigger {
 
 /// What an activated ability costs (CR 204.1.b).
 class Cost {
-  const Cost({this.energy = 0, this.power = const [], this.exhaust = false, this.killMe = false});
+  const Cost({this.energy = 0, this.power = const [], this.exhaust = false, this.killMe = false, this.extra = const []});
   final int energy;
+
+  /// Other costs: discarding, recycling from the trash, killing a friendly unit… (ir_general.dart).
+  final List<CostPart> extra;
 
   /// One entry per Power symbol: a domain, or null for {A} (any domain).
   final List<Domain?> power;
@@ -361,8 +481,8 @@ class Cost {
   /// "Kill this" (Gold).
   final bool killMe;
 
-  bool get isFree => energy == 0 && power.isEmpty && !exhaust && !killMe;
-  String describe() => [if (energy > 0) '{$energy}', for (final p in power) '{${p?.letter ?? 'A'}}', if (killMe) 'kill me', if (exhaust) '{E}'].join(' ');
+  bool get isFree => energy == 0 && power.isEmpty && !exhaust && !killMe && extra.isEmpty;
+  String describe() => [if (energy > 0) '{$energy}', for (final p in power) '{${p?.letter ?? 'A'}}', if (killMe) 'kill me', if (exhaust) '{E}', for (final x in extra) x.describe()].join(' ');
 }
 
 /// When a spell or ability may be played (CR 806, 813).

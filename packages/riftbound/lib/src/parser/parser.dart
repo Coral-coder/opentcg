@@ -5,6 +5,8 @@ library;
 import '../cards/card.dart';
 import '../ir.dart';
 
+part 'general.dart';
+
 /// Bumped whenever parsing or the engine changes what a saved game would replay to.
 const riftboundEngineVersion = 1;
 
@@ -35,6 +37,10 @@ class RiftboundParser {
   static ParsedCard parse(RCard c) => _cache.putIfAbsent(c.key, () => parseUncached(c));
 
   static void clearCache() => _cache.clear();
+
+  /// When not null, parsing records here each piece of text it couldn't read, most specific
+  /// first ("S: sentence", "W: trigger", "T: target", "C: condition", "P: passive", "K: cost").
+  static List<String>? trace;
 
   static ParsedCard parseUncached(RCard c) {
     final abilities = <Ability>[];
@@ -91,6 +97,15 @@ class _Line {
   /// The trigger is about a battlefield ("that battlefield").
   bool _eventBf = false;
 
+  int _mark() => RiftboundParser.trace?.length ?? 0;
+
+  /// Records [s] as unreadable unless something more specific was recorded since [mark].
+  T? _miss<T>(int mark, String kind, String s) {
+    final t = RiftboundParser.trace;
+    if (t != null && t.length == mark) t.add('$kind: $s');
+    return null;
+  }
+
   bool get _isSpell => card.type == CardType.spell;
   bool get _isBattlefield => card.type == CardType.battlefield;
 
@@ -131,6 +146,8 @@ class _Line {
 
   Ability? _ability(String t, String line) {
     if (t == 'I must be assigned combat damage last.' && card.type == CardType.unit) return KeywordAb(line, Kw.backline);
+    final g = _genAbility(t, line);
+    if (g != null) return g;
     if (_isSpell) {
       final e = _effects(t);
       return e == null ? null : SpellBody(line, e);
@@ -150,8 +167,9 @@ class _Line {
     // Triggered abilities.
     m = RegExp(r'^(When|At) ([^,]+), (.+)$').firstMatch(t);
     if (m != null) {
+      final mark = _mark();
       final on = _when('${m[1]} ${m[2]}');
-      if (on == null) return null;
+      if (on == null) return _miss(mark, 'W', '${m[1]} ${m[2]}');
       _eventUnit = on.on == On.enemyAttacksYourBf;
       _eventBf = const {On.youConquer, On.youHold, On.conquerHere, On.holdHere}.contains(on.on);
       final e = _effects(_cap(m[3]!));
@@ -180,7 +198,7 @@ class _Line {
         if (spellsOnly) {
           if (e.length != 1 || e.first is! AddRes) return null;
           final a = e.first as AddRes;
-          e = [AddRes(energy: a.energy, anyPower: a.anyPower, spellsOnly: true)];
+          e = [AddRes(energy: a.energy, anyPower: a.anyPower, spellsOnly: true, power: a.power)];
         }
         return Activated(line, cost, e, timing: timingWord == 'reaction' ? Timing.reaction : (timingWord == 'action' ? Timing.action : Timing.normal), oncePerTurn: once, legion: m[4] != null);
       }
@@ -215,11 +233,14 @@ class _Line {
       'When you stun one or more enemy units' when perm || card.type == CardType.legend => const When(On.youStunEnemy),
       'When an enemy unit attacks a battlefield you control' when perm || card.type == CardType.legend => const When(On.enemyAttacksYourBf),
       'At start of your Beginning Phase' when perm || card.type == CardType.legend => const When(On.startOfTurn),
-      _ => null,
+      _ => _genWhen(s),
     };
   }
 
   Passive? _passive(String t) {
+    final mark = _mark();
+    final g = _genPassive(t);
+    if (g != null) return g;
     if (card.type == CardType.gear && t == 'This enters exhausted.') return const EntersExhausted();
     var lm = RegExp(r'^While a friendly unit defends alone, it gets \+(\d+) \{M\}\.$').firstMatch(t);
     if (lm != null && (card.type == CardType.legend || card.isPermanent)) return DefendsAlone(int.parse(lm[1]!));
@@ -240,7 +261,7 @@ class _Line {
     }
     m = RegExp(r'^Your ([A-Z][a-z]+)s have \+(\d+) \{M\}\.$').firstMatch(t);
     if (m != null && card.isPermanent) return Anthem(int.parse(m[2]!), Filter(side: Side.friendly, tag: m[1]));
-    return null;
+    return _miss(mark, 'P', t);
   }
 
   /// "{2}{R}, {E}" → a cost; null if any part isn't understood.
@@ -248,6 +269,7 @@ class _Line {
     var energy = 0;
     final power = <Domain?>[];
     var exhaust = false, killMe = false;
+    final extra = <CostPart>[];
     for (final part in s.split(', ')) {
       if (part == '{E}') {
         exhaust = true;
@@ -257,7 +279,10 @@ class _Line {
         killMe = true;
         continue;
       }
-      if (!RegExp(r'^(\{[0-9A-Z]+\})+$').hasMatch(part)) return null;
+      if (!RegExp(r'^(\{[0-9A-Z]+\})+$').hasMatch(part)) {
+        if (_genCostPart(part, extra)) continue;
+        return null;
+      }
       for (final m in RegExp(r'\{([0-9A-Z]+)\}').allMatches(part)) {
         final v = m[1]!;
         final n = int.tryParse(v);
@@ -275,7 +300,7 @@ class _Line {
         }
       }
     }
-    return Cost(energy: energy, power: power, exhaust: exhaust, killMe: killMe);
+    return Cost(energy: energy, power: power, exhaust: exhaust, killMe: killMe, extra: extra);
   }
 
   /// Sentences → effects; null if any sentence isn't understood.
@@ -286,7 +311,7 @@ class _Line {
       if (e == null) return null;
       out.addAll(e);
     }
-    return out.isEmpty ? null : out;
+    return out.isEmpty ? null : _genPost(out);
   }
 
   static List<String> _sentences(String t) {
@@ -303,6 +328,9 @@ class _Line {
   }
 
   List<Effect>? _sentence(String s0) {
+    final mark = _mark();
+    final g = _genSentence(s0);
+    if (g != null) return g;
     var s = s0;
     if (s.startsWith('You may ')) {
       final inner = _sentence('${s[8].toUpperCase()}${s.substring(9)}');
@@ -353,17 +381,20 @@ class _Line {
     m = RegExp(r'^\[?Predict(?: (\d+))?\]?$').firstMatch(s);
     if (m != null) return [Predict(int.tryParse(m[1] ?? '') ?? 1)];
     if (s == 'Counter a spell' && _isSpell) return [const Counter()];
-    m = RegExp(r'^\[Add\] ((?:\{[0-9A]\})+)$').firstMatch(s);
+    m = RegExp(r'^\[Add\] ((?:\{[0-9ARGBOPY]\})+)$').firstMatch(s);
     if (m != null) {
       var energy = 0, any = 0;
-      for (final x in RegExp(r'\{([0-9A])\}').allMatches(m[1]!)) {
+      final power = <Domain>[];
+      for (final x in RegExp(r'\{([0-9ARGBOPY])\}').allMatches(m[1]!)) {
         if (x[1] == 'A') {
           any++;
+        } else if (int.tryParse(x[1]!) == null) {
+          power.add(Domain.byName(x[1]!)!);
         } else {
           energy += int.parse(x[1]!);
         }
       }
-      return [AddRes(energy: energy, anyPower: any)];
+      return [AddRes(energy: energy, anyPower: any, power: power)];
     }
     // Damage.
     m = RegExp(r'^Deal (\d+) to (.+)$').firstMatch(s);
@@ -436,19 +467,23 @@ class _Line {
       final count = _num(m[1]!);
       return count == null ? null : [PlayToken('Gold', count, ready: m[2] == null)];
     }
-    return null;
+    return _miss(mark, 'S', s0);
   }
 
   Cond? _cond(String c) {
     if (c == 'you have one or fewer cards in your hand') return const HandAtMost(1);
     final m = RegExp(r'^you have (\d+)\+ units at that battlefield$').firstMatch(c);
     if (m != null && _eventBf) return UnitsThere(int.parse(m[1]!));
-    return null;
+    final mark = _mark();
+    return _genCond(c) ?? _miss(mark, 'C', c);
   }
 
   /// A target phrase → a target; null if not understood.
   Target? _target(String p) {
     p = p.trim();
+    final mark = _mark();
+    final g = _genTarget(p);
+    if (g != null) return g;
     if (p == 'me' && card.type == CardType.unit) return const Me();
     if (p == 'this' && card.type == CardType.gear) return const Me();
     if (p == 'it' || p == 'that unit') {
@@ -476,15 +511,17 @@ class _Line {
     if (m != null) {
       var f = _filter(m[1]!, plural: false);
       if (f == null) return null;
-      if (p.startsWith('another')) f = Filter(side: f.side, where: f.where, gear: f.gear, mightMax: f.mightMax, mightMin: f.mightMin, other: true, exhausted: f.exhausted, attacking: f.attacking, defending: f.defending, tag: f.tag, buffed: f.buffed);
+      if (p.startsWith('another')) f = f.copyWith(other: true);
       if (f.other && card.type != CardType.unit) return null;
       return Choose(f, slot: _slotCounter[0]++, upTo: upTo);
     }
-    return null;
+    return _miss(mark, 'T', p);
   }
 
   /// "enemy unit here with 3 {M} or less" → a filter.
   Filter? _filter(String p, {required bool plural}) {
+    final g = _genFilter(p, plural: plural);
+    if (g != null) return g;
     var side = Side.any;
     var where = Where.anywhere;
     bool? exhausted, buffed;

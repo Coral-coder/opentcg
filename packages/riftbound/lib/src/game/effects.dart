@@ -2,7 +2,7 @@ part of 'game.dart';
 
 /// Who is resolving: controller, source, the source's location ("here"), and chosen targets.
 class _Ctx {
-  _Ctx({required this.controller, required this.source, required this.loc, required this.targets, this.event = -1});
+  _Ctx({required this.controller, required this.source, required this.loc, required this.targets, this.event = -1, this.ability = -2});
   final int controller;
   final ObjId source;
   final int loc;
@@ -10,6 +10,12 @@ class _Ctx {
 
   /// The unit a trigger is about, or -1.
   final int event;
+
+  /// The ability resolving (-1: a spell's instructions; -2: unknown).
+  final int ability;
+
+  /// What the general effects noted while resolving ("paid", "that", "lkMight"; general.dart).
+  final Map<String, int> scratch = {};
 }
 
 /// Choosing targets (CR 355.5–355.10) and executing instructions (CR 158, 359.3.e).
@@ -45,9 +51,17 @@ extension GameEffects on Game {
             }
             set(0, ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Counter which spell?', options: spells, source: source)).first);
           default:
+            if (e is GenEffect) {
+              _genChoose(e, p, source, loc, out, set, walk, optional: optional);
+              continue;
+            }
             final t = _targetOf(e);
+            if (t is GenTarget) {
+              _genChooseOne(ChooseOnly([t]), t, p, source, loc, out, set, optional: optional);
+              continue;
+            }
             if (t is Choose) {
-              final options = matching(t.filter, controller: p, source: source, here: loc);
+              final options = _genTargetable(matching(t.filter, controller: p, source: source, here: loc, slots: out), p, source);
               if (options.isEmpty) {
                 if (t.upTo || optional) {
                   set(t.slot, -1);
@@ -63,6 +77,7 @@ extension GameEffects on Game {
     }
 
     walk(effects);
+    _genChosen(out, p, source);
     return out;
   }
 
@@ -70,7 +85,12 @@ extension GameEffects on Game {
   bool _mandatoryTargetsMissing(List<Effect> effects, List<int> targets) {
     for (final e in effects) {
       if (e is May) continue;
+      if (e is GenEffect) {
+        if (_genMissing(e, targets)) return true;
+        continue;
+      }
       final t = _targetOf(e);
+      if (t is GenTarget && _genMissing(ChooseOnly([t]), targets)) return true;
       if (t is Choose && !t.upTo && (t.slot >= targets.length || targets[t.slot] < 0)) return true;
     }
     return false;
@@ -121,6 +141,8 @@ extension GameEffects on Game {
       case EventUnit():
         final id = ctx.event;
         return id >= 0 && state.objOrNull(id)?.zone == Zone.board ? [id] : const [];
+      case GenTarget():
+        return _genResolveTarget(t, ctx);
     }
   }
 
@@ -138,11 +160,11 @@ extension GameEffects on Game {
         final n = switch (amount) {
           N(:final n) => n,
           MyMight() => state.objOrNull(ctx.source)?.zone == Zone.board ? mightUsed(ctx.source) : 0,
+          GenAmount() => _genAmount(amount, ctx),
         };
         for (final id in _resolveTarget(target, ctx)) {
-          if (!isUnit(id)) continue;
-          state.obj(id).damage += n;
-          log('${nameOf(ctx.source)} deals $n to ${nameOf(id)}.', player: p, card: id, kind: 'damage', amount: n);
+          final d = _genDeal(id, n, ctx);
+          if (d > 0) log('${nameOf(ctx.source)} deals $d to ${nameOf(id)}.', player: p, card: id, kind: 'damage', amount: d);
         }
       case Draw(:final n):
         _draw(p, n);
@@ -157,15 +179,25 @@ extension GameEffects on Game {
           state.player(p).trash.add(id);
         }
         log('${playerName(p)} discards ${pick.map(nameOf).join(', ')}.', player: p, kind: 'discard');
+        _genDiscarded(p, pick);
       case Buff(:final target):
         for (final id in _resolveTarget(target, ctx)) {
-          if (!isUnit(id) || state.obj(id).buffed) continue;
+          if (!isUnit(id)) continue;
+          if (state.obj(id).buffed) {
+            // "I can have any number of buffs" (CR 427.1.b.2).
+            if (!_genSelfRestricted(id, RKind.manyBuffs)) continue;
+            _gen.setL('o$id:buffs', _gen.getL('o$id:buffs') + 1);
+          }
           state.obj(id).buffed = true;
           log('${nameOf(id)} is buffed.', player: p, card: id, kind: 'buff');
+          _genBuffed(id, p);
         }
       case Ready(:final target):
         for (final id in _resolveTarget(target, ctx)) {
+          if (!_genCanReady(id, p)) continue;
+          final was = state.obj(id).exhausted;
           state.obj(id).exhausted = false;
+          if (was && isUnit(id)) _genReadied(id, p);
         }
       case Exhaust(:final target):
         for (final id in _resolveTarget(target, ctx)) {
@@ -178,11 +210,13 @@ extension GameEffects on Game {
           state.obj(id).stunned = true;
           if (state.obj(id).controller != p) enemy = true;
           log('${nameOf(id)} is stunned.', player: p, card: id, kind: 'stun');
+          _genEvent(GEv.stunned, player: p, obj: id);
         }
         if (enemy) _fire(On.youStunEnemy, player: p);
       case Kill(:final target):
         for (final id in _resolveTarget(target, ctx)) {
           log('${nameOf(id)} is killed.', player: p, card: id, kind: 'die');
+          _genNoteHit(id, ctx);
           _kill(id);
         }
       case GiveMight(:final n, :final target, :final min):
@@ -277,31 +311,44 @@ extension GameEffects on Game {
         final victim = ctx.targets[0];
         final i = state.chain.indexWhere((it) => it.isSpell && it.source == victim);
         if (i < 0) return;
+        ctx.scratch['counteredCtl'] = state.chain[i].controller;
+        if (_genCantBeCountered(victim)) {
+          log('${nameOf(victim)} can’t be countered.', player: p, card: victim, kind: 'info');
+          return;
+        }
         state.chain.removeAt(i);
         final o = state.obj(victim)..zone = Zone.trash;
         state.player(o.owner).trash.add(victim);
+        ctx.scratch['countered'] = victim;
         log('${nameOf(victim)} is countered.', player: p, card: victim, kind: 'info');
-      case AddRes(:final energy, :final anyPower):
+      case AddRes(:final energy, :final anyPower, :final power):
         final pl = state.player(p);
         pl.energyPool += energy;
         pl.anyPool += anyPower;
+        for (final d in power) {
+          pl.powerPool[d.index]++;
+        }
       case May(:final effects):
         if (askYesNo(p, '${nameOf(ctx.source)}: ${_mayPrompt(effects)}?', source: ctx.source)) {
+          ctx.scratch['paid'] = 1;
           for (final x in effects) {
             _resolve(x, ctx);
           }
         }
       case Modes(:final modes):
-        final a = ask(Decision(kind: DecisionKind.option, player: p, prompt: 'Choose one', labels: [for (var i = 0; i < modes.length; i++) 'Mode ${i + 1}'], source: ctx.source));
+        final a = ask(Decision(kind: DecisionKind.option, player: p, prompt: 'Choose one', labels: [for (final m in modes) m.map(describeEffect).join(', then ')], source: ctx.source));
         for (final x in modes[a.first]) {
           _resolve(x, ctx);
         }
+      case GenEffect():
+        _genResolve(e, ctx);
     }
   }
 
   bool _cond(Cond c, _Ctx ctx) => switch (c) {
         HandAtMost(:final n) => state.player(ctx.controller).hand.length <= n,
         UnitsThere(:final n) => ctx.loc >= 0 && ctx.loc < state.bfs.length && unitsAt(ctx.loc, player: ctx.controller).length >= n,
+        GenCond() => _genCond(c, ctx),
       };
 
   String _mayPrompt(List<Effect> effects) => effects.map(describeEffect).join(', then ');

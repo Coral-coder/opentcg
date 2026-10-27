@@ -44,6 +44,7 @@ extension GameQuery on Game {
       for (final (src, passive) in _passives()) {
         if (passive is KwAnthem && passive.kw == k && matches(passive.filter, id, controller: state.obj(src).controller, source: src, here: state.obj(src).loc)) n += passive.n;
       }
+      n += _genKw(id, k);
     }
     return n;
   }
@@ -51,7 +52,7 @@ extension GameQuery on Game {
   /// Passive abilities in effect: those of permanents on the board and of legends (CR 363).
   Iterable<(ObjId, Passive)> _passives() sync* {
     for (final o in state.objects.values) {
-      if (o.zone != Zone.board && o.zone != Zone.legend) continue;
+      if (o.zone != Zone.board && o.zone != Zone.legend && o.zone != Zone.battlefield) continue;
       for (final a in parsed(o.id).abilities) {
         if (a is Static) yield (o.id, a.passive);
       }
@@ -81,6 +82,7 @@ extension GameQuery on Game {
       }
       if (isAttacking(id)) m += _kw(id, Kw.assault);
       if (isDefending(id)) m += _kw(id, Kw.shield);
+      m += _genMight(id, m);
     }
     return m;
   }
@@ -90,11 +92,13 @@ extension GameQuery on Game {
 
   /// Does object [id] match [f], for an ability of [source] controlled by [controller]? [here] is
   /// the source's location.
-  bool matches(Filter f, ObjId id, {required int controller, ObjId? source, int here = base}) {
+  bool matches(Filter f, ObjId id, {required int controller, ObjId? source, int here = base, List<int>? slots}) {
     final o = state.objOrNull(id);
-    if (o == null || o.zone != Zone.board) return false;
+    if (o == null) return false;
+    if (f.zone != FZone.board) return _genMatchesCard(f, id, controller: controller, source: source);
+    if (o.zone != Zone.board) return false;
     final c = card(id);
-    if (f.gear ? c.type != CardType.gear : c.type != CardType.unit) return false;
+    if (!f.cardTypes.contains(c.type)) return false;
     if (f.side == Side.friendly && o.controller != controller) return false;
     if (f.side == Side.enemy && o.controller == controller) return false;
     if (f.other && id == source) return false;
@@ -117,13 +121,15 @@ extension GameQuery on Game {
     if (f.tag != null && !c.hasTag(f.tag!)) return false;
     if (f.mightMax != null && mightUsed(id) > f.mightMax!) return false;
     if (f.mightMin != null && mightUsed(id) < f.mightMin!) return false;
-    return true;
+    return _genMatches(f, id, o, c, controller: controller, source: source, here: here, slots: slots);
   }
 
-  /// Objects matching [f], oldest first.
-  List<ObjId> matching(Filter f, {required int controller, ObjId? source, int here = base}) => [
+  /// Objects matching [f], oldest first (cards in trashes or hands: by owner, in zone order).
+  List<ObjId> matching(Filter f, {required int controller, ObjId? source, int here = base, List<int>? slots}) => f.zone != FZone.board
+      ? _genMatching(f, controller: controller, source: source)
+      : [
         for (final o in state.objects.values)
-          if (o.zone == Zone.board && matches(f, o.id, controller: controller, source: source, here: here)) o.id,
+          if (o.zone == Zone.board && matches(f, o.id, controller: controller, source: source, here: here, slots: slots)) o.id,
       ];
 
   // -------------------------------------------------------------------------------------------
@@ -171,8 +177,8 @@ extension GameQuery on Game {
   /// Where unit [u] may go with its Standard Move (CR 144.4).
   List<int> moveDestinations(ObjId u) {
     final o = state.obj(u);
-    if (o.loc == base) return [for (var i = 0; i < state.bfs.length; i++) i];
-    return [base, if (hasKw(u, Kw.ganking)) for (var i = 0; i < state.bfs.length; i++) if (i != o.loc) i];
+    if (o.loc == base) return _genMoveDests(u, [for (var i = 0; i < state.bfs.length; i++) i]);
+    return _genMoveDests(u, [base, if (hasKw(u, Kw.ganking)) for (var i = 0; i < state.bfs.length; i++) if (i != o.loc) i]);
   }
 
   /// The reason [m] isn't legal now, or null if it is (tried on a copy of the game).

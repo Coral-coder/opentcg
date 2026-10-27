@@ -44,7 +44,7 @@ extension GamePlay on Game {
       for (var i = 0; i < abs.length; i++) {
         final a = abs[i];
         if (a is! Activated || !a.adds || a.timing != Timing.reaction) continue;
-        if (a.cost.energy > 0 || a.cost.power.isNotEmpty) continue;
+        if (a.cost.energy > 0 || a.cost.power.isNotEmpty || a.cost.extra.isNotEmpty) continue;
         if (a.cost.exhaust && o.exhausted) continue;
         if (a.oncePerTurn && o.usedThisTurn.contains(i)) continue;
         if (a.legion && pl.playedThisTurn < 1) continue;
@@ -62,21 +62,25 @@ extension GamePlay on Game {
     for (var k = 0; k <= sources.length; k++) {
       final used = sources.take(k).toList();
       var e = 0, a = 0;
+      final dp = List.filled(6, 0);
       for (final (_, _, add) in used) {
         e += add.energy;
         a += add.anyPower;
+        for (final d in add.power) {
+          dp[d.index]++;
+        }
       }
-      final plan = _payPlan(p, energy, power, extraEnergy: e, extraAny: a);
+      final plan = _payPlan(p, energy, power, extraEnergy: e, extraAny: a, extraPower: dp);
       if (plan != null) return (exhaust: plan.exhaust, recycle: plan.recycle, poolEnergy: plan.poolEnergy, poolPower: plan.poolPower, poolAny: plan.poolAny, adds: used);
     }
     return null;
   }
 
   /// Which runes to exhaust and recycle, or null if it can't be paid. Deterministic: rune order.
-  ({List<ObjId> exhaust, List<ObjId> recycle, int poolEnergy, List<int> poolPower, int poolAny})? _payPlan(int p, int energy, List<Domain?> power, {int extraEnergy = 0, int extraAny = 0}) {
+  ({List<ObjId> exhaust, List<ObjId> recycle, int poolEnergy, List<int> poolPower, int poolAny})? _payPlan(int p, int energy, List<Domain?> power, {int extraEnergy = 0, int extraAny = 0, List<int>? extraPower}) {
     final pl = state.player(p);
     var poolE = pl.energyPool + extraEnergy;
-    final poolP = List.of(pl.powerPool);
+    final poolP = [for (var i = 0; i < 6; i++) pl.powerPool[i] + (extraPower == null ? 0 : extraPower[i])];
     var poolA = pl.anyPool + extraAny;
     final usedE = poolE < energy ? poolE : energy;
     var needE = energy - usedE;
@@ -163,6 +167,7 @@ extension GamePlay on Game {
           ..exhausted = false;
         pl.runeDeck.add(o.id);
       }
+      _genRunesRecycled(p, plan.recycle.length);
     }
   }
 
@@ -183,6 +188,7 @@ extension GamePlay on Game {
         if (!cl.legion || state.player(p).playedThisTurn >= 1) e -= cl.n;
       }
     }
+    e = _genEnergyCost(p, c, e);
     return e < 0 ? 0 : e;
   }
 
@@ -224,14 +230,18 @@ extension GamePlay on Game {
     final parsedCard = parsed(id);
     if (!parsedCard.supported) throw RiftboundError('${c.name} isn’t supported yet');
     if (!c.isMainDeck) throw RiftboundError('That can’t be played');
-    final timing = c.type == CardType.spell ? parsedCard.timing : Timing.normal;
+    final timing = parsedCard.timing;
     final t = _timingProblem(p, timing);
     if (t != null) throw RiftboundError(t);
+    final gp = _genPlayProblem(p, id);
+    if (gp != null) throw RiftboundError(gp);
     if (!_canPayCard(p, c)) throw RiftboundError('Not enough runes (${_costLabel(c)})');
     // Make relevant choices (CR 355).
     var loc = base;
     if (c.type == CardType.unit) {
-      final options = [base, for (var i = 0; i < state.bfs.length; i++) if (state.bfs[i].controller == p) i];
+      final options = _genPlayLocs(p, id, [base, for (var i = 0; i < state.bfs.length; i++) if (state.bfs[i].controller == p) i]);
+      if (options.isEmpty) throw RiftboundError('${c.name} can’t be played anywhere now');
+      loc = options.first;
       if (options.length > 1) {
         final a = ask(Decision(kind: DecisionKind.option, player: p, prompt: 'Play ${c.name} where?', labels: [for (final l in options) locName(l, p)], source: id));
         loc = options[a.first];
@@ -269,6 +279,7 @@ extension GamePlay on Game {
     }
     // Pay (CR 357) and finalize (CR 359).
     _payCard(p, c, extraEnergy: extraE, extraPower: extraP);
+    _genSpent(p, energyCost(p, c) + extraE + c.power + extraP.length, power: c.power + extraP.length);
     pl.hand.remove(id);
     if (pl.champion == id) pl.champion = null;
     pl.playedThisTurn++;
@@ -276,16 +287,18 @@ extension GamePlay on Game {
       o.zone = Zone.chain;
       log('${pl.name} plays ${c.name}.', player: p, card: id, kind: 'play');
       _pushChain(ChainItem(id: state.nextChainId++, source: id, card: c.key, ability: -1, controller: p, targets: targets, repeats: repeats));
+      _genSpellCast(p, state.chain.last.id, energyCost(p, c) + extraE + c.power + extraP.length);
       if (state.showdown?.focus == p) state.showdown!.focusChain = true;
       return;
     }
     // A unit or gear resolves at once (CR 337.2).
     final passives = [for (final a in parsedCard.abilities) if (a is Static) a.passive];
     final ready = c.type == CardType.gear ? !passives.any((x) => x is EntersExhausted) : (accelerate || passives.any((x) => x is EntersReady));
-    _enterBoard(id, p, loc, ready: ready);
+    _enterBoard(id, p, loc, ready: _genEntersReady(p, id, ready));
     log('${pl.name} plays ${c.name}${loc == base ? '' : ' to ${locName(loc, p)}'}.', player: p, card: id, kind: 'play');
     _firePlayed(id);
     if (c.type == CardType.unit) _fire(On.youPlayUnit, player: p);
+    _genEvent(GEv.played, player: p, obj: id);
   }
 
   String _costLabel(RCard c) => '{${c.energy}}${'{${c.domains.isEmpty ? 'A' : c.domains.first.letter}}' * c.power}';
@@ -302,6 +315,7 @@ extension GamePlay on Game {
       ..exhausted = !ready
       ..enteredTurn = state.turn;
     if (o.loc != base) _contest(o.loc, controller);
+    _genEntered(id);
   }
 
   /// "When you play me" and Vision (CR 817) triggers of a permanent that just entered.
@@ -337,6 +351,8 @@ extension GamePlay on Game {
     if (a.oncePerTurn && o.usedThisTurn.contains(index)) throw RiftboundError('Only once per turn');
     if (a.cost.exhaust && o.exhausted) throw RiftboundError('${nameOf(src)} is exhausted');
     if (!canPay(p, a.cost.energy, a.cost.power)) throw RiftboundError('Not enough runes (${a.cost.describe()})');
+    final gx = _genActivateProblem(a, src, p);
+    if (gx != null) throw RiftboundError(gx);
     final targets = _chooseTargets(a.effects, p, src, o.loc);
     final extraP = <Domain?>[];
     for (final tg in targets) {
@@ -347,8 +363,11 @@ extension GamePlay on Game {
       }
     }
     _pay(p, a.cost.energy, [...a.cost.power, ...extraP]);
+    _genSpent(p, a.cost.energy + a.cost.power.length + extraP.length, power: a.cost.power.length + extraP.length);
+    _genPayExtra(a, src, p, targets);
     if (a.cost.exhaust) o.exhausted = true;
     o.usedThisTurn.add(index);
+    if (card(src).type == CardType.gear) _genEvent(GEv.gearAbility, player: p, obj: src);
     final item = ChainItem(id: state.nextChainId++, source: src, card: o.card, ability: index, controller: p, targets: targets, loc: o.loc);
     if (a.cost.killMe) _kill(src);
     log('${playerName(p)} uses ${nameOf(src)}.', player: p, card: src, kind: 'ability');
@@ -383,6 +402,7 @@ extension GamePlay on Game {
 
   /// Moves units (a move, not a recall: CR 448) and applies Contested (CR 452).
   void _moveUnits(List<ObjId> moving, int to, int byPlayer) {
+    final from = [for (final u in moving) state.obj(u).loc];
     for (final u in moving) {
       state.obj(u).loc = to;
     }
@@ -395,6 +415,7 @@ extension GamePlay on Game {
         if (a is Triggered && a.on.on == On.move && (!a.on.moveToBattlefield || to != base)) _queue(u, i, state.obj(u).controller);
       }
     }
+    _genMoved(moving, from, to, byPlayer);
   }
 
   /// Contested status (CR 190.3.a).
@@ -410,6 +431,7 @@ extension GamePlay on Game {
   /// Queues ability [index] of [src] to go on the chain at the next chance (CR 382).
   void _queue(ObjId src, int index, int controller, {int loc = -2, int event = -1}) {
     final o = state.obj(src);
+    if (!_genTriggerOk(src, index, controller, loc == -2 ? o.loc : loc, event)) return;
     state.waiting.add(ChainItem(id: 0, source: src, card: o.card, ability: index, controller: controller, loc: loc == -2 ? o.loc : loc, fromTrigger: true, event: event));
   }
 
@@ -421,7 +443,7 @@ extension GamePlay on Game {
       final abs = parsed(s).abilities;
       for (var i = 0; i < abs.length; i++) {
         final a = abs[i];
-        if (a is Triggered && a.on.on == on) _queue(s, i, player, loc: bf, event: event);
+        if (a is Triggered && (a.on.on == on || _genAlsoOn(a.on, on))) _queue(s, i, player, loc: bf, event: event);
       }
     }
   }
@@ -487,7 +509,8 @@ extension GamePlay on Game {
         _ => const <Effect>[],
       };
     }
-    final ctx = _Ctx(controller: item.controller, source: item.source, loc: item.loc, targets: item.targets, event: item.event);
+    final ctx = _Ctx(controller: item.controller, source: item.source, loc: item.loc, targets: item.targets, event: item.event, ability: item.ability);
+    _genBeforeResolve(item, ctx);
     for (var r = 0; r <= item.repeats; r++) {
       _resolveEffects(effects, ctx, rep: r);
     }
@@ -499,6 +522,7 @@ extension GamePlay on Game {
       }
       // Playing a spell is complete when it resolves (CR 420.4.a).
       _fire(On.youPlaySpell, player: item.controller);
+      _genSpellDone(item);
     }
   }
 
@@ -517,6 +541,8 @@ extension GamePlay on Game {
       final id = pl.deck.removeAt(0);
       state.obj(id).zone = Zone.hand;
       pl.hand.add(id);
+      _gen.add('p$p:draws');
+      if (_gen.get('p$p:draws') == 2) _genEvent(GEv.drawSecond, player: p);
     }
     if (n > 0) log('${pl.name} draws $n.', player: p, kind: 'draw', amount: n);
   }
@@ -551,6 +577,7 @@ extension GamePlay on Game {
         ..reset();
       pl.deck.add(id);
     }
+    if (list.isNotEmpty) _genEvent(GEv.recycled, player: p);
   }
 
   /// Channel [n] runes (CR 431), ready unless [exhausted].
@@ -574,17 +601,25 @@ extension GamePlay on Game {
   void _kill(ObjId id) {
     final o = state.obj(id);
     if (o.zone != Zone.board) return;
+    if (_genReplaceDeath(id)) return;
     final abs = parsed(id).abilities;
     for (var i = 0; i < abs.length; i++) {
       final a = abs[i];
-      if (a is Triggered && a.on.on == On.die) _queue(id, i, o.controller);
+      if (a is Triggered && a.on.on == On.die) {
+        for (var k = _genDeathknellTimes(id); k > 0; k--) {
+          _queue(id, i, o.controller);
+        }
+      }
     }
     _leaveBoard(id, toHand: false);
+    _genDied(id);
   }
 
   void _leaveBoard(ObjId id, {required bool toHand}) {
     final o = state.obj(id);
     final c = card(id);
+    if (o.zone == Zone.board) _genLeaving(id);
+    _gen.forget(id);
     o.reset();
     final pl = state.player(o.owner);
     if (c.token) {
