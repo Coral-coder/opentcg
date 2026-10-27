@@ -21,26 +21,12 @@ abstract final class PlayFlags {
 // Costs of activated abilities (CR 204.1.b)
 // ---------------------------------------------------------------------------------------------
 
-sealed class XCostPart {
-  const XCostPart();
-  String describe();
-}
-
-/// "Spend my buff" (CR 701): remove the buff counter from the source.
-class SpendMyBuff extends XCostPart {
-  const SpendMyBuff();
-  @override
-  String describe() => 'spend my buff';
-}
-
 /// "Recycle 3 from your trash", "Recycle a unit from your trash" (CR 417.3: all of them or it
 /// can't be paid).
-class RecycleTrash extends XCostPart {
+class RecycleTrash extends CostPart {
   const RecycleTrash(this.n, {this.unit = false});
   final int n;
   final bool unit;
-  @override
-  String describe() => 'recycle $n${unit ? ' unit' : ''} from trash';
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -68,6 +54,9 @@ enum XPay {
 
   /// Return a friendly gear to its owner's hand.
   returnGear,
+
+  /// "Spend N XP" (CR 730.2; [AddCost.n]).
+  xp,
 }
 
 /// "[You may] … as an additional cost to play me/this. [If you do, …]" — on the card being played.
@@ -89,6 +78,7 @@ class AddCost extends XPassive {
     this.ignoreCost = false,
     this.entersReady = false,
     this.then = const [],
+    this.toItsBattlefield = false,
   });
   final XPay pay;
   final bool optional;
@@ -128,16 +118,20 @@ class AddCost extends XPassive {
   /// "If you do, draw 1." — done as the permanent is played (CR 359.2.b).
   final List<Effect> then;
 
+  /// "You may play me to its battlefield" (the killed unit's).
+  final bool toItsBattlefield;
+
   @override
   String describe() => '${optional ? 'may ' : ''}${switch (pay) {
-        XPay.resources => 'pay {$energy}${power.map((d) => '{${d?.letter ?? 'A'}}').join()}',
+        XPay.resources => 'pay ${energy > 0 || power.isEmpty ? '{$energy}' : ''}${power.map((d) => '{${d?.letter ?? 'A'}}').join()}',
         XPay.discard => 'discard $n',
         XPay.kill => 'kill ${anyNumber ? 'any number of' : n} ${mighty ? 'Mighty ' : ''}${tags.isEmpty ? filter.describe() : tags.join('/')}',
         XPay.exhaustUnit => 'exhaust a friendly unit',
         XPay.exhaustLegend => 'exhaust your legend',
         XPay.spendBuff => 'spend ${anyNumber ? 'any number of buffs' : 'a buff'}',
         XPay.returnGear => 'return a friendly gear to hand',
-      }} as an additional cost${discount > 0 ? ': {$discount} less' : ''}${discountEach != null ? ': {${discountEach!.letter}} less each' : ''}${discountByKilled != null ? ': less by its cost' : ''}${ignoreCost ? ': ignore cost' : ''}${entersReady ? ': enters ready' : ''}${ifSpellPlayed ? ' (if you played a spell)' : ''}';
+        XPay.xp => 'spend $n XP',
+      }} as an additional cost${discount > 0 ? ': {$discount} less' : ''}${discountEach != null ? ': {${discountEach!.letter}} less each' : ''}${discountByKilled != null ? ': less by its cost' : ''}${ignoreCost ? ': ignore cost' : ''}${entersReady ? ': enters ready' : ''}${ifSpellPlayed ? ' (if you played a spell)' : ''}${toItsBattlefield ? ' (may play to its battlefield)' : ''}';
 }
 
 /// What a variable discount counts (CR 356.4.g: checked as the cost is determined).
@@ -313,17 +307,6 @@ sealed class XCond extends Cond {
   const XCond();
 }
 
-/// "If you paid the additional cost" / "If you do" (after an additional cost).
-class PaidCost extends XCond {
-  const PaidCost();
-}
-
-/// "If an opponent's score is within 3 points of the Victory Score".
-class OpponentNearWin extends XCond {
-  const OpponentNearWin(this.n);
-  final int n;
-}
-
 /// "If you control a battlefield with exactly two units there".
 class ControlBfWithUnits extends XCond {
   const ControlBfWithUnits(this.n);
@@ -333,12 +316,6 @@ class ControlBfWithUnits extends XCond {
 /// "If an opponent controls a stunned unit".
 class OpponentStunned extends XCond {
   const OpponentStunned();
-}
-
-/// "If you control a Mech".
-class YouControlTag extends XCond {
-  const YouControlTag(this.tag);
-  final String tag;
 }
 
 /// "If an enemy unit has died this turn".
@@ -352,11 +329,6 @@ class SpentOnSpell extends XCond {
   final int n;
 }
 
-/// "If I'm at a battlefield".
-class MeAtBattlefield extends XCond {
-  const MeAtBattlefield();
-}
-
 /// "While your units have all 4 tags" (Bird, Cat, Dog and Poro).
 class AllTags extends XCond {
   const AllTags(this.tags);
@@ -364,15 +336,15 @@ class AllTags extends XCond {
 }
 
 String describeXCond(Cond c) => switch (c) {
-      PaidCost() => 'paid',
-      OpponentNearWin(:final n) => 'opponent within $n of winning',
       ControlBfWithUnits(:final n) => 'control a battlefield with exactly $n units',
       OpponentStunned() => 'opponent has a stunned unit',
-      YouControlTag(:final tag) => 'you control a $tag',
       EnemyDiedThisTurn() => 'an enemy unit died this turn',
       SpentOnSpell(:final n) => 'spent {$n}+ on a spell this turn',
-      MeAtBattlefield() => 'I am at a battlefield',
       AllTags(:final tags) => 'your units have all of ${tags.join('/')}',
+      PaidExtra() => 'paid',
+      OpponentNearVictory(:final n) => 'opponent within $n of winning',
+      ControlTag(:final tag) => 'you control a $tag',
+      AtBattlefield() => 'I am at a battlefield',
       _ => '?',
     };
 
@@ -533,7 +505,7 @@ class DoThen extends XEffect {
   final List<Effect> then;
 }
 
-/// Effects lasting until the end of the turn ([Player.turn]).
+/// Effects lasting until the end of the turn (turn marks, game/costs.dart).
 enum XTurnFx {
   /// "The next spell you play this turn costs {5} less" ([TurnFx.energy]).
   nextSpellLess,
@@ -547,9 +519,6 @@ enum XTurnFx {
   /// "You may play a gear with Energy cost no more than {7} from hand this turn, ignoring its
   /// Energy cost".
   freeGear,
-
-  /// "The next time you play a unit this turn, ready it and [Buff] it".
-  nextUnitReadyBuff,
 
   /// "Give the next spell you play this turn [Repeat] equal to its cost".
   nextSpellRepeat,
@@ -569,8 +538,8 @@ class CounterByCost extends XEffect {
 
 /// "Look at the top 4 cards of your Main Deck. You may reveal a spell with Energy cost {4} or
 /// more from among them and draw it. Recycle the rest."
-class LookDraw extends XEffect {
-  const LookDraw(this.n, this.type, {this.minEnergy = 0});
+class LookDrawType extends XEffect {
+  const LookDrawType(this.n, this.type, {this.minEnergy = 0});
   final int n;
   final CardType type;
   final int minEnergy;

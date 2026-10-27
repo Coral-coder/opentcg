@@ -83,6 +83,8 @@ void main() {
           case DecisionKind.yesNo:
             await tester.tap(find.text('Yes'));
           case DecisionKind.cards:
+            // Let a dialog that just opened finish building its options.
+            await tester.pump(const Duration(milliseconds: 300));
             for (var i = 0; i < d.min; i++) {
               await tester.tap(find.bySemanticsLabel(RegExp('^Option: ')).at(i));
               await tester.pump();

@@ -122,7 +122,7 @@ extension _XLine on _Line {
       final a = _effects(_Line._cap(m[1]!));
       final b = _effects(_Line._cap(m[2]!));
       if (a == null || b == null) return null;
-      return [Static(line, const AddCost(XPay.exhaustUnit)), SpellBody(line, [IfElse(const PaidCost(), a, b)])];
+      return [Static(line, const AddCost(XPay.exhaustUnit)), SpellBody(line, [IfElse(const PaidExtra(), a, b)])];
     }
     return null;
   }
@@ -238,13 +238,8 @@ extension _XLine on _Line {
       return e == null ? null : Triggered(line, on, e);
     }
 
-    // "When you play me, if you paid the additional cost, …" (CR 383.2.a.1).
-    var m = RegExp(r'^When you play me, if you paid the additional cost, (.+)$').firstMatch(t);
-    if (m != null && _isUnit) {
-      final a = trig(const XWhen(On.played, cond: PaidCost()), m[1]!);
-      return a == null ? null : [a];
-    }
-    m = RegExp(r'^When I become ready, (.+)$').firstMatch(t);
+    // ("When you play me, if you paid the additional cost, …": the core parser, PaidExtra.)
+    var m = RegExp(r'^When I become ready, (.+)$').firstMatch(t);
     if (m != null && _isUnit) {
       final a = trig(const XWhen(On.costsExt, kind: XOn.becomeReady), m[1]!);
       return a == null ? null : [a];
@@ -266,7 +261,7 @@ extension _XLine on _Line {
     }
     m = RegExp(r"^When you play your first card each turn, if I'm at a battlefield, (.+)$").firstMatch(t);
     if (m != null && _isUnit) {
-      final a = trig(const XWhen(On.costsExt, kind: XOn.firstCard, cond: MeAtBattlefield()), m[1]!);
+      final a = trig(const XWhen(On.costsExt, kind: XOn.firstCard, cond: AtBattlefield()), m[1]!);
       return a == null ? null : [a];
     }
     // Triggers that work from the trash.
@@ -297,22 +292,21 @@ extension _XLine on _Line {
 
   /// Conditions of cost changes and alternative costs.
   Cond? _xCond(String c) => switch (c) {
-        "an opponent's score is within 3 points of the Victory Score" => const OpponentNearWin(3),
+        "an opponent's score is within 3 points of the Victory Score" => const OpponentNearVictory(3),
         'you control a battlefield with exactly two units there' => const ControlBfWithUnits(2),
         'an opponent controls a stunned unit' => const OpponentStunned(),
         'an enemy unit has died this turn' => const EnemyDiedThisTurn(),
         _ => switch (RegExp(r"^you(?:'ve| have) spent \{(\d+)\} or more to play a spell this turn$").firstMatch(c)) {
             final m? => SpentOnSpell(int.parse(m[1]!)),
             _ => switch (RegExp(r'^you control an? ([A-Z][a-z]+)$').firstMatch(c)) {
-                final m? => YouControlTag(m[1]!),
+                final m? => ControlTag(m[1]!),
                 _ => null,
               },
           },
       };
 
-  /// Costs of activated abilities: "Spend my buff", "Recycle 3 from your trash".
-  XCostPart? _xCostPart(String part) {
-    if (part == 'Spend my buff' && _isUnit) return const SpendMyBuff();
+  /// Costs of activated abilities: "Recycle 3 from your trash".
+  CostPart? _xCostPart(String part) {
     final m = RegExp(r'^Recycle (a unit|\d+) from your trash$').firstMatch(part);
     if (m != null) return m[1] == 'a unit' ? const RecycleTrash(1, unit: true) : RecycleTrash(int.parse(m[1]!));
     return null;
@@ -376,7 +370,7 @@ extension _XLine on _Line {
       final tg = _target(m[2]!);
       if (tg is! Choose) return null;
       final it = Chosen(tg.slot);
-      return [IfElse(const PaidCost(), [Deal(N(int.parse(m[3]!)), tg)], [Deal(N(int.parse(m[1]!)), it)])];
+      return [IfElse(const PaidExtra(), [Deal(N(int.parse(m[3]!)), tg)], [Deal(N(int.parse(m[1]!)), it)])];
     }
     // "Choose a friendly unit and an enemy unit. If you paid the additional cost, give the
     // friendly unit +2 {M} this turn. They deal damage equal to their Mights to each other."
@@ -385,7 +379,7 @@ extension _XLine on _Line {
       final a = Choose(const Filter(side: Side.friendly), slot: _slotCounter[0]++);
       final b = Choose(const Filter(side: Side.enemy), slot: _slotCounter[0]++);
       return [
-        if (m[1] != null) If(const PaidCost(), [GiveMight(int.parse(m[1]!), Chosen(a.slot))]),
+        if (m[1] != null) If(const PaidExtra(), [GiveMight(int.parse(m[1]!), Chosen(a.slot))]),
         Fight(a, b),
       ];
     }
@@ -406,9 +400,10 @@ extension _XLine on _Line {
     // "Look at the top 4 cards of your Main Deck. You may reveal a spell with Energy cost {4} or
     // more from among them and draw it. Recycle the rest."
     m = RegExp(r'^Look at the top (\d+) cards of your Main Deck\. You may reveal an? (spell|unit|gear)(?: with Energy cost \{(\d+)\} or more)? from among them and draw it\. Recycle the rest\.$').firstMatch(text);
-    if (m != null) {
+    // (A unit with no Energy limit: parser/power.dart's LookDraw.)
+    if (m != null && !(m[2] == 'unit' && m[3] == null)) {
       final type = switch (m[2]) { 'spell' => CardType.spell, 'unit' => CardType.unit, _ => CardType.gear };
-      return [LookDraw(int.parse(m[1]!), type, minEnergy: int.tryParse(m[3] ?? '') ?? 0)];
+      return [LookDrawType(int.parse(m[1]!), type, minEnergy: int.tryParse(m[3] ?? '') ?? 0)];
     }
     if (text == 'Each opponent reveals the top card of their Main Deck. Choose one and banish it, then play it, ignoring its cost. Then recycle the rest.' && _isSpell) return const [PlayOpponentsTop()];
     // "You may play a spell from your trash with Energy cost no more than {3}, ignoring its Energy
@@ -471,7 +466,6 @@ extension _XLine on _Line {
       final n = _num(m[1]!) ?? (m[1] == 'four' ? 4 : null);
       return n == null ? null : [PlayToken('Bird', n)];
     }
-    if (s == 'Play a 0 {M} Shadow Clone unit token' && _isUnit) return const [PlayToken('Shadow Clone', 1)];
     // Playing cards from the trash or hand as an effect (CR 420.3).
     if (s == 'Play a unit from your trash, ignoring its Energy cost') return const [PlayFrom(XZone.trash, types: {CardType.unit}, ignoreEnergy: true)];
     if (s == 'Play a unit from your trash that costs no more Energy and no more Power than the killed unit, ignoring its cost' && _isSpell) {
@@ -503,7 +497,6 @@ extension _XLine on _Line {
     if (m != null) return [TurnFx(XTurnFx.nextCardLess, energy: int.parse(m[1]!), power: m[2]!.length ~/ 3)];
     m = RegExp(r'^Your non-token units cost \{(\d+)\} more to play this turn$').firstMatch(s);
     if (m != null) return [TurnFx(XTurnFx.unitsMore, energy: int.parse(m[1]!))];
-    if (s == 'The next time you play a unit this turn, ready it and [Buff] it') return const [TurnFx(XTurnFx.nextUnitReadyBuff)];
     // Costs within instructions (CR 204.3).
     m = RegExp(r'^Banish a (card|unit) from (any|your) trash to (.+)$').firstMatch(s);
     if (m != null) {

@@ -43,6 +43,8 @@ List<int>? costsCards(Game g, int seat, Decision d) {
   List<int> cheapest(int n) => (List.of(d.options)..sortStable((a, b) => _value(g, a) - _value(g, b))).take(n).toList();
   List<int> dearest(int n) => (List.of(d.options)..sortStable((a, b) => _value(g, b) - _value(g, a))).take(n).toList();
   // Costs are paid with what's worth least; optional "any number" costs aren't paid.
+  // A buff spent for a discount is worth it.
+  if (p.startsWith('cost: spend a buff')) return d.options.take(d.max > 0 ? 1 : 0).toList();
   if (p.startsWith('cost:')) return cheapest(d.min);
   if (p.startsWith('kill one of your units')) return cheapest(1);
   if (p.contains('choose a unit to recycle')) return cheapest(1);

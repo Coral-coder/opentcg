@@ -6,6 +6,8 @@ library;
 import 'cards/card.dart';
 
 part 'ir_costs.dart';
+part 'ir_power.dart';
+part 'ir_hidden.dart';
 
 /// Keyword abilities (CR 805–826) the engine implements.
 enum Kw {
@@ -20,18 +22,35 @@ enum Kw {
   temporary,
   vision,
   backline,
+
+  /// CR 811: may be hidden facedown at a battlefield you control and played from there later.
+  hidden,
+
+  /// CR 822: may be played to a battlefield where you control units, with Reaction while so.
+  ambush,
+
+  /// CR 825: a deck can hold only one copy.
+  unique,
 }
 
 /// Who an effect's units belong to.
 enum Side { any, friendly, enemy }
 
 /// Where a unit must be for a filter.
-enum Where { anywhere, here, battlefield, base }
+enum Where {
+  anywhere,
+  here,
+  battlefield,
+  base,
+
+  /// "At a different location" from the source.
+  elsewhere,
+}
 
 /// A description of units (or gear) on the board: "an enemy unit at a battlefield with 3 {M} or
 /// less".
 class Filter {
-  const Filter({this.side = Side.any, this.where = Where.anywhere, this.gear = false, this.mightMax, this.mightMin, this.other = false, this.exhausted, this.attacking = false, this.defending = false, this.tag, this.buffed});
+  const Filter({this.side = Side.any, this.where = Where.anywhere, this.gear = false, this.mightMax, this.mightMin, this.other = false, this.exhausted, this.attacking = false, this.defending = false, this.tag, this.buffed, this.pw, this.notTag});
   final Side side;
   final Where where;
 
@@ -46,6 +65,11 @@ class Filter {
   final String? tag;
   final bool? buffed;
 
+  /// Empowered, "something", Might comparisons (ir_power.dart).
+  final PowerFilter? pw;
+  /// "A non-Dragon unit": not of this tag.
+  final String? notTag;
+
   String describe() => [
         if (side != Side.any) side.name,
         if (other) 'other',
@@ -55,10 +79,12 @@ class Filter {
         if (attacking) 'attacking',
         if (defending) 'defending',
         ?tag,
+        if (notTag != null) 'non-$notTag',
         gear ? 'gear' : 'unit',
         if (where != Where.anywhere) '@${where.name}',
         if (mightMax != null) 'M≤$mightMax',
         if (mightMin != null) 'M≥$mightMin',
+        if (pw != null) pw!.describe(),
       ].join(' ');
 }
 
@@ -348,6 +374,55 @@ enum On {
   /// "When an enemy unit attacks a battlefield you control" (once per attacking unit; "it" is it).
   enemyAttacksYourBf,
 
+  // Empower, XP and buffs (ir_power.dart, game/power.dart).
+  /// "When I become [Empowered]".
+  empowered,
+
+  /// "When you empower something else".
+  youEmpowerOther,
+
+  /// "When you buff me" / "When you buff a friendly unit" ("it" is it).
+  buffedMe,
+  youBuffFriendly,
+
+  /// "When you spend a buff".
+  youSpendBuff,
+
+  /// "When you play another unit".
+  youPlayAnotherUnit,
+
+  /// "When another friendly unit dies" / "When a buffed friendly unit dies" ("it" is it).
+  anotherFriendlyDies,
+  buffedFriendlyDies,
+
+  /// "When a combat that I was in ends".
+  combatEnds,
+
+  /// "When my Might becomes 10 or more".
+  mightTen,
+
+  /// "When you recycle one or more cards".
+  youRecycle,
+
+  /// "When you banish a card you own".
+  youBanishOwn,
+
+  /// "When you play a card from anywhere other than your hand".
+  youPlayNotFromHand,
+
+  /// "When a player plays a unit here" (a battlefield; "it" is it).
+  unitPlayedHere,
+  /// "When you play me from face down" / "When I'm played from [Hidden]" (CR 811).
+  playedFaceDown,
+
+  /// "When you play a card from [Hidden]".
+  youPlayFromHidden,
+
+  /// "When an enemy unit dies" ("it" is that unit).
+  enemyUnitDies,
+
+  /// "When an opponent scores".
+  opponentScores,
   /// Events of game/costs.dart, told apart by [XWhen.kind] (playing cards with a given cost,
   /// becoming ready, …).
   costsExt,
@@ -371,11 +446,11 @@ class Cost {
   /// "Kill this" (Gold).
   final bool killMe;
 
-  /// Other costs: "Spend my buff", "Recycle 3 from your trash" (ir_costs.dart).
-  final List<XCostPart> extra;
+  /// Spending XP or buffs, disempowering, … (ir_power.dart).
+  final List<CostPart> extra;
 
   bool get isFree => energy == 0 && power.isEmpty && !exhaust && !killMe && extra.isEmpty;
-  String describe() => [if (energy > 0) '{$energy}', for (final p in power) '{${p?.letter ?? 'A'}}', if (killMe) 'kill me', for (final x in extra) x.describe(), if (exhaust) '{E}'].join(' ');
+  String describe() => [if (energy > 0) '{$energy}', for (final p in power) '{${p?.letter ?? 'A'}}', for (final x in extra) describeCostPart(x), if (killMe) 'kill me', if (exhaust) '{E}'].join(' ');
 }
 
 /// When a spell or ability may be played (CR 806, 813).
@@ -396,17 +471,20 @@ class KeywordAb extends Ability {
 
 /// "When …, [effects]". [may]: "you may" — the controller decides as it resolves.
 class Triggered extends Ability {
-  const Triggered(super.text, this.on, this.effects, {this.legion = false});
+  const Triggered(super.text, this.on, this.effects, {this.legion = false, this.gate});
   final When on;
   final List<Effect> effects;
 
   /// [Legion] (CR 812): only while you've played another card this turn.
   final bool legion;
+
+  /// Only while [gate] holds ([Empowered], [Level N]; ir_power.dart).
+  final Gate? gate;
 }
 
 /// "Cost: effect" (CR 376).
 class Activated extends Ability {
-  const Activated(super.text, this.cost, this.effects, {this.timing = Timing.normal, this.oncePerTurn = false, this.legion = false});
+  const Activated(super.text, this.cost, this.effects, {this.timing = Timing.normal, this.oncePerTurn = false, this.legion = false, this.gate});
   final Cost cost;
   final List<Effect> effects;
   final Timing timing;
@@ -414,6 +492,9 @@ class Activated extends Ability {
 
   /// [Legion] (CR 812): usable only once you've played another card this turn.
   final bool legion;
+
+  /// Only while [gate] holds (ir_power.dart).
+  final Gate? gate;
 
   /// Abilities that add resources resolve at once (CR 337.2) and can pay costs (CR 357.1.a).
   bool get adds => effects.isNotEmpty && effects.every((e) => e is AddRes);
@@ -474,8 +555,11 @@ class CostLess extends Passive {
 }
 
 class Static extends Ability {
-  const Static(super.text, this.passive);
+  const Static(super.text, this.passive, {this.gate});
   final Passive passive;
+
+  /// Only while [gate] holds (ir_power.dart).
+  final Gate? gate;
 }
 
 /// [Repeat] cost (CR 820): pay it as you play the spell to do its instructions again.

@@ -6,11 +6,31 @@ import 'package:tcg_core/tcg_core.dart';
 
 import '../cards/card.dart';
 import '../ir.dart';
+import 'state_power.dart';
+
+export 'state_power.dart';
 
 typedef ObjId = int;
 
 /// Zones (CR 105–108). Board objects are in [Zone.board] at a location ([Obj.loc]).
-enum Zone { mainDeck, hand, trash, banish, board, champion, legend, runeDeck, runes, battlefield, chain, gone }
+enum Zone {
+  mainDeck,
+  hand,
+  trash,
+  banish,
+  board,
+  champion,
+  legend,
+  runeDeck,
+  runes,
+  battlefield,
+  chain,
+  gone,
+
+  /// A battlefield's Facedown Zone (CR 107.3): [Obj.loc] is the battlefield, [Obj.enteredTurn]
+  /// the turn it was hidden.
+  facedown,
+}
 
 /// [Obj.loc] of a permanent in its controller's base (CR 107.1).
 const base = -1;
@@ -40,9 +60,8 @@ class Obj {
   /// Activated abilities used this turn (for "Use only once per turn"), by index.
   List<int> usedThisTurn = [];
 
-  /// Optional additional costs paid as this permanent was played ([PlayFlags]); cleared when it
-  /// leaves the board.
-  int paidExtra = 0;
+  /// Empowered, extra buffs, Flow (state_power.dart).
+  ObjPower pw = ObjPower();
 
   /// The object that banished this card ("a unit banished with this", Cursed Sarcophagus), or -1.
   int banishedBy = -1;
@@ -58,7 +77,7 @@ class Obj {
     ..kwMod = Map.of(kwMod)
     ..enteredTurn = enteredTurn
     ..usedThisTurn = List.of(usedThisTurn)
-    ..paidExtra = paidExtra
+    ..pw = pw.clone()
     ..banishedBy = banishedBy;
 
   /// Leaving the board (or entering it) makes a new object for rules purposes (CR 124.1).
@@ -70,14 +89,14 @@ class Obj {
     mightMod = 0;
     kwMod = {};
     usedThisTurn = [];
-    paidExtra = 0;
+    pw = ObjPower();
     loc = base;
     controller = owner;
   }
 
   String digest() {
     final kws = kwMod.keys.toList()..sortStable((a, b) => a - b);
-    return '$id|${card.length}:$card|$owner|$controller|${zone.index}|$loc|$exhausted|$damage|$buffed|$stunned|$mightMod|${kws.map((k) => '$k=${kwMod[k]}').join(',')}|$enteredTurn|${usedThisTurn.join(',')}|$paidExtra|$banishedBy';
+    return '$id|${card.length}:$card|$owner|$controller|${zone.index}|$loc|$exhausted|$damage|$buffed|$stunned|$mightMod|${kws.map((k) => '$k=${kwMod[k]}').join(',')}|$enteredTurn|${usedThisTurn.join(',')}|${pw.digest()}|$banishedBy';
   }
 }
 
@@ -112,10 +131,8 @@ class Player {
   List<int> scored = [];
   bool lost = false;
 
-  /// What happened this turn and effects lasting until its end, by name (game/costs.dart):
-  /// spells played, Energy spent on spells, "the next spell costs {5} less", … Cleared as each
-  /// turn begins.
-  Map<String, int> turn = {};
+  /// XP (state_power.dart).
+  PlayerPower pw = PlayerPower();
 
   Player clone() => Player(name)
     ..deck = List.of(deck)
@@ -133,10 +150,10 @@ class Player {
     ..playedThisTurn = playedThisTurn
     ..scored = List.of(scored)
     ..lost = lost
-    ..turn = Map.of(turn);
+    ..pw = pw.clone();
 
   String digest() =>
-      '${name.length}:$name|${deck.join(',')}|${hand.join(',')}|${trash.join(',')}|${banish.join(',')}|${runeDeck.join(',')}|${runes.join(',')}|${legend ?? ''}|${champion ?? ''}|$points|$energyPool|${powerPool.join(',')}|$anyPool|$playedThisTurn|${scored.join(',')}|$lost|${(turn.keys.toList()..sortStable((a, b) => a.compareTo(b))).map((k) => '$k=${turn[k]}').join(',')}';
+      '${name.length}:$name|${deck.join(',')}|${hand.join(',')}|${trash.join(',')}|${banish.join(',')}|${runeDeck.join(',')}|${runes.join(',')}|${legend ?? ''}|${champion ?? ''}|$points|$energyPool|${powerPool.join(',')}|$anyPool|$playedThisTurn|${scored.join(',')}|$lost|${pw.digest()}';
 }
 
 /// A battlefield in play (CR 169, 188–190).
@@ -280,7 +297,14 @@ class GameState {
 
   /// Triggered abilities waiting to be put on the chain (CR 382), in order.
   List<ChainItem> waiting = [];
+
+  /// Small facts effects leave behind, by name ("readyEnter:0" = player 0's units enter ready
+  /// this turn). Looked up by key; the digest lists them sorted.
+  Map<String, int> marks = {};
   final List<LogEntry> log = [];
+
+  /// Delayed effects of Empower/XP/buff cards (state_power.dart).
+  GamePower pw = GamePower();
 
   bool get over => phase == Phase.over;
   Player player(int i) => players[i];
@@ -308,7 +332,9 @@ class GameState {
       ..priority = priority
       ..passes = passes
       ..showdown = showdown?.clone()
-      ..waiting = List.of(waiting);
+      ..waiting = List.of(waiting)
+      ..pw = pw.clone()
+      ..marks = Map.of(marks);
     s.log.addAll(log);
     return s;
   }
@@ -318,7 +344,8 @@ class GameState {
       ..write('rb1|$seed|${rng.state}|$nextId|$turn|$active|$firstPlayer|${phase.index}|${step.index}|${winner ?? ''}|$victoryScore|')
       ..write('${bfs.map((x) => x.digest()).join(';')}|')
       ..write('${chain.map((c) => c.digest()).join(';')}|$nextChainId|$priority|$passes|${showdown?.digest() ?? ''}|')
-      ..write('${waiting.map((c) => c.digest()).join(';')}|');
+      ..write('${waiting.map((c) => c.digest()).join(';')}|${pw.digest()}|')
+      ..write('${(marks.keys.toList()..sortStable((a, b) => a.compareTo(b))).map((k) => '$k=${marks[k]}').join(',')}|');
     for (final p in players) {
       b.write('${p.digest()}#');
     }

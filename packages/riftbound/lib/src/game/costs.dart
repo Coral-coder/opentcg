@@ -3,7 +3,7 @@ part of 'game.dart';
 /// How a card is being played (CR 349–359, 420.3): from where, and with which costs replaced or
 /// ignored; plus the choices made while playing it.
 class XPlay {
-  XPlay({this.effect = false, this.ignoreEnergy = false, this.ignoreAll = false, this.reduceEnergy = 0, this.forCost, this.toBase = false, this.recycleAfter = false, this.elsewhere = false});
+  XPlay({this.effect = false, this.ignoreEnergy = false, this.ignoreAll = false, this.reduceEnergy = 0, this.forCost, this.toBase = false, this.recycleAfter = false, this.elsewhere = false, this.facedown = -1, this.flowed = false, this.at, this.noExtras = false});
 
   /// Played as part of an effect: no timing check (CR 420.3).
   final bool effect;
@@ -20,6 +20,20 @@ class XPlay {
   /// Played from anywhere other than a player's hand.
   final bool elsewhere;
 
+  /// Played from facedown at this battlefield (CR 811), or -1. Its own cost is ignored
+  /// ([ignoreAll], CR 811.1.b); additional costs are still paid.
+  final int facedown;
+
+  /// Played from the trash with Flow (CR 829): [forCost] is the Flow cost, and the spell is
+  /// banished as it finishes.
+  final bool flowed;
+
+  /// A unit played by an effect to this location ("They play that unit to that battlefield").
+  final int? at;
+
+  /// "Ignoring any and all costs": no additional or optional costs are offered either.
+  final bool noExtras;
+
   // Decided while playing.
   AltCost? alt;
   final List<(AddCost, List<ObjId>)> paying = [];
@@ -28,6 +42,15 @@ class XPlay {
   bool entersReady = false;
   bool ignorePaid = false;
   List<int> targets = const [];
+
+  /// An additional cost was paid ("If you paid the additional cost", CR 356.2).
+  bool paidAdditional = false;
+
+  /// "You may play me to its battlefield": where the unit killed for the cost was, or base.
+  int killedBf = base;
+
+  /// How many choices the spell makes (for discounts decided by them).
+  int slotTotal = 0;
 
   /// Before targets are chosen: assume the discounts that depend on them (Irelia, Sandswept
   /// Tomb, "if you choose a …") will apply.
@@ -40,34 +63,59 @@ class XPlay {
   /// Optional additional costs chosen so far (Accelerate, Repeat), for discounts (CR 356.4.c).
   final List<(int, List<Domain?>)> optional = [];
 
-  XPlay copy() => XPlay(effect: effect, ignoreEnergy: ignoreEnergy, ignoreAll: ignoreAll, reduceEnergy: reduceEnergy, forCost: forCost, toBase: toBase, recycleAfter: recycleAfter, elsewhere: elsewhere);
+  XPlay copy() => XPlay(effect: effect, ignoreEnergy: ignoreEnergy, ignoreAll: ignoreAll, reduceEnergy: reduceEnergy, forCost: forCost, toBase: toBase, recycleAfter: recycleAfter, elsewhere: elsewhere, facedown: facedown, flowed: flowed, at: at, noExtras: noExtras);
+}
+
+/// What happened this turn for one player, and effects lasting until its end ("the next spell
+/// costs {5} less", spells played, Energy spent on spells, …): kept in [GameState.marks] as
+/// "t:x:<player>:<name>", so they end with the turn's other marks.
+/// While a spell's targets are chosen: may these choices (by slot) be made? (Only those that
+/// leave it affordable.)
+final _xAllow = Expando<bool Function(List<int>)>();
+
+class _TurnMarks {
+  _TurnMarks(this.marks, this.p);
+  final Map<String, int> marks;
+  final int p;
+  int? operator [](String k) => marks['t:x:$p:$k'];
+  void operator []=(String k, int v) => marks['t:x:$p:$k'] = v;
+  int? remove(String k) => marks.remove('t:x:$p:$k');
 }
 
 /// Additional and alternative costs, cost changes, modes and playing cards from elsewhere.
 extension GameCosts on Game {
-  /// What playing [id] would cost [p] now, after discounts and increases, without optional
-  /// costs (for the table's buttons); null if it can't be played from where it is.
-  ({int energy, List<Domain?> power})? playCost(int p, ObjId id) {
-    final XPlay x;
+  _TurnMarks _turn(Player pl) => _TurnMarks(state.marks, state.players.indexOf(pl));
+
+  /// What playing [id] would cost [p] now (Flow from the trash, discounts and increases
+  /// included, optional costs not): the first way they can pay, else the first way.
+  ({int energy, List<Domain?> power}) playCost(int p, ObjId id) {
+    var x = XPlay();
     try {
       x = _xPlayFromMove(p, id);
     } on RiftboundError {
-      return null;
+      // Not playable from where it is: what it would cost from hand.
     }
-    final t = _xPayable(p, id, x) ?? _xTotals(p, id, x).firstOrNull;
-    return t == null ? null : (energy: t.$1, power: t.$2);
+    final t = _xPayable(p, id, x) ?? _xTotals(p, id, x).first;
+    return (energy: t.$1, power: t.$2);
   }
+
+  /// Would [p] play [id] from the trash with Flow (CR 829: banished afterwards)?
+  bool playsWithFlow(int p, ObjId id) => _flowPlayable(p, id);
 
   // -------------------------------------------------------------------------------------------
   // Where a card can be played from
   // -------------------------------------------------------------------------------------------
 
-  /// A Play move's card: from hand or the Champion Zone, or from the trash with an alternative
-  /// cost that allows it ("You may play me from your trash for {3}{R}").
+  /// A Play move's card: from hand or the Champion Zone; facedown at a battlefield (CR 811); from
+  /// the trash with Flow (CR 829) or an alternative cost that allows it ("You may play me from
+  /// your trash for {3}{R}").
   XPlay _xPlayFromMove(int p, ObjId id) {
     final pl = state.player(p);
     final o = state.obj(id);
     if (o.owner == p && (pl.hand.contains(id) || pl.champion == id)) return XPlay();
+    if (o.owner == p && o.zone == Zone.facedown) return XPlay(facedown: o.loc, ignoreAll: true);
+    final flow = _flowCost(p, id);
+    if (flow != null) return XPlay(forCost: (flow.energy, flow.power), elsewhere: true, flowed: true);
     if (o.owner == p && o.zone == Zone.trash && pl.trash.contains(id)) {
       for (final a in parsed(id).abilities) {
         if (a is Static && a.passive is AltCost && (a.passive as AltCost).fromTrash) {
@@ -80,14 +128,16 @@ extension GameCosts on Game {
     throw RiftboundError('That card isn’t in your hand');
   }
 
-  /// Cards [seat] may play from somewhere other than hand (for the list of moves).
+  /// Cards [seat] may play from the trash (for the list of moves): Flow, or an alternative cost.
   List<ObjId> _xExtraPlayable(int seat) => [
         for (final id in state.player(seat).trash)
-          if (parsed(id).abilities.any((a) => a is Static && a.passive is AltCost && (a.passive as AltCost).fromTrash)) id,
+          if (_flowPlayable(seat, id) || parsed(id).abilities.any((a) => a is Static && a.passive is AltCost && (a.passive as AltCost).fromTrash)) id,
       ];
 
-  /// Takes a card out of whatever zone it's in (it's being played).
-  void _xLeaveOrigin(ObjId id) {
+  /// Takes a card out of whatever zone it's in (it's being played by [p] as [x]). A Flow spell
+  /// is marked to be banished (CR 829.1.b); "When you play a card from anywhere other than your
+  /// hand" triggers.
+  void _xLeaveOrigin(int p, ObjId id, XPlay x) {
     final o = state.obj(id);
     final pl = state.player(o.owner);
     pl.hand.remove(id);
@@ -95,6 +145,11 @@ extension GameCosts on Game {
     pl.banish.remove(id);
     pl.deck.remove(id);
     if (pl.champion == id) pl.champion = null;
+    if (x.flowed) {
+      o.pw.flowed = true;
+      log('${playerName(p)} plays ${nameOf(id)} from the trash with Flow.', player: p, card: id, kind: 'play');
+    }
+    if (x.elsewhere) _firePw(On.youPlayNotFromHand, player: p);
   }
 
   // -------------------------------------------------------------------------------------------
@@ -142,7 +197,7 @@ extension GameCosts on Game {
       XPer.gearYouControl => gearOf(p).length,
       XPer.cardsInTrash => pl.trash.length,
       XPer.sameNameInTrash => pl.trash.where((id) => state.obj(id).card == c.key).length,
-      XPer.holdPointsThisTurn => pl.turn['holdPts'] ?? 0,
+      XPer.holdPointsThisTurn => _turn(pl)['holdPts'] ?? 0,
       XPer.friendlyTemporaryUnits => units(player: p).where((u) => hasKw(u, Kw.temporary)).length,
       XPer.highestMight => units(player: p).fold<int>(0, (m, u) => mightUsed(u) > m ? mightUsed(u) : m),
       XPer.tagKinds => 0,
@@ -156,15 +211,13 @@ extension GameCosts on Game {
   bool _xCondNow(int p, Cond c, {ObjId? source}) {
     final o = state.other(p);
     return switch (c) {
-      OpponentNearWin(:final n) => state.player(o).points >= state.victoryScore - n,
       ControlBfWithUnits(:final n) => [for (var i = 0; i < state.bfs.length; i++) i].any((i) => state.bfs[i].controller == p && unitsAt(i).length == n),
       OpponentStunned() => units(player: o).any((u) => state.obj(u).stunned),
-      YouControlTag(:final tag) => units(player: p).any((u) => card(u).hasTag(tag)),
-      EnemyDiedThisTurn() => (state.player(p).turn['enemyDied'] ?? 0) > 0,
-      SpentOnSpell(:final n) => (state.player(p).turn['spellSpent'] ?? 0) >= n,
-      MeAtBattlefield() => source != null && state.objOrNull(source)?.zone == Zone.board && state.obj(source).loc != base,
+      EnemyDiedThisTurn() => (_turn(state.player(p))['enemyDied'] ?? 0) > 0,
+      SpentOnSpell(:final n) => (_turn(state.player(p))['spellSpent'] ?? 0) >= n,
       AllTags(:final tags) => _xTagKinds(p, tags) == tags.length,
-      PaidCost() => source != null && (state.objOrNull(source)?.paidExtra ?? 0) & PlayFlags.additional != 0,
+      PowerCond() => _powerCondEval(c, _Ctx(controller: p, source: source ?? -1, loc: source == null ? base : state.obj(source).loc, targets: const [])),
+      HCond() => _hCond(c, _Ctx(controller: p, source: source ?? -1, loc: source == null ? base : state.obj(source).loc, targets: const [])),
       _ => false,
     };
   }
@@ -224,7 +277,7 @@ extension GameCosts on Game {
         final optional = <(int, List<Domain?>)>[
           ...x.optional,
           for (final (ac, _) in x.paying)
-            if (ac.pay == XPay.resources) (ac.energy, ac.power),
+            if (ac.pay == XPay.resources && ac.optional) (ac.energy, ac.power),
           if (x.roostBf >= 0) (0, x.roostPower),
         ];
         for (final (oe, op) in optional) {
@@ -236,9 +289,18 @@ extension GameCosts on Game {
           e += ce;
           pw.addAll(cp);
         }
+        for (final a in parsed(id).abilities) {
+          if (a is Static && a.passive is AddCost && (a.passive as AddCost).pay == XPay.resources && !(a.passive as AddCost).optional) {
+            e += (a.passive as AddCost).energy;
+            pw.addAll((a.passive as AddCost).power);
+          }
+        }
         pw.addAll(mandatory);
         // 3. Increases (CR 356.3).
-        final more = pl.turn['unitsMore'] ?? 0;
+        final pm = _powerCostMore(p, c, e, pw);
+        e = pm.energy;
+        pw = pm.power;
+        final more = _turn(pl)['unitsMore'] ?? 0;
         if (more > 0 && c.type == CardType.unit && !c.token) e += more;
         for (final (src, m) in mods) {
           if (!m.more) continue;
@@ -251,14 +313,17 @@ extension GameCosts on Game {
           }
         }
         // 4. Discounts (CR 356.4).
+        final pl0 = _powerCostLess(p, c, e, pw, flowed: x.flowed);
+        e = pl0.energy;
+        pw = pl0.power;
         for (final a in parsed(id).abilities) {
           if (a is! Static || a.passive is! SelfCost) continue;
           final sc = a.passive as SelfCost;
           if (sc.elsewhere && !x.elsewhere) continue;
           if (sc.cond != null && !_xCondNow(p, sc.cond!, source: id)) continue;
-          if (sc.choosesTags.isNotEmpty && !x.optimistic) {
+          if (sc.choosesTags.isNotEmpty) {
             final chosen = _xChosenPlay(id, x.targets);
-            if (chosen == null || !sc.choosesTags.any(card(chosen).hasTag)) continue;
+            if (chosen == null ? !_xUndecided(x) : !sc.choosesTags.any(card(chosen).hasTag)) continue;
           }
           final k = sc.per == null ? 1 : (sc.per == XPer.tagKinds ? _xTagKinds(p, sc.perTags) : _xCount(p, sc.per!, c));
           if (k <= 0) continue;
@@ -277,16 +342,16 @@ extension GameCosts on Game {
             _xLessPower(pw, ac.discountByKilled, k.power);
           }
         }
-        if (isSpell && (pl.turn['nextSpell'] ?? 0) > 0) e -= pl.turn['nextSpell']!;
-        if ((pl.turn['nextCardE'] ?? 0) > 0) e -= pl.turn['nextCardE']!;
-        if ((pl.turn['nextCardP'] ?? 0) > 0) _xLessPower(pw, null, pl.turn['nextCardP']!);
+        if (isSpell && (_turn(pl)['nextSpell'] ?? 0) > 0) e -= _turn(pl)['nextSpell']!;
+        if ((_turn(pl)['nextCardE'] ?? 0) > 0) e -= _turn(pl)['nextCardE']!;
+        if ((_turn(pl)['nextCardP'] ?? 0) > 0) _xLessPower(pw, null, _turn(pl)['nextCardP']!);
         if (x.reduceEnergy > 0) e -= x.reduceEnergy;
         for (final (src, m) in mods) {
           if (m.more) continue;
           final so = state.obj(src);
           switch (m.who) {
             case XWho.firstGear:
-              if (c.type == CardType.gear && !c.token && _xControls(p, src) && (pl.turn['gearPlayed'] ?? 0) == 0) e -= m.energy;
+              if (c.type == CardType.gear && !c.token && _xControls(p, src) && (_turn(pl)['gearPlayed'] ?? 0) == 0) e -= m.energy;
             case XWho.spellsWhileAtBattlefield:
               if (isSpell && so.zone == Zone.board && so.controller == p && so.loc != base && e > m.min) e = e - m.energy < m.min ? m.min : e - m.energy;
             case XWho.yourTagged:
@@ -304,11 +369,11 @@ extension GameCosts on Game {
                 pw.addAll(m.power);
               }
             case XWho.spellsChoosingMe:
-              if (isSpell && so.zone == Zone.board && so.controller == p && (x.optimistic || x.targets.contains(src))) orLess(m.energy, pw, (v) => e = v, e);
+              if (isSpell && so.zone == Zone.board && so.controller == p && (x.targets.contains(src) || _xUndecided(x))) orLess(m.energy, pw, (v) => e = v, e);
             case XWho.spellsChoosingFriendlyHere:
               final i = _xBfIndex(src);
               final chosenHere = x.targets.any((t) => t >= 0 && state.objOrNull(t)?.zone == Zone.board && isUnit(t) && state.obj(t).loc == i && state.obj(t).controller == p);
-              if (isSpell && i >= 0 && (chosenHere || (x.optimistic && unitsAt(i, player: p).isNotEmpty))) {
+              if (isSpell && i >= 0 && (chosenHere || (_xUndecided(x) && unitsAt(i, player: p).isNotEmpty))) {
                 for (final sym in m.power) {
                   _xLessPower(pw, sym, 1);
                 }
@@ -331,7 +396,7 @@ extension GameCosts on Game {
   /// Energy cost".
   bool _xFreeGear(int p, ObjId id, XPlay x) {
     final c = card(id);
-    final free = state.player(p).turn['freeGear'] ?? 0;
+    final free = _turn(state.player(p))['freeGear'] ?? 0;
     return free > 0 && c.type == CardType.gear && c.energy <= free && !x.elsewhere && state.player(p).hand.contains(id);
   }
 
@@ -345,11 +410,62 @@ extension GameCosts on Game {
 
   /// Payable if the discounts that depend on the spell's choices apply (decided once it chooses).
   bool _xOptimisticPayable(int p, ObjId id, XPlay x) {
+    final total = x.slotTotal;
     x.optimistic = true;
+    if (x.slotTotal == 0) x.slotTotal = _xSlotCount([for (final a in parsed(id).abilities) if (a is SpellBody) ...a.effects]);
     final ok = _xPayable(p, id, x) != null;
     x.optimistic = false;
+    x.slotTotal = total;
     return ok;
   }
+
+  /// While a spell is choosing: are some of its choices still to be made, so a discount that
+  /// depends on them may yet apply?
+  bool _xUndecided(XPlay x) => x.optimistic && (x.targets.length < x.slotTotal || x.targets.contains(-1));
+
+  /// Chooses the targets of spell [id] with [choose], offering only those that leave it
+  /// affordable (CR 356: discounts that depend on what it chooses are decided as it chooses).
+  List<int> _xChooseAffordable(int p, ObjId id, XPlay x, List<int> Function() choose, {required int slots}) {
+    final before = _xAllow[this];
+    _xAllow[this] = (partial) {
+      final saved = (x.targets, x.optimistic, x.slotTotal);
+      x
+        ..targets = partial
+        ..optimistic = true
+        ..slotTotal = slots;
+      final ok = _xPayable(p, id, x, mandatory: _xDeflect(p, id, partial)) != null;
+      x
+        ..targets = saved.$1
+        ..optimistic = saved.$2
+        ..slotTotal = saved.$3;
+      return ok;
+    };
+    try {
+      return choose();
+    } finally {
+      _xAllow[this] = before;
+    }
+  }
+
+  /// May [id] be chosen for slot [i] (the targets so far being [out])?
+  bool _xAllowed(List<int> out, int i, int id) {
+    final allow = _xAllow[this];
+    if (allow == null) return true;
+    final partial = List.of(out);
+    while (partial.length <= i) {
+      partial.add(-1);
+    }
+    partial[i] = id;
+    return allow(partial);
+  }
+
+  /// Deflect (CR 809): a spell or ability of [p]'s choosing an opponent's Deflect object costs
+  /// more Power.
+  List<Domain?> _xDeflect(int p, ObjId source, List<int> targets) => [
+        for (final tg in targets)
+          if (tg >= 0 && state.objOrNull(tg)?.zone == Zone.board && state.obj(tg).controller != p && !_xIgnoreDeflect(source, tg))
+            for (var i = 0; i < _kw(tg, Kw.deflect); i++) null,
+      ];
 
   /// Could [p] pay for [id] at all (before making choices)? Mandatory additional costs need
   /// something to pay them with; optional ones aren't assumed.
@@ -371,7 +487,7 @@ extension GameCosts on Game {
       final ac = a.passive as AddCost;
       if (!ac.optional || !(ac.discount > 0 || ac.discountEach != null || ac.discountByKilled != null || ac.ignoreCost)) continue;
       final objs = _xCostObjects(p, id, ac);
-      if (objs.length < ac.n) continue;
+      if (ac.pay == XPay.xp ? state.player(p).pw.xp < ac.n : objs.length < ac.n) continue;
       if (ac.discountByKilled != null) {
         objs.sortStable((a, b) => card(b).energy + card(b).power - card(a).energy - card(a).power);
       }
@@ -417,8 +533,10 @@ extension GameCosts on Game {
         ],
       XPay.exhaustUnit => [for (final u in units(player: p)) if (!state.obj(u).exhausted) u],
       XPay.exhaustLegend => [if (pl.legend != null && !state.obj(pl.legend!).exhausted) pl.legend!],
-      XPay.spendBuff => [for (final u in units(player: p)) if (state.obj(u).buffed) u],
+      // One entry per buff (a unit may have more than one, CR 427.1.b.2).
+      XPay.spendBuff => [for (final u in units(player: p)) for (var i = 0; i < _buffs(u); i++) u],
       XPay.returnGear => gearOf(p),
+      XPay.xp => const [],
     };
   }
 
@@ -430,6 +548,7 @@ extension GameCosts on Game {
         XPay.exhaustLegend => 'exhaust your legend',
         XPay.spendBuff => ac.anyNumber ? 'spend any number of buffs' : 'spend a buff',
         XPay.returnGear => 'return a friendly gear to hand',
+        XPay.xp => 'spend ${ac.n} XP',
       };
 
   /// Step 2 of playing [id] (CR 355.1.a): the alternative cost, and which additional costs to
@@ -450,10 +569,15 @@ extension GameCosts on Game {
     for (final a in parsed(id).abilities) {
       if (a is! Static || a.passive is! AddCost) continue;
       final ac = a.passive as AddCost;
-      if (ac.ifSpellPlayed && (state.player(p).turn['spells'] ?? 0) == 0) continue;
-      if (ac.pay == XPay.resources) {
+      if (ac.ifSpellPlayed && (_turn(state.player(p))['spells'] ?? 0) == 0) continue;
+      if (ac.pay == XPay.resources && !ac.optional) {
+        // Always paid (counted in the total cost).
+      } else if (ac.pay == XPay.resources || ac.pay == XPay.xp) {
+        if (ac.pay == XPay.xp && state.player(p).pw.xp < ac.n) continue;
+        final freeOk = _xPayable(p, id, x) != null || (c.type == CardType.spell && _xOptimisticPayable(p, id, x));
         x.paying.add((ac, const []));
-        if (_xPayable(p, id, x) == null || !askYesNo(p, 'Cost: ${_xCostVerb(ac)} as an additional cost to ${c.name}?', source: id)) {
+        final withOk = _xPayable(p, id, x) != null || (c.type == CardType.spell && _xOptimisticPayable(p, id, x));
+        if (!withOk || (freeOk && !askYesNo(p, 'Cost: ${_xCostVerb(ac)} as an additional cost to ${c.name}?', source: id))) {
           x.paying.removeLast();
           continue;
         }
@@ -464,7 +588,31 @@ extension GameCosts on Game {
         final discounts = ac.discount > 0 || ac.discountEach != null || ac.discountByKilled != null || ac.ignoreCost;
         final freeOk = !discounts || _xPayable(p, id, x) != null || (card(id).type == CardType.spell && _xOptimisticPayable(p, id, x));
         List<ObjId> pick;
-        if (ac.anyNumber) {
+        if (ac.anyNumber && ac.pay == XPay.spendBuff) {
+          // One buff at a time: a unit may have more than one (CR 427.1.b.2).
+          final d = ac.discountEach;
+          final useful = d == null ? options.length : (c.domains.contains(d) ? c.power : 0);
+          final max = useful < options.length ? useful : options.length;
+          final picked = <ObjId>[];
+          while (picked.length < max) {
+            final left = <ObjId>[];
+            for (final u in options) {
+              if (!left.contains(u) && options.where((v) => v == u).length > picked.where((v) => v == u).length) left.add(u);
+            }
+            x.paying.add((ac, picked));
+            final must = _xPayable(p, id, x) == null;
+            x.paying.removeLast();
+            if (left.isEmpty) {
+              if (must) throw RiftboundError('Not enough runes (${_costLabel(c)})');
+              break;
+            }
+            final a = ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Cost: spend a buff to play ${c.name}${d == null ? '' : ' for {${d.letter}} less'}?${must ? '' : ' (none to stop)'}', options: left, min: must ? 1 : 0, max: 1, source: id));
+            if (a.isEmpty) break;
+            picked.add(a.first);
+          }
+          if (picked.isEmpty) continue;
+          pick = picked;
+        } else if (ac.anyNumber) {
           if (options.isEmpty) continue;
           var need = 0;
           if (!freeOk) {
@@ -483,6 +631,7 @@ extension GameCosts on Game {
           pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Cost: ${_xCostVerb(ac)} for ${c.name}? (each makes it cheaper)', options: options, min: need, max: options.length, source: id));
           if (pick.isEmpty) continue;
         } else {
+          options = options.toSet().toList();
           if (!freeOk) {
             options = [
               for (final o in options)
@@ -503,8 +652,12 @@ extension GameCosts on Game {
           pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Cost: choose what to ${_xCostVerb(ac).replaceFirst(RegExp(r'^(a|any number of) '), '')} for ${c.name}', options: options, min: ac.n, max: ac.n, source: id));
         }
         x.paying.add((ac, pick));
-        if (ac.pay == XPay.kill && pick.isNotEmpty) x.costRef = pick.first;
+        if (ac.pay == XPay.kill && pick.isNotEmpty) {
+          x.costRef = pick.first;
+          if (ac.toItsBattlefield) x.killedBf = state.obj(pick.first).loc;
+        }
       }
+      x.paidAdditional = true;
       if (ac.optional) x.flags |= PlayFlags.additional;
       if (ac.ignoreCost) x.ignorePaid = true;
       if (ac.entersReady) x.entersReady = true;
@@ -544,10 +697,10 @@ extension GameCosts on Game {
     _pay(p, t.$1, t.$2, forSpell: c.type == CardType.spell);
     final pl = state.player(p);
     // Discounts used up.
-    if (c.type == CardType.spell) pl.turn.remove('nextSpell');
-    pl.turn.remove('nextCardE');
-    pl.turn.remove('nextCardP');
-    if (_xFreeGear(p, id, x)) pl.turn.remove('freeGear');
+    if (c.type == CardType.spell) _turn(pl).remove('nextSpell');
+    _turn(pl).remove('nextCardE');
+    _turn(pl).remove('nextCardP');
+    if (_xFreeGear(p, id, x)) _turn(pl).remove('freeGear');
     for (final (ac, objs) in x.paying) {
       for (final o in objs) {
         switch (ac.pay) {
@@ -562,13 +715,17 @@ extension GameCosts on Game {
           case XPay.exhaustUnit || XPay.exhaustLegend:
             state.obj(o).exhausted = true;
           case XPay.spendBuff:
-            state.obj(o).buffed = false;
+            _spendBuff(o, p);
           case XPay.returnGear:
             log('${nameOf(o)} returns to its owner’s hand.', player: p, card: o, kind: 'move');
             _leaveBoard(o, toHand: true);
-          case XPay.resources:
+          case XPay.resources || XPay.xp:
             break;
         }
+      }
+      if (ac.pay == XPay.xp) {
+        pl.pw.xp -= ac.n;
+        log('${pl.name} spends ${ac.n} XP to play ${c.name}.', player: p, card: id, kind: 'xp');
       }
     }
     return t.$1;
@@ -580,17 +737,11 @@ extension GameCosts on Game {
     final c = card(id);
     final pl = state.player(p);
     if (c.type == CardType.spell) {
-      pl.turn.remove('nextRepeat');
-      pl.turn['spells'] = (pl.turn['spells'] ?? 0) + 1;
-      if (spent > (pl.turn['spellSpent'] ?? 0)) pl.turn['spellSpent'] = spent;
+      _turn(pl).remove('nextRepeat');
+      _turn(pl)['spells'] = (_turn(pl)['spells'] ?? 0) + 1;
+      if (spent > (_turn(pl)['spellSpent'] ?? 0)) _turn(pl)['spellSpent'] = spent;
     }
-    if (c.type == CardType.gear && !c.token) pl.turn['gearPlayed'] = (pl.turn['gearPlayed'] ?? 0) + 1;
-    if (c.type == CardType.unit && pl.turn.remove('nextUnitRB') != null && state.obj(id).zone == Zone.board) {
-      state.obj(id)
-        ..exhausted = false
-        ..buffed = true;
-      log('${c.name} is readied and buffed.', player: p, card: id, kind: 'buff');
-    }
+    if (c.type == CardType.gear && !c.token) _turn(pl)['gearPlayed'] = (_turn(pl)['gearPlayed'] ?? 0) + 1;
     // "If you do, draw 1" on an additional cost (CR 359.2.b).
     for (final (ac, _) in x.paying) {
       if (ac.then.isNotEmpty) _resolveEffects(ac.then, _Ctx(controller: p, source: id, loc: state.obj(id).loc, targets: const []));
@@ -606,12 +757,12 @@ extension GameCosts on Game {
   // -------------------------------------------------------------------------------------------
 
   /// The Energy an activated ability costs now (Lillia, Piltovan Forge).
-  int _xAbilityEnergy(int p, ObjId src, Activated a) {
-    var e = a.cost.energy;
+  int _xAbilityEnergy(int p, ObjId src, Activated a, int energy) {
+    var e = energy;
     for (final x in a.effects) {
       if (x is AbilityCostLess) e -= x.n * _xCount(p, x.per, card(src));
     }
-    if (card(src).type == CardType.gear && (state.player(p).turn['gearAbilities'] ?? 0) == 0) {
+    if (card(src).type == CardType.gear && (_turn(state.player(p))['gearAbilities'] ?? 0) == 0) {
       for (final (s, m) in _xCostMods()) {
         if (m.who == XWho.firstGearAbility && _xControls(p, s)) e -= m.energy;
       }
@@ -621,12 +772,9 @@ extension GameCosts on Game {
 
   String? _xCostProblem(int p, ObjId src, Cost cost) {
     for (final part in cost.extra) {
-      switch (part) {
-        case SpendMyBuff():
-          if (!state.obj(src).buffed) return '${nameOf(src)} has no buff to spend';
-        case RecycleTrash(:final n, :final unit):
-          final have = state.player(p).trash.where((id) => !unit || card(id).type == CardType.unit).length;
-          if (have < n) return 'Not enough cards in your trash';
+      if (part case RecycleTrash(:final n, :final unit)) {
+        final have = state.player(p).trash.where((id) => !unit || card(id).type == CardType.unit).length;
+        if (have < n) return 'Not enough cards in your trash';
       }
     }
     return null;
@@ -634,17 +782,14 @@ extension GameCosts on Game {
 
   void _xPayCostExtra(int p, ObjId src, Activated a) {
     for (final part in a.cost.extra) {
-      switch (part) {
-        case SpendMyBuff():
-          state.obj(src).buffed = false;
-        case RecycleTrash(:final n, :final unit):
-          final options = [for (final id in state.player(p).trash) if (!unit || card(id).type == CardType.unit) id];
-          final pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Cost: recycle $n${unit ? ' unit' : ''} from your trash', options: options, min: n, max: n, source: src));
-          _recycleCards(p, pick);
-          log('${playerName(p)} recycles ${pick.length} from their trash.', player: p, kind: 'info');
+      if (part case RecycleTrash(:final n, :final unit)) {
+        final options = [for (final id in state.player(p).trash) if (!unit || card(id).type == CardType.unit) id];
+        final pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Cost: recycle $n${unit ? ' unit' : ''} from your trash', options: options, min: n, max: n, source: src));
+        _recycleCards(p, pick);
+        log('${playerName(p)} recycles ${pick.length} from their trash.', player: p, kind: 'info');
       }
     }
-    if (card(src).type == CardType.gear) state.player(p).turn['gearAbilities'] = (state.player(p).turn['gearAbilities'] ?? 0) + 1;
+    if (card(src).type == CardType.gear) _turn(state.player(p))['gearAbilities'] = (_turn(state.player(p))['gearAbilities'] ?? 0) + 1;
     // "When you play an activated ability with Energy cost {7} or more" checks its base cost (CR 206.1).
     _xFire(XOn.playBig, p, n: a.cost.energy);
   }
@@ -706,7 +851,7 @@ extension GameCosts on Game {
   void _xOnKill(Obj o) {
     if (card(o.id).type != CardType.unit) return;
     for (var q = 0; q < state.players.length; q++) {
-      final t = state.player(q).turn;
+      final t = _turn(state.player(q));
       if (q != o.controller) t['enemyDied'] = 1;
       if (t['resolving'] == 1 || t.remove('dmg:${o.id}') != null) _xFire(XOn.killWithSpell, q);
     }
@@ -714,29 +859,29 @@ extension GameCosts on Game {
 
   /// Damage dealt by a spell as it resolves (for kills in the cleanup that follows, CR 429.5.c).
   void _xDamaged(int p, ObjId id) {
-    if (state.player(p).turn['resolving'] == 1) state.player(p).turn['dmg:$id'] = 1;
+    if (_turn(state.player(p))['resolving'] == 1) _turn(state.player(p))['dmg:$id'] = 1;
   }
 
   /// The cleanup after a spell is done: its damage no longer kills "with a spell".
   void _xAfterCleanup() {
-    for (final pl in state.players) {
-      if (pl.turn.keys.any((k) => k.startsWith('dmg:'))) pl.turn.removeWhere((k, _) => k.startsWith('dmg:'));
+    for (var p = 0; p < state.players.length; p++) {
+      state.marks.removeWhere((k, _) => k.startsWith('t:x:$p:dmg:'));
     }
   }
 
   /// A point from holding a battlefield (Needlessly Large Yordle).
-  void _xHeld(int p) => state.player(p).turn['holdPts'] = (state.player(p).turn['holdPts'] ?? 0) + 1;
+  void _xHeld(int p) => _turn(state.player(p))['holdPts'] = (_turn(state.player(p))['holdPts'] ?? 0) + 1;
 
   // -------------------------------------------------------------------------------------------
   // Spells resolving
   // -------------------------------------------------------------------------------------------
 
-  void _xBeforeSpell(ChainItem item) => state.player(item.controller).turn['resolving'] = 1;
+  void _xBeforeSpell(ChainItem item) => _turn(state.player(item.controller))['resolving'] = 1;
 
   /// A spell finished resolving. Returns true if it went somewhere other than the trash.
   bool _xSpellDone(ChainItem item) {
     final pl = state.player(item.controller);
-    pl.turn.remove('resolving');
+    _turn(pl).remove('resolving');
     final o = state.obj(item.source);
     if (item.paid & PlayFlags.recycleAfter != 0 && o.zone == Zone.chain) {
       o.zone = Zone.trash;
@@ -752,12 +897,12 @@ extension GameCosts on Game {
   /// is in the trash (the reflexive trigger of CR 388.4, done at once).
   void _xAfterSpellTrashed(ChainItem item) {
     final pl = state.player(item.controller);
-    if (pl.turn['replay'] != item.source) return;
-    pl.turn.remove('replay');
+    if (_turn(pl)['replay'] != item.source) return;
+    _turn(pl).remove('replay');
     final id = item.source;
     final o = state.obj(id);
     if (o.zone != Zone.trash || o.owner != item.controller) return;
-    final r = pl.turn.remove('replayPower') ?? 1;
+    final r = _turn(pl).remove('replayPower') ?? 1;
     final via = XPlay(effect: true, forCost: (0, List<Domain?>.filled(r, null)), elsewhere: true);
     if (!_xCanPlayNow(item.controller, id, via)) return;
     if (!askYesNo(item.controller, 'Play ${nameOf(id)} again from your trash for ${'{A}' * r}?', source: id)) return;
@@ -799,7 +944,7 @@ extension GameCosts on Game {
   }
 
   /// The choices this file's effects make as they're played (CR 355.5).
-  void _xChooseFor(XEffect e, int p, ObjId source, int loc, bool optional, void Function(int, int) set, void Function(Effect, Choose, List<int>) choose, void Function(List<Effect>) walk, List<int> Function() chosen) {
+  void _xChooseFor(XEffect e, int p, ObjId source, int loc, bool optional, void Function(int, int) set, void Function(Effect, Choose, List<int>) choose, void Function(List<Effect>) walk, List<int> Function() chosen, bool Function(int, int) ok) {
     switch (e) {
       case Fight(:final a, :final b):
         if (a is Choose) choose(e, a, const []);
@@ -835,7 +980,7 @@ extension GameCosts on Game {
           set(slot, ask(Decision(kind: DecisionKind.cards, player: p, prompt: '${nameOf(source)}: choose a unit to recycle', options: options, source: source)).first);
         }
       case PlayFrom(:final slot) when slot >= 0:
-        final options = _xPlayCandidates(e, p, source, const _Ctx0());
+        final options = [for (final id in _xPlayCandidates(e, p, source, const _Ctx0())) if (ok(slot, id)) id];
         if (options.isEmpty) {
           set(slot, -1);
         } else {
@@ -902,6 +1047,20 @@ extension GameCosts on Game {
             use(slot);
           case PlayFrom(:final slot):
             if (slot >= 0) use(slot);
+          case HEffect():
+            for (final t in e.choices) {
+              switch (t) {
+                case Choose(:final slot) || ChooseBf(:final slot) || ChooseRel(:final slot) || ChooseOwnCard(:final slot):
+                  use(slot);
+                default:
+                  break;
+              }
+            }
+            walk(e.nested);
+          case PowerEffect() when _powerInner(e) != null:
+            final t = _targetOf(e);
+            if (t is Choose) use(t.slot);
+            walk(_powerInner(e)!);
           default:
             final t = _targetOf(e);
             if (t is Choose) use(t.slot);
@@ -1080,8 +1239,8 @@ extension GameCosts on Game {
           log('${nameOf(id)} is killed.', player: p, card: id, kind: 'die');
           _kill(id);
           if (m <= maxMight) {
-            state.player(p).turn['replay'] = ctx.source;
-            state.player(p).turn['replayPower'] = power.length;
+            _turn(state.player(p))['replay'] = ctx.source;
+            _turn(state.player(p))['replayPower'] = power.length;
           }
         }
       case KillGearByCost(:final slot, :final max, :final myMight, :final then):
@@ -1102,7 +1261,7 @@ extension GameCosts on Game {
           _resolve(x, ctx);
         }
       case TurnFx(:final fx, :final energy, :final power):
-        final t = state.player(p).turn;
+        final t = _turn(state.player(p));
         switch (fx) {
           case XTurnFx.nextSpellLess:
             t['nextSpell'] = (t['nextSpell'] ?? 0) + energy;
@@ -1113,15 +1272,13 @@ extension GameCosts on Game {
             t['unitsMore'] = (t['unitsMore'] ?? 0) + energy;
           case XTurnFx.freeGear:
             if (energy > (t['freeGear'] ?? 0)) t['freeGear'] = energy;
-          case XTurnFx.nextUnitReadyBuff:
-            t['nextUnitRB'] = 1;
           case XTurnFx.nextSpellRepeat:
             t['nextRepeat'] = 1;
         }
         log('${nameOf(ctx.source)}: ${describeEffect(e)}.', player: p, card: ctx.source, kind: 'info');
       case CounterByCost():
         _resolve(const Counter(), ctx);
-      case LookDraw(:final n, :final type, :final minEnergy):
+      case LookDrawType(:final n, :final type, :final minEnergy):
         final deck = state.player(p).deck;
         final top = _xSeeMe(p, deck.take(n).toList());
         if (top.isEmpty) return;
@@ -1336,7 +1493,7 @@ extension GameCosts on Game {
   /// spell [id] as it's played; true if it's paid.
   bool _xGrantedRepeat(int p, ObjId id, XPlay x) {
     final c = card(id);
-    if (c.type != CardType.spell || (state.player(p).turn['nextRepeat'] ?? 0) == 0) return false;
+    if (c.type != CardType.spell || (_turn(state.player(p))['nextRepeat'] ?? 0) == 0) return false;
     final cost = Cost(energy: c.energy, power: List<Domain?>.filled(c.power, c.domains.isEmpty ? null : c.domains.first));
     x.optional.add((_xRepeatEnergy(p, cost), cost.power));
     if (_xPayable(p, id, x) != null && askYesNo(p, 'Pay ${cost.describe()} to Repeat ${c.name}?', source: id)) return true;

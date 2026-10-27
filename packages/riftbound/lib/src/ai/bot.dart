@@ -67,8 +67,17 @@ class RiftboundBot implements TcgBot {
       for (final m in legal) {
         if (m is PlayMove && _isInteraction(g, g.card(m.card))) return m;
       }
+      // Ambush and Reaction units join a combat now and then.
+      if (s.showdown?.combat ?? false) {
+        for (final m in legal) {
+          if (m is PlayMove && g.card(m.card).type == CardType.unit && _rng.nextInt(2) == 0) return m;
+        }
+      }
       return passOrEnd;
     }
+    // Hide a card with Hidden now and then: it can be played free on a later turn.
+    final hides = legal.whereType<HideMove>().toList();
+    if (hides.isNotEmpty && _rng.nextInt(3) == 0) return hides.first;
     // Main phase: play the most expensive card it can.
     final plays = legal.whereType<PlayMove>().toList()..sortStable((a, b) => g.card(b.card).energy - g.card(a.card).energy);
     if (plays.isNotEmpty) return plays.first;
@@ -81,6 +90,7 @@ class RiftboundBot implements TcgBot {
 
   /// Adding resources with nothing to spend them on wastes them.
   bool _wasteful(Game g, ActivateMove m) {
+    if (m.index < 0) return false;
     final a = g.parsed(m.source).abilities[m.index];
     return a is Activated && a.effects.every((e) => e is AddRes);
   }
@@ -151,6 +161,25 @@ class RiftboundBot implements TcgBot {
           return byCost.take(d.min).toList();
         }
         if (p.contains('counter')) return [d.options.first];
+        // Costs paid with its own units: the least valuable.
+        if (p.contains('to sacrifice')) {
+          final byValue = List.of(d.options)..sortStable((a, b) => _value(g, a) - _value(g, b));
+          return byValue.take(d.min > 0 ? d.min : 1).toList();
+        }
+        // "Buff up to N": as many of its own units as allowed.
+        if (p.contains('up to') && p.contains('to buff')) {
+          final mine = [for (final id in d.options) if (s.objOrNull(id)?.controller == seat) id];
+          return mine.take(d.max).toList();
+        }
+        // Kill more units only if they're the opponent's; pay a kill cost with the weakest.
+        if (p.startsWith('kill another')) {
+          final theirs = [for (final id in d.options) if (s.objOrNull(id)?.controller != seat) id];
+          return theirs.take(d.max).toList();
+        }
+        if (p.startsWith('kill a')) {
+          final weakest = List.of(d.options)..sortStable((a, b) => _value(g, a) - _value(g, b));
+          return weakest.take(d.min).toList();
+        }
         // Buffs, readying, healing and "+N Might" or a keyword go on its own units; the rest at the opponent's.
         final friendlyWanted = p.contains('to buff') || p.contains('to ready') || p.contains('to heal') || p.contains('give +') || RegExp(r'to give [A-Z]').hasMatch(d.prompt);
         final mine = [for (final id in d.options) if (s.objOrNull(id)?.controller == seat) id];

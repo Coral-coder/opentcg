@@ -7,7 +7,7 @@ import 'ir.dart';
 String describeXEffect(XEffect e) => switch (e) {
       EachPlayer(:final draw, :final discard) => draw > 0 ? 'each player draws $draw' : 'each player discards $discard',
       Fight(:final a, :final b) => '${describeTarget(a)} and ${describeTarget(b)} deal damage equal to their Mights to each other',
-      IfElse(:final cond, :final then, :final otherwise) => 'if ${describeXCond(cond)}: ${then.map(describeEffect).join(', ')}; otherwise ${otherwise.map(describeEffect).join(', ')}',
+      IfElse(:final cond, :final then, :final otherwise) => 'if ${describeCond(cond)}: ${then.map(describeEffect).join(', ')}; otherwise ${otherwise.map(describeEffect).join(', ')}',
       PlayFrom(:final zone, :final types, :final tags, :final maxEnergy, :final maxPower, :final lessThanPoints, :final maxOfKilled, :final ignoreEnergy, :final ignoreAll, :final toBase, :final recycleAfter) =>
         'play ${types.isEmpty ? 'a card' : types.map((t) => t.name).join('/')}${tags.isEmpty ? '' : ' (${tags.join('/')})'} from ${zone.name}${maxEnergy == null ? '' : ' E≤$maxEnergy'}${maxPower == null ? '' : ' P≤$maxPower'}${lessThanPoints ? ' E<points' : ''}${maxOfKilled ? ' ≤ the killed unit' : ''}${ignoreAll ? ' ignoring its cost' : (ignoreEnergy ? ' ignoring its Energy cost' : '')}${toBase ? ' to base' : ''}${recycleAfter ? ', then recycle it' : ''}',
       RecycleOpponentTrash(:final n) => 'recycle up to $n cards from opponents\' trashes',
@@ -23,11 +23,10 @@ String describeXEffect(XEffect e) => switch (e) {
           XTurnFx.nextCardLess => 'your next card costs {$energy}${'{A}' * power} less',
           XTurnFx.unitsMore => 'your non-token units cost {$energy} more this turn',
           XTurnFx.freeGear => 'you may play a gear with Energy ≤{$energy} from hand this turn ignoring its Energy cost',
-          XTurnFx.nextUnitReadyBuff => 'ready and buff the next unit you play this turn',
           XTurnFx.nextSpellRepeat => 'your next spell this turn gets Repeat equal to its cost',
         },
       CounterByCost(:final maxEnergy, :final maxPower) => 'counter a spell costing ≤{$maxEnergy} and ≤$maxPower Power',
-      LookDraw(:final n, :final type, :final minEnergy) => 'look at the top $n; may reveal a ${type.name}${minEnergy > 0 ? ' with Energy ≥$minEnergy' : ''} and draw it; recycle the rest',
+      LookDrawType(:final n, :final type, :final minEnergy) => 'look at the top $n; may reveal a ${type.name}${minEnergy > 0 ? ' with Energy ≥$minEnergy' : ''} and draw it; recycle the rest',
       PlayOpponentsTop() => 'banish the top card of an opponent\'s deck and play it for free',
       BanishTrashUnits() => 'banish all units from your trash',
       RecycleToPlay(:final tag) => 'recycle another friendly unit to play a $tag from your trash, cheaper by its Might',

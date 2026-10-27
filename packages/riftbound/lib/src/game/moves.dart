@@ -17,6 +17,7 @@ sealed class RMove extends TcgMove {
       'play' => PlayMove(p, j['c'] as int),
       'activate' => ActivateMove(p, j['c'] as int, j['i'] as int),
       'move' => MoveUnitsMove(p, (j['u'] as List).cast<int>(), j['to'] as int),
+      'hide' => HideMove(p, j['c'] as int),
       'pass' => PassMove(p),
       'end' => EndTurnMove(p),
       'concede' => ConcedeMove(p),
@@ -72,6 +73,15 @@ class MoveUnitsMove extends RMove {
   final int to;
   @override
   Map<String, dynamic> toJson() => {'t': 'move', 'p': seat, 'u': units, 'to': to};
+}
+
+/// Hide a card with [Hidden] facedown at a battlefield you control (CR 422, 811.1.b). The cost
+/// and battlefield are asked if there's a choice. A facedown card is played with [PlayMove].
+class HideMove extends RMove {
+  const HideMove(super.seat, this.card);
+  final int card;
+  @override
+  Map<String, dynamic> toJson() => {'t': 'hide', 'p': seat, 'c': card};
 }
 
 /// Pass Priority (with a chain open) or Focus (in a showdown).

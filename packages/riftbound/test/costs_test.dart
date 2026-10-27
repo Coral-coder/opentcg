@@ -257,7 +257,7 @@ void main() {
       g.state.player(0).playedThisTurn = 9;
       g.addRunes(0, Domain.fury, 1);
       final r = g.addCard('Battering Ram', 0);
-      expect(g.playCost(0, r)!.energy, 1);
+      expect(g.playCost(0, r).energy, 1);
       g.apply(PlayMove(0, r));
       expect(g.state.obj(r).zone, Zone.board);
     });
@@ -267,15 +267,15 @@ void main() {
       for (var i = 0; i < 4; i++) {
         g.addCard('Shipyard Skulker', 0, zone: Zone.trash);
       }
-      expect(g.playCost(0, g.addCard('Rhasa the Sunderer', 0))!.energy, 6);
+      expect(g.playCost(0, g.addCard('Rhasa the Sunderer', 0)).energy, 6);
       final ps = g.addCard('Production Surge', 0);
-      expect(g.playCost(0, ps)!.energy, 4);
+      expect(g.playCost(0, ps).energy, 4);
       g.addCard('Mega-Mech', 0, zone: Zone.board);
-      expect(g.playCost(0, ps)!.energy, 2);
+      expect(g.playCost(0, ps).energy, 2);
       final fyc = g.addCard('Find Your Center', 0);
-      expect(g.playCost(0, fyc)!.energy, 3);
+      expect(g.playCost(0, fyc).energy, 3);
       g.state.player(1).points = 5;
-      expect(g.playCost(0, fyc)!.energy, 1);
+      expect(g.playCost(0, fyc).energy, 1);
     });
 
     test('Monch costs {2} less and enters ready while an opponent has a stunned unit', () {
@@ -292,36 +292,36 @@ void main() {
     test('other cards: Herald of Scales (Dragons), Eager Apprentice, Raging Firebrand, Vaults of Helia', () {
       final g = emptyGame();
       final drake = g.addCard('Mountain Drake', 0); // {9} Dragon
-      expect(g.playCost(0, drake)!.energy, 9);
+      expect(g.playCost(0, drake).energy, 9);
       g.addCard('Herald of Scales', 0, zone: Zone.board);
-      expect(g.playCost(0, drake)!.energy, 7);
+      expect(g.playCost(0, drake).energy, 7);
       final rocket = g.addCard('Super Mega Death Rocket!', 0); // {4}
       final ea = g.addCard('Eager Apprentice', 0, zone: Zone.board);
-      expect(g.playCost(0, rocket)!.energy, 4, reason: 'only while it is at a battlefield');
+      expect(g.playCost(0, rocket).energy, 4, reason: 'only while it is at a battlefield');
       g.state.obj(ea).loc = 0;
-      expect(g.playCost(0, rocket)!.energy, 3);
+      expect(g.playCost(0, rocket).energy, 3);
       // Discounts apply in the order that helps most: Eager Apprentice's minimum is its own
       // (CR 356.4.d–e), so {4} → {3} → {0}.
-      g.state.player(0).turn['nextSpell'] = 5;
-      expect(g.playCost(0, rocket)!.energy, 0);
-      g.state.player(0).turn['unitsMore'] = 1;
-      expect(g.playCost(0, drake)!.energy, 8);
+      g.state.marks['t:x:0:nextSpell'] = 5;
+      expect(g.playCost(0, rocket).energy, 0);
+      g.state.marks['t:x:0:unitsMore'] = 1;
+      expect(g.playCost(0, drake).energy, 8);
     });
 
     test('Ornn’s Forge: the first friendly non-token gear each turn costs {1} less', () {
       final g = emptyGame(battlefields: const ['Ornn\'s Forge', 'Zaun Warrens']);
       g.setControl(0, 0);
       final gear = g.addCard('Garbage Grabber', 0); // {2}
-      expect(g.playCost(0, gear)!.energy, 1);
-      g.state.player(0).turn['gearPlayed'] = 1;
-      expect(g.playCost(0, gear)!.energy, 2);
+      expect(g.playCost(0, gear).energy, 1);
+      g.state.marks['t:x:0:gearPlayed'] = 1;
+      expect(g.playCost(0, gear).energy, 2);
     });
 
     test('Sky Splitter costs {1} less per Might of your mightiest unit', () {
       final g = emptyGame();
       final s = g.addCard('Sky Splitter', 0); // {8}
       g.addCard('Playful Phantom', 0, zone: Zone.board); // 5 Might
-      expect(g.playCost(0, s)!.energy, 3);
+      expect(g.playCost(0, s).energy, 3);
     });
   });
 
@@ -331,7 +331,7 @@ void main() {
       g.addRunes(0, Domain.mind, 1);
       final j = g.addCard('Jhin, Meticulous Killer', 0); // {4}
       expect(g.whyNot(PlayMove(0, j)), isNotNull);
-      g.state.player(0).turn['spellSpent'] = 4;
+      g.state.marks['t:x:0:spellSpent'] = 4;
       g.apply(PlayMove(0, j));
       expect(g.state.obj(j).zone, Zone.board);
     });
@@ -550,7 +550,7 @@ void main() {
       final g2 = emptyGame();
       g2.addRunes(0, Domain.chaos, 5);
       final cg = g2.addCard('Crescent Guardian', 0);
-      g2.state.player(0).turn['spells'] = 1;
+      g2.state.marks['t:x:0:spells'] = 1;
       g2.apply(PlayMove(0, cg));
       answer(g2, [1]);
       expect(g2.state.obj(cg).exhausted, isFalse);
@@ -634,40 +634,66 @@ void main() {
       expect(readyRunes(g, 0), 0);
     });
 
+    test('Irelia (CR 356): only targets that leave the spell affordable are offered', () {
+      final g = emptyGame();
+      final ir = g.addCard('Irelia, Graceful', 0, zone: Zone.board);
+      final poro = g.addCard('Daring Poro', 0, zone: Zone.board);
+      g.addRunes(0, Domain.order, 2);
+      final cg = g.addCard('Call to Glory', 0);
+      expect(g.whyNot(PlayMove(0, cg)), isNull);
+      // With two runes only Irelia keeps it at {2}: the Poro isn't offered.
+      g.apply(PlayMove(0, cg));
+      expect(g.pending, isNull);
+      passAll(g);
+      expect(g.might(ir), 7);
+      expect(g.might(poro), g.card(poro).might!);
+      // With three runes either may be chosen.
+      final g2 = emptyGame();
+      g2.addCard('Irelia, Graceful', 0, zone: Zone.board);
+      final poro2 = g2.addCard('Daring Poro', 0, zone: Zone.board);
+      g2.addRunes(0, Domain.order, 3);
+      g2.apply(PlayMove(0, g2.addCard('Call to Glory', 0)));
+      expect(g2.pending?.decision.options, hasLength(2));
+      answer(g2, [poro2]);
+      passAll(g2);
+      expect(g2.might(poro2), g2.card(poro2).might! + 3);
+      expect(readyRunes(g2, 0), 0);
+    });
+
     test('Mystic Vortex: Reactions cost {A} more in showdowns there', () {
       final g = emptyGame(battlefields: const ['Mystic Vortex', 'Zaun Warrens']);
       final m = g.addCard('Meditation', 0);
-      expect(g.playCost(0, m)!.power, isEmpty);
+      expect(g.playCost(0, m).power, isEmpty);
       g.state.showdown = Showdown(bf: 0, combat: false, attacker: 0, focus: 0);
-      expect(g.playCost(0, m)!.power, hasLength(1));
+      expect(g.playCost(0, m).power, hasLength(1));
     });
 
     test('Shadowblade Lurker, Spoils of War, Needlessly Large Yordle, Plaza Guardian, Jaull-Fish', () {
       final g = emptyGame();
       g.addCard('Shadowblade Lurker', 0, zone: Zone.trash);
-      expect(g.playCost(0, g.addCard('Shadowblade Lurker', 0))!.energy, 3);
+      expect(g.playCost(0, g.addCard('Shadowblade Lurker', 0)).energy, 3);
       final sw = g.addCard('Spoils of War', 0);
-      expect(g.playCost(0, sw)!.energy, 4);
+      expect(g.playCost(0, sw).energy, 4);
       final e = g.addCard('Shipyard Skulker', 1, zone: Zone.board);
       g.state.obj(e).damage = 9;
       g.settleForTest();
-      expect(g.playCost(0, sw)!.energy, 2);
+      expect(g.playCost(0, sw).energy, 2);
       final ny = g.addCard('Needlessly Large Yordle', 0);
-      g.state.player(0).turn['holdPts'] = 2;
-      final c = g.playCost(0, ny)!;
+      g.state.marks['t:x:0:holdPts'] = 2;
+      final c = g.playCost(0, ny);
       expect(c.energy, 6);
       expect(c.power, hasLength(1));
       g.addCard('Garbage Grabber', 0, zone: Zone.board);
-      expect(g.playCost(0, g.addCard('Plaza Guardian', 0))!.energy, 9);
+      expect(g.playCost(0, g.addCard('Plaza Guardian', 0)).energy, 9);
       g.addCard('Playful Phantom', 0, zone: Zone.board);
-      expect(g.playCost(0, g.addCard('Jaull-Fish', 0))!.energy, 5);
+      expect(g.playCost(0, g.addCard('Jaull-Fish', 0)).energy, 5);
     });
 
     test('Void Drone costs {2} less only when played from elsewhere', () {
       final g = emptyGame();
       g.addRunes(0, Domain.chaos, 8);
       final vd = g.addCard('Void Drone', 0, zone: Zone.trash);
-      expect(g.playCost(0, g.addCard('Void Drone', 0))!.energy, 3);
+      expect(g.playCost(0, g.addCard('Void Drone', 0)).energy, 3);
       g.apply(PlayMove(0, g.addCard('The Harrowing', 0)));
       passAll(g);
       answerAll(g);
@@ -712,8 +738,8 @@ void main() {
       g.addRunes(0, Domain.order, 2);
       g.apply(PlayMove(0, g.addCard('Daring Poro', 0)));
       passAll(g);
-      expect(g.state.player(0).turn['nextCardE'], 2);
-      expect(g.playCost(0, g.addCard('Vanguard Sergeant', 0))!.energy, 2);
+      expect(g.state.marks['t:x:0:nextCardE'], 2);
+      expect(g.playCost(0, g.addCard('Vanguard Sergeant', 0)).energy, 2);
     });
 
     test('Super Mega Death Rocket! returns from the trash when you conquer', () {
