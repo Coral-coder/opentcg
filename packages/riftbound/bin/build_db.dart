@@ -18,9 +18,30 @@ void main(List<String> args) {
   }
   final raw = (jsonDecode(File(args[0]).readAsStringSync()) as List).cast<Map<String, dynamic>>();
   final out = args.length > 1 ? args[1] : '.';
-  final db = RCardDb.fromRaw(raw, version: '${raw.length}');
+  final db = _corrected(RCardDb.fromRaw(raw, version: '${raw.length}'), File('$out/riftbound-overrides.json'));
   File('$out/riftbound-cards.json').writeAsStringSync(jsonEncode(db.toJson()));
   final cov = coverageReport(db);
   File('$out/riftbound-coverage.json').writeAsStringSync(jsonEncode(cov));
   stdout.writeln('${db.cards.length} cards, ${cov['supported']} fully supported (${(100 * (cov['supported'] as int) / db.cards.length).toStringAsFixed(1)}%) → $out');
+}
+
+/// Applies the documented text corrections in [file] (riftbound-overrides.json, keyed by card
+/// name, each with the corrected text and why).
+RCardDb _corrected(RCardDb db, File file) {
+  if (!file.existsSync()) return db;
+  final o = (jsonDecode(file.readAsStringSync()) as Map).cast<String, dynamic>();
+  for (final k in o.keys) {
+    if (!k.startsWith('_') && db[k] == null) stderr.writeln('riftbound-overrides.json: no card named $k');
+  }
+  var n = 0;
+  final cards = [
+    for (final c in db.cards)
+      if (o[c.name] case {'text': final String text}) (() {
+        n++;
+        return RCard.fromJson({...c.toJson(), 'x': text});
+      })()
+      else c,
+  ];
+  stdout.writeln('$n card${n == 1 ? '' : 's'} use corrected text from riftbound-overrides.json');
+  return RCardDb(cards, version: db.version);
 }

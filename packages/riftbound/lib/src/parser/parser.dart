@@ -5,8 +5,10 @@ library;
 import '../cards/card.dart';
 import '../ir.dart';
 
+part 'power.dart';
+
 /// Bumped whenever parsing or the engine changes what a saved game would replay to.
-const riftboundEngineVersion = 1;
+const riftboundEngineVersion = 2;
 
 class ParsedCard {
   ParsedCard(this.abilities, this.unsupported);
@@ -51,6 +53,7 @@ class RiftboundParser {
         abilities.addAll(a);
       }
     }
+    _powerPost(c, abilities);
     if (c.type == CardType.spell && !abilities.any((a) => a is SpellBody)) {
       if (unsupported.isEmpty) unsupported.add('(a spell with no instructions)');
     }
@@ -109,6 +112,8 @@ class _Line {
       t = t.substring(m.end);
     }
     if (t.isEmpty) return out;
+    final pw = _powerLine(t, line);
+    if (pw != null) return [...out, ...pw];
     // "[Repeat] {2}{R}".
     final rep = RegExp(r'^\[Repeat\]\s*((?:\{[0-9A-Z]+\})+)$').firstMatch(t);
     if (rep != null) {
@@ -150,9 +155,9 @@ class _Line {
     // Triggered abilities.
     m = RegExp(r'^(When|At) ([^,]+), (.+)$').firstMatch(t);
     if (m != null) {
-      final on = _when('${m[1]} ${m[2]}');
+      final on = _when('${m[1]} ${m[2]}') ?? _powerWhen('${m[1]} ${m[2]}');
       if (on == null) return null;
-      _eventUnit = on.on == On.enemyAttacksYourBf;
+      _eventUnit = on.on == On.enemyAttacksYourBf || _PowerLine.eventUnitTrigger(on.on);
       _eventBf = const {On.youConquer, On.youHold, On.conquerHere, On.holdHere}.contains(on.on);
       final e = _effects(_cap(m[3]!));
       return e == null ? null : Triggered(line, on, e);
@@ -248,7 +253,13 @@ class _Line {
     var energy = 0;
     final power = <Domain?>[];
     var exhaust = false, killMe = false;
+    final extra = <CostPart>[];
     for (final part in s.split(', ')) {
+      final x = _powerCostPart(part);
+      if (x != null) {
+        extra.add(x);
+        continue;
+      }
       if (part == '{E}') {
         exhaust = true;
         continue;
@@ -275,7 +286,7 @@ class _Line {
         }
       }
     }
-    return Cost(energy: energy, power: power, exhaust: exhaust, killMe: killMe);
+    return Cost(energy: energy, power: power, exhaust: exhaust, killMe: killMe, extra: extra);
   }
 
   /// Sentences → effects; null if any sentence isn't understood.
@@ -284,7 +295,9 @@ class _Line {
     for (final s in _sentences(text)) {
       final e = _sentence(s);
       if (e == null) return null;
-      out.addAll(e);
+      final merged = _powerMerge(out, e);
+      if (merged == false) return null;
+      if (merged == null) out.addAll(e);
     }
     return out.isEmpty ? null : out;
   }
@@ -302,7 +315,19 @@ class _Line {
     return [for (final s in out) if (s.isNotEmpty) s];
   }
 
+  /// One sentence: this family's forms that must come first, the core forms, then this family's
+  /// other forms (parser/power.dart).
   List<Effect>? _sentence(String s0) {
+    final early = _powerSentenceEarly(s0);
+    if (early != null) return early;
+    final slot = _slotCounter[0];
+    final core = _sentenceCore(s0);
+    if (core != null) return core;
+    _slotCounter[0] = slot;
+    return _powerSentence(s0);
+  }
+
+  List<Effect>? _sentenceCore(String s0) {
     var s = s0;
     if (s.startsWith('You may ')) {
       final inner = _sentence('${s[8].toUpperCase()}${s.substring(9)}');
@@ -443,12 +468,14 @@ class _Line {
     if (c == 'you have one or fewer cards in your hand') return const HandAtMost(1);
     final m = RegExp(r'^you have (\d+)\+ units at that battlefield$').firstMatch(c);
     if (m != null && _eventBf) return UnitsThere(int.parse(m[1]!));
-    return null;
+    return _powerCond(c);
   }
 
   /// A target phrase → a target; null if not understood.
   Target? _target(String p) {
     p = p.trim();
+    final pw = _powerTarget(p);
+    if (pw != null) return pw;
     if (p == 'me' && card.type == CardType.unit) return const Me();
     if (p == 'this' && card.type == CardType.gear) return const Me();
     if (p == 'it' || p == 'that unit') {

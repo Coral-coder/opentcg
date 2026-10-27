@@ -19,6 +19,8 @@ extension GameEffects on Game {
   /// -1 for a trigger ([optional]; it then fails to go on the chain).
   List<int> _chooseTargets(List<Effect> effects, int p, ObjId source, int loc, {bool optional = false, int repeats = 0}) {
     final out = <int>[];
+    _powerTargetsOf[this] = out;
+    final asked = <int>{};
     void set(int slot, int v) {
       while (out.length <= slot) {
         out.add(-1);
@@ -37,8 +39,10 @@ extension GameEffects on Game {
             }
           case If(:final effects):
             walk(effects);
+          case PowerEffect() when _powerInner(e) != null:
+            walk(_powerInner(e)!);
           case Counter():
-            final spells = [for (final it in state.chain) if (it.isSpell && it.source != source) it.source];
+            final spells = [for (final it in state.chain) if (it.isSpell && it.source != source && !_cantBeCountered(it.controller)) it.source];
             if (spells.isEmpty) {
               if (optional) return;
               throw RiftboundError('No spell to counter');
@@ -47,7 +51,8 @@ extension GameEffects on Game {
           default:
             final t = _targetOf(e);
             if (t is Choose) {
-              final options = matching(t.filter, controller: p, source: source, here: loc);
+              if (!asked.add(t.slot)) continue;
+              final options = [for (final id in matching(t.filter, controller: p, source: source, here: loc)) if (!_unchoosable(id, p)) id];
               if (options.isEmpty) {
                 if (t.upTo || optional) {
                   set(t.slot, -1);
@@ -79,6 +84,7 @@ extension GameEffects on Game {
   Target? _targetOf(Effect e) => switch (e) {
         Deal(:final target) || Buff(:final target) || Ready(:final target) || Exhaust(:final target) || Stun(:final target) || Kill(:final target) => target,
         GiveMight(:final target) || GiveKw(:final target) || ToBase(:final target) || ToHand(:final target) || Heal(:final target) || ToOrFromBase(:final target) => target,
+        PowerEffect() => _powerTargetOf(e),
         _ => null,
       };
 
@@ -106,11 +112,12 @@ extension GameEffects on Game {
     switch (t) {
       case Me():
         final o = state.objOrNull(ctx.source);
-        return o != null && o.zone == Zone.board ? [ctx.source] : const [];
+        return o != null && (o.zone == Zone.board || o.zone == Zone.legend) ? [ctx.source] : const [];
       case Choose(:final slot, :final filter):
         if (slot >= ctx.targets.length) return const [];
         final id = ctx.targets[slot];
         if (id < 0) return const [];
+        _powerTargetsOf[this] = ctx.targets;
         return matches(filter, id, controller: ctx.controller, source: ctx.source, here: ctx.loc) ? [id] : const [];
       case Chosen(:final slot):
         if (slot >= ctx.targets.length) return const [];
@@ -135,12 +142,9 @@ extension GameEffects on Game {
     final p = ctx.controller;
     switch (e) {
       case Deal(:final amount, :final target):
-        final n = switch (amount) {
-          N(:final n) => n,
-          MyMight() => state.objOrNull(ctx.source)?.zone == Zone.board ? mightUsed(ctx.source) : 0,
-        };
+        final n = _amount(amount, ctx);
         for (final id in _resolveTarget(target, ctx)) {
-          if (!isUnit(id)) continue;
+          if (!isUnit(id) || _noDamage(id)) continue;
           state.obj(id).damage += n;
           log('${nameOf(ctx.source)} deals $n to ${nameOf(id)}.', player: p, card: id, kind: 'damage', amount: n);
         }
@@ -159,9 +163,7 @@ extension GameEffects on Game {
         log('${playerName(p)} discards ${pick.map(nameOf).join(', ')}.', player: p, kind: 'discard');
       case Buff(:final target):
         for (final id in _resolveTarget(target, ctx)) {
-          if (!isUnit(id) || state.obj(id).buffed) continue;
-          state.obj(id).buffed = true;
-          log('${nameOf(id)} is buffed.', player: p, card: id, kind: 'buff');
+          if (isUnit(id)) _buffUnit(id, p);
         }
       case Ready(:final target):
         for (final id in _resolveTarget(target, ctx)) {
@@ -174,7 +176,7 @@ extension GameEffects on Game {
       case Stun(:final target):
         var enemy = false;
         for (final id in _resolveTarget(target, ctx)) {
-          if (!isUnit(id) || state.obj(id).stunned) continue;
+          if (!isUnit(id) || state.obj(id).stunned || _harmReplaced(id, target, p)) continue;
           state.obj(id).stunned = true;
           if (state.obj(id).controller != p) enemy = true;
           log('${nameOf(id)} is stunned.', player: p, card: id, kind: 'stun');
@@ -187,8 +189,8 @@ extension GameEffects on Game {
         }
       case GiveMight(:final n, :final target, :final min):
         for (final id in _resolveTarget(target, ctx)) {
-          if (!isUnit(id)) continue;
-          var delta = n;
+          if (!isUnit(id) || (n < 0 && _harmReplaced(id, target, p))) continue;
+          var delta = n + _extraMinus(n, target, p);
           // "To a minimum of N": the decrease stops at N, fixed now (CR 479.4.b).
           if (min != null && delta < 0) {
             final now = might(id);
@@ -217,6 +219,7 @@ extension GameEffects on Game {
         }
       case ToHand(:final target):
         for (final id in _resolveTarget(target, ctx)) {
+          if (_harmReplaced(id, target, p)) continue;
           log('${nameOf(id)} returns to its owner’s hand.', player: p, card: id, kind: 'move');
           _leaveBoard(id, toHand: true);
         }
@@ -271,6 +274,7 @@ extension GameEffects on Game {
           deck.remove(id);
           deck.add(id);
         }
+        if (pick.isNotEmpty) _recycled(p);
         log('${playerName(p)} predicts${pick.isEmpty ? '' : ' and recycles ${pick.length}'}.', player: p, kind: 'info');
       case Counter():
         if (ctx.targets.isEmpty) return;
@@ -296,12 +300,15 @@ extension GameEffects on Game {
         for (final x in modes[a.first]) {
           _resolve(x, ctx);
         }
+      case PowerEffect():
+        _resolvePower(e, ctx);
     }
   }
 
   bool _cond(Cond c, _Ctx ctx) => switch (c) {
         HandAtMost(:final n) => state.player(ctx.controller).hand.length <= n,
         UnitsThere(:final n) => ctx.loc >= 0 && ctx.loc < state.bfs.length && unitsAt(ctx.loc, player: ctx.controller).length >= n,
+        PowerCond() => _powerCondEval(c, ctx),
       };
 
   String _mayPrompt(List<Effect> effects) => effects.map(describeEffect).join(', then ');

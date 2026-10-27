@@ -1,6 +1,7 @@
 /// Short descriptions of parsed abilities, for tools, tests and the app's card details.
 library;
 
+import 'describe_power.dart';
 import 'ir.dart';
 
 String describeTarget(Target t) => switch (t) {
@@ -33,21 +34,25 @@ String describeEffect(Effect e) => switch (e) {
       AddRes(:final energy, :final anyPower, :final spellsOnly) => 'add ${energy > 0 ? '{$energy}' : ''}${'{A}' * anyPower}${spellsOnly ? ' (spells only)' : ''}',
       ReadyRunes(:final n) => 'ready $n runes',
       ToOrFromBase(:final target) => 'move ${describeTarget(target)} to or from base',
-      If(:final cond, :final effects) => 'if ${switch (cond) {
-          HandAtMost(:final n) => 'hand ≤ $n',
-          UnitsThere(:final n) => '$n+ units there',
-        }}: ${effects.map(describeEffect).join(', ')}',
+      If(:final cond, :final effects) => 'if ${describeCond(cond)}: ${effects.map(describeEffect).join(', ')}',
       May(:final effects) => 'you may ${effects.map(describeEffect).join(', then ')}',
       Modes(:final modes) => 'choose one: ${modes.map((m) => m.map(describeEffect).join(', ')).join(' / ')}',
+      PowerEffect() => describePower(e),
+    };
+
+String describeCond(Cond c) => switch (c) {
+      HandAtMost(:final n) => 'hand ≤ $n',
+      UnitsThere(:final n) => '$n+ units there',
+      PowerCond() => describePowerCond(c),
     };
 
 String describeAbility(Ability a) => switch (a) {
       KeywordAb(:final kw, :final n) => 'KW ${kw.name}${n > 1 ? ' $n' : ''}',
-      Triggered(:final on, :final effects, :final legion) => 'TRIG ${legion ? 'legion ' : ''}${on.on.name}${on.moveToBattlefield ? '(bf)' : ''} → ${effects.map(describeEffect).join('; ')}',
-      Activated(:final cost, :final effects, :final timing, :final oncePerTurn, :final legion) =>
-        'ACT [${cost.describe()}]${timing == Timing.normal ? '' : ' ${timing.name}'}${legion ? ' legion' : ''}${oncePerTurn ? ' once/turn' : ''} → ${effects.map(describeEffect).join('; ')}',
+      Triggered(:final on, :final effects, :final legion, :final gate) => 'TRIG ${gate == null ? '' : '[${describeGate(gate)}] '}${legion ? 'legion ' : ''}${on.on.name}${on.moveToBattlefield ? '(bf)' : ''} → ${effects.map(describeEffect).join('; ')}',
+      Activated(:final cost, :final effects, :final timing, :final oncePerTurn, :final legion, :final gate) =>
+        'ACT ${gate == null ? '' : '[${describeGate(gate)}] '}[${cost.describe()}]${timing == Timing.normal ? '' : ' ${timing.name}'}${legion ? ' legion' : ''}${oncePerTurn ? ' once/turn' : ''} → ${effects.map(describeEffect).join('; ')}',
       SpellBody(:final effects) => 'SPELL → ${effects.map(describeEffect).join('; ')}',
-      Static(:final passive) => 'STATIC ${switch (passive) {
+      Static(:final passive, :final gate) => 'STATIC ${gate == null ? '' : '[${describeGate(gate)}] '}${switch (passive) {
           Anthem(:final n, :final filter) => '${filter.describe()} +$n Might',
           EntersReady() => 'enters ready',
           NoCombatDamage() => 'no combat damage',
@@ -55,6 +60,7 @@ String describeAbility(Ability a) => switch (a) {
           KwAnthem(:final kw, :final n, :final filter) => '${filter.describe()} have ${kw.name}${n > 1 ? ' $n' : ''}',
           EntersExhausted() => 'enters exhausted',
           CostLess(:final n, :final legion) => '${legion ? 'legion: ' : ''}costs {$n} less',
+          PowerPassive() => describePowerPassive(passive),
         }}',
       RepeatCost(:final cost) => 'REPEAT ${cost.describe()}',
     };

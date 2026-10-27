@@ -32,6 +32,7 @@ part 'combat.dart';
 part 'effects.dart';
 part 'query.dart';
 part 'testing.dart';
+part 'power.dart';
 
 class NeedDecision implements Exception {
   NeedDecision(this.decision);
@@ -343,6 +344,7 @@ class Game implements TcgMatch {
       case Step.main:
         break;
       case Step.ending:
+        _powerEndOfTurn();
         // Expiration step (CR 317.2): heal, stuns and "this turn" effects end, pools empty.
         for (final o in state.objects.values) {
           if (o.zone == Zone.board) {
