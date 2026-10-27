@@ -7,6 +7,8 @@ import 'package:tcg_core/tcg_core.dart';
 import '../cards/card.dart';
 import '../ir.dart';
 
+part 'state_equip.dart';
+
 typedef ObjId = int;
 
 /// Zones (CR 105–108). Board objects are in [Zone.board] at a location ([Obj.loc]).
@@ -40,6 +42,9 @@ class Obj {
   /// Activated abilities used this turn (for "Use only once per turn"), by index.
   List<int> usedThisTurn = [];
 
+  /// Equipment: attachment, copies and the like (game/equip.dart).
+  EqObj eq = EqObj();
+
   Obj clone() => Obj(id: id, card: card, owner: owner, zone: zone)
     ..controller = controller
     ..loc = loc
@@ -50,7 +55,8 @@ class Obj {
     ..mightMod = mightMod
     ..kwMod = Map.of(kwMod)
     ..enteredTurn = enteredTurn
-    ..usedThisTurn = List.of(usedThisTurn);
+    ..usedThisTurn = List.of(usedThisTurn)
+    ..eq = eq.clone();
 
   /// Leaving the board (or entering it) makes a new object for rules purposes (CR 124.1).
   void reset() {
@@ -63,11 +69,12 @@ class Obj {
     usedThisTurn = [];
     loc = base;
     controller = owner;
+    eq = EqObj();
   }
 
   String digest() {
     final kws = kwMod.keys.toList()..sortStable((a, b) => a - b);
-    return '$id|${card.length}:$card|$owner|$controller|${zone.index}|$loc|$exhausted|$damage|$buffed|$stunned|$mightMod|${kws.map((k) => '$k=${kwMod[k]}').join(',')}|$enteredTurn|${usedThisTurn.join(',')}';
+    return '$id|${card.length}:$card|$owner|$controller|${zone.index}|$loc|$exhausted|$damage|$buffed|$stunned|$mightMod|${kws.map((k) => '$k=${kwMod[k]}').join(',')}|$enteredTurn|${usedThisTurn.join(',')}|${eq.digest()}';
   }
 }
 
@@ -102,6 +109,9 @@ class Player {
   List<int> scored = [];
   bool lost = false;
 
+  /// Experience (CR 728–733).
+  int xp = 0;
+
   Player clone() => Player(name)
     ..deck = List.of(deck)
     ..hand = List.of(hand)
@@ -117,10 +127,11 @@ class Player {
     ..anyPool = anyPool
     ..playedThisTurn = playedThisTurn
     ..scored = List.of(scored)
-    ..lost = lost;
+    ..lost = lost
+    ..xp = xp;
 
   String digest() =>
-      '${name.length}:$name|${deck.join(',')}|${hand.join(',')}|${trash.join(',')}|${banish.join(',')}|${runeDeck.join(',')}|${runes.join(',')}|${legend ?? ''}|${champion ?? ''}|$points|$energyPool|${powerPool.join(',')}|$anyPool|$playedThisTurn|${scored.join(',')}|$lost';
+      '${name.length}:$name|${deck.join(',')}|${hand.join(',')}|${trash.join(',')}|${banish.join(',')}|${runeDeck.join(',')}|${runes.join(',')}|${legend ?? ''}|${champion ?? ''}|$points|$energyPool|${powerPool.join(',')}|$anyPool|$playedThisTurn|${scored.join(',')}|$lost|$xp';
 }
 
 /// A battlefield in play (CR 169, 188–190).
@@ -140,7 +151,7 @@ class Bf {
 
 /// A spell or ability on the Chain (CR 327).
 class ChainItem {
-  ChainItem({required this.id, required this.source, required this.card, required this.ability, required this.controller, this.targets = const [], this.repeats = 0, this.loc = base, this.fromTrigger = false, this.legion = false, this.event = -1});
+  ChainItem({required this.id, required this.source, required this.card, required this.ability, required this.controller, this.targets = const [], this.repeats = 0, this.loc = base, this.fromTrigger = false, this.legion = false, this.event = -1, this.via = -1});
   final int id;
 
   /// The card (a spell on the chain) or the object whose ability this is.
@@ -163,9 +174,12 @@ class ChainItem {
   /// The unit a trigger is about ("it"), or -1.
   final int event;
 
+  /// For an ability a unit has from an attached card's Effect Text: that card ("this"), or -1.
+  final int via;
+
   bool get isSpell => ability < 0;
 
-  String digest() => '$id|$source|${card.length}:$card|$ability|$controller|${targets.join(',')}|$repeats|$loc|$fromTrigger|$legion|$event';
+  String digest() => '$id|$source|${card.length}:$card|$ability|$controller|${targets.join(',')}|$repeats|$loc|$fromTrigger|$legion|$event|$via';
 }
 
 /// A showdown, and the combat it may be part of (CR 341, 461).
@@ -258,6 +272,9 @@ class GameState {
 
   /// Triggered abilities waiting to be put on the chain (CR 382), in order.
   List<ChainItem> waiting = [];
+
+  /// Equipment bookkeeping (game/equip.dart).
+  EqState eq = EqState();
   final List<LogEntry> log = [];
 
   bool get over => phase == Phase.over;
@@ -286,7 +303,8 @@ class GameState {
       ..priority = priority
       ..passes = passes
       ..showdown = showdown?.clone()
-      ..waiting = List.of(waiting);
+      ..waiting = List.of(waiting)
+      ..eq = eq.clone();
     s.log.addAll(log);
     return s;
   }
@@ -296,7 +314,7 @@ class GameState {
       ..write('rb1|$seed|${rng.state}|$nextId|$turn|$active|$firstPlayer|${phase.index}|${step.index}|${winner ?? ''}|$victoryScore|')
       ..write('${bfs.map((x) => x.digest()).join(';')}|')
       ..write('${chain.map((c) => c.digest()).join(';')}|$nextChainId|$priority|$passes|${showdown?.digest() ?? ''}|')
-      ..write('${waiting.map((c) => c.digest()).join(';')}|');
+      ..write('${waiting.map((c) => c.digest()).join(';')}|${eq.digest()}|');
     for (final p in players) {
       b.write('${p.digest()}#');
     }

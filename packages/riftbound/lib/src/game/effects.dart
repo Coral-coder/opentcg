@@ -2,7 +2,7 @@ part of 'game.dart';
 
 /// Who is resolving: controller, source, the source's location ("here"), and chosen targets.
 class _Ctx {
-  _Ctx({required this.controller, required this.source, required this.loc, required this.targets, this.event = -1});
+  _Ctx({required this.controller, required this.source, required this.loc, required this.targets, this.event = -1, this.via = -1});
   final int controller;
   final ObjId source;
   final int loc;
@@ -10,6 +10,9 @@ class _Ctx {
 
   /// The unit a trigger is about, or -1.
   final int event;
+
+  /// The attached card whose Effect Text this ability is ("this"), or -1 (game/equip.dart).
+  final int via;
 }
 
 /// Choosing targets (CR 355.5–355.10) and executing instructions (CR 158, 359.3.e).
@@ -24,6 +27,20 @@ extension GameEffects on Game {
         out.add(-1);
       }
       out[slot] = v;
+    }
+
+    void choose(Effect e, Target? t) {
+      if (t is! Choose) return;
+      final options = [for (final id in matching(t.filter, controller: p, source: source, here: loc)) if (_eqChoosable(t, id, out)) id];
+      if (options.isEmpty) {
+        if (t.upTo || optional) {
+          set(t.slot, -1);
+          return;
+        }
+        throw RiftboundError('No legal target for ${nameOf(source)}');
+      }
+      final a = ask(Decision(kind: DecisionKind.cards, player: p, prompt: '${nameOf(source)}: choose ${_describeChoice(e, t)}', options: options, min: t.upTo ? 0 : 1, max: 1, source: source));
+      set(t.slot, a.isEmpty ? -1 : a.first);
     }
 
     void walk(List<Effect> es) {
@@ -44,20 +61,16 @@ extension GameEffects on Game {
               throw RiftboundError('No spell to counter');
             }
             set(0, ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Counter which spell?', options: spells, source: source)).first);
-          default:
-            final t = _targetOf(e);
-            if (t is Choose) {
-              final options = matching(t.filter, controller: p, source: source, here: loc);
-              if (options.isEmpty) {
-                if (t.upTo || optional) {
-                  set(t.slot, -1);
-                  continue;
-                }
-                throw RiftboundError('No legal target for ${nameOf(source)}');
-              }
-              final a = ask(Decision(kind: DecisionKind.cards, player: p, prompt: '${nameOf(source)}: choose ${_describeChoice(e, t)}', options: options, min: t.upTo ? 0 : 1, max: 1, source: source));
-              set(t.slot, a.isEmpty ? -1 : a.first);
+          case EqModesOnce():
+            break; // A mode's choices are made as it's chosen (game/equip.dart).
+          case EqMayPay(:final effects):
+            walk(effects);
+          case EqEffect():
+            for (final t in e.targets) {
+              choose(e, t);
             }
+          default:
+            choose(e, _targetOf(e));
         }
       }
     }
@@ -70,6 +83,10 @@ extension GameEffects on Game {
   bool _mandatoryTargetsMissing(List<Effect> effects, List<int> targets) {
     for (final e in effects) {
       if (e is May) continue;
+      if (e is EqEffect) {
+        if (_eqMissing(e, targets)) return true;
+        continue;
+      }
       final t = _targetOf(e);
       if (t is Choose && !t.upTo && (t.slot >= targets.length || targets[t.slot] < 0)) return true;
     }
@@ -111,7 +128,7 @@ extension GameEffects on Game {
         if (slot >= ctx.targets.length) return const [];
         final id = ctx.targets[slot];
         if (id < 0) return const [];
-        return matches(filter, id, controller: ctx.controller, source: ctx.source, here: ctx.loc) ? [id] : const [];
+        return matches(filter, id, controller: ctx.controller, source: ctx.source, here: ctx.loc) && _eqChoosable(t, id, ctx.targets) ? [id] : const [];
       case Chosen(:final slot):
         if (slot >= ctx.targets.length) return const [];
         final id = ctx.targets[slot];
@@ -121,6 +138,8 @@ extension GameEffects on Game {
       case EventUnit():
         final id = ctx.event;
         return id >= 0 && state.objOrNull(id)?.zone == Zone.board ? [id] : const [];
+      case EqTarget():
+        return _eqResolveTarget(t, ctx);
     }
   }
 
@@ -138,11 +157,13 @@ extension GameEffects on Game {
         final n = switch (amount) {
           N(:final n) => n,
           MyMight() => state.objOrNull(ctx.source)?.zone == Zone.board ? mightUsed(ctx.source) : 0,
+          EqAmount() => _eqAmount(amount, ctx),
         };
+        final bonus = _eqBonusDamage(p);
         for (final id in _resolveTarget(target, ctx)) {
           if (!isUnit(id)) continue;
-          state.obj(id).damage += n;
-          log('${nameOf(ctx.source)} deals $n to ${nameOf(id)}.', player: p, card: id, kind: 'damage', amount: n);
+          state.obj(id).damage += n + bonus;
+          log('${nameOf(ctx.source)} deals ${n + bonus} to ${nameOf(id)}.', player: p, card: id, kind: 'damage', amount: n + bonus);
         }
       case Draw(:final n):
         _draw(p, n);
@@ -208,6 +229,7 @@ extension GameEffects on Game {
         for (final id in _resolveTarget(target, ctx)) {
           final o = state.obj(id);
           if (o.loc == base) continue;
+          if (asMove && _eqUnmovable(id, p)) continue;
           if (asMove) {
             _moveUnits([id], base, p);
           } else {
@@ -223,6 +245,7 @@ extension GameEffects on Game {
       case ToOrFromBase(:final target):
         for (final id in _resolveTarget(target, ctx)) {
           final o = state.obj(id);
+          if (_eqUnmovable(id, p)) continue;
           if (o.loc != base) {
             _moveUnits([id], base, p);
           } else if (state.bfs.isNotEmpty) {
@@ -257,6 +280,7 @@ extension GameEffects on Game {
         for (var i = 0; i < count; i++) {
           final id = _newObj(token, p, Zone.board);
           _enterBoard(id, p, loc, ready: ready || db[token]!.type == CardType.gear);
+          _eqTokenPlayed(id, p);
         }
         log('${playerName(p)} plays $count $token token${count == 1 ? '' : 's'}.', player: p, kind: 'play');
       case GainPoints(:final n):
@@ -296,12 +320,15 @@ extension GameEffects on Game {
         for (final x in modes[a.first]) {
           _resolve(x, ctx);
         }
+      case EqEffect():
+        _eqResolve(e, ctx);
     }
   }
 
   bool _cond(Cond c, _Ctx ctx) => switch (c) {
         HandAtMost(:final n) => state.player(ctx.controller).hand.length <= n,
         UnitsThere(:final n) => ctx.loc >= 0 && ctx.loc < state.bfs.length && unitsAt(ctx.loc, player: ctx.controller).length >= n,
+        EqCond() => _eqCond(c, ctx),
       };
 
   String _mayPrompt(List<Effect> effects) => effects.map(describeEffect).join(', then ');

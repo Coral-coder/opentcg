@@ -5,6 +5,8 @@ library;
 
 import 'cards/card.dart';
 
+part 'ir_equip.dart';
+
 /// Keyword abilities (CR 805–826) the engine implements.
 enum Kw {
   accelerate,
@@ -341,6 +343,9 @@ enum On {
 
   /// "When an enemy unit attacks a battlefield you control" (once per attacking unit; "it" is it).
   enemyAttacksYourBf,
+
+  /// Equipment events, told apart by [EqWhen.event] (ir_equip.dart).
+  eq,
 }
 
 class When extends Trigger {

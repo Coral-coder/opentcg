@@ -224,7 +224,8 @@ extension GamePlay on Game {
     final parsedCard = parsed(id);
     if (!parsedCard.supported) throw RiftboundError('${c.name} isn’t supported yet');
     if (!c.isMainDeck) throw RiftboundError('That can’t be played');
-    final timing = c.type == CardType.spell ? parsedCard.timing : Timing.normal;
+    final eqQuickDraw = _eqGrantedQuickDraw(p, id);
+    final timing = _eqPlayTiming(p, id) ?? (c.type == CardType.spell ? parsedCard.timing : Timing.normal);
     final t = _timingProblem(p, timing);
     if (t != null) throw RiftboundError(t);
     if (!_canPayCard(p, c)) throw RiftboundError('Not enough runes (${_costLabel(c)})');
@@ -249,6 +250,8 @@ extension GamePlay on Game {
         extraP.add(pw);
       }
     }
+    final eqExtra = _eqOptionalCost(p, c, id, extraE, extraP);
+    extraE += eqExtra ?? 0;
     var repeats = 0;
     for (final a in parsedCard.abilities.whereType<RepeatCost>()) {
       if (_canPayCard(p, c, extraEnergy: extraE + a.cost.energy, extraPower: [...extraP, ...a.cost.power]) && askYesNo(p, 'Pay ${a.cost.describe()} to Repeat ${c.name}?', source: id)) {
@@ -286,6 +289,7 @@ extension GamePlay on Game {
     log('${pl.name} plays ${c.name}${loc == base ? '' : ' to ${locName(loc, p)}'}.', player: p, card: id, kind: 'play');
     _firePlayed(id);
     if (c.type == CardType.unit) _fire(On.youPlayUnit, player: p);
+    _eqAfterPlay(p, id, quickDraw: eqQuickDraw, paidExtra: eqExtra != null);
   }
 
   String _costLabel(RCard c) => '{${c.energy}}${'{${c.domains.isEmpty ? 'A' : c.domains.first.letter}}' * c.power}';
@@ -325,10 +329,13 @@ extension GamePlay on Game {
   void _activate(int p, ObjId src, int index) {
     final o = state.objOrNull(src);
     if (o == null || o.controller != p || !(o.zone == Zone.board || (o.zone == Zone.legend))) throw RiftboundError('You don’t control that');
+    if (index >= 1000) return _eqActivateGranted(p, src, index);
+    if (_eqInactive(src)) throw RiftboundError('${nameOf(src)} is attached: its own text is inactive');
     final abs = parsed(src).abilities;
     if (index < 0 || index >= abs.length || abs[index] is! Activated) throw RiftboundError('No such ability');
     if (!parsed(src).supported) throw RiftboundError('${nameOf(src)} isn’t supported yet');
     final a = abs[index] as Activated;
+    if (a is EqEquip || a is EqActivated) return _eqActivate(p, src, index, a);
     if (a.legion && state.player(p).playedThisTurn < 1) throw RiftboundError('Legion: play another card this turn first');
     final isAdd = a.adds;
     final t = isAdd ? null : _timingProblem(p, a.timing);
@@ -349,7 +356,7 @@ extension GamePlay on Game {
     _pay(p, a.cost.energy, [...a.cost.power, ...extraP]);
     if (a.cost.exhaust) o.exhausted = true;
     o.usedThisTurn.add(index);
-    final item = ChainItem(id: state.nextChainId++, source: src, card: o.card, ability: index, controller: p, targets: targets, loc: o.loc);
+    final item = ChainItem(id: state.nextChainId++, source: src, card: _eqCardKey(src), ability: index, controller: p, targets: targets, loc: o.loc);
     if (a.cost.killMe) _kill(src);
     log('${playerName(p)} uses ${nameOf(src)}.', player: p, card: src, kind: 'ability');
     if (isAdd) {
@@ -394,6 +401,7 @@ extension GamePlay on Game {
         final a = abs[i];
         if (a is Triggered && a.on.on == On.move && (!a.on.moveToBattlefield || to != base)) _queue(u, i, state.obj(u).controller);
       }
+      _eqQueueAppended(u, (t) => t.on.on == On.move && (!t.on.moveToBattlefield || to != base));
     }
   }
 
@@ -408,9 +416,9 @@ extension GamePlay on Game {
   // -------------------------------------------------------------------------------------------
 
   /// Queues ability [index] of [src] to go on the chain at the next chance (CR 382).
-  void _queue(ObjId src, int index, int controller, {int loc = -2, int event = -1}) {
+  void _queue(ObjId src, int index, int controller, {int loc = -2, int event = -1, String? card, int via = -1}) {
     final o = state.obj(src);
-    state.waiting.add(ChainItem(id: 0, source: src, card: o.card, ability: index, controller: controller, loc: loc == -2 ? o.loc : loc, fromTrigger: true, event: event));
+    state.waiting.add(ChainItem(id: 0, source: src, card: card ?? _eqCardKey(src), ability: index, controller: controller, loc: loc == -2 ? o.loc : loc, fromTrigger: true, event: event, via: via));
   }
 
   /// Triggers abilities of everything [player] controls (and their legend) for an event. [bf]:
@@ -418,11 +426,13 @@ extension GamePlay on Game {
   void _fire(On on, {required int player, int bf = -2, int event = -1}) {
     final srcs = [?state.player(player).legend, for (final o in _boardOf(player)) o.id];
     for (final s in srcs) {
+      if (_eqInactive(s)) continue;
       final abs = parsed(s).abilities;
       for (var i = 0; i < abs.length; i++) {
         final a = abs[i];
         if (a is Triggered && a.on.on == on) _queue(s, i, player, loc: bf, event: event);
       }
+      _eqQueueAppended(s, (t) => t.on.on == on, loc: bf, event: event);
     }
   }
 
@@ -430,12 +440,13 @@ extension GamePlay on Game {
   void _finalizeTrigger(ChainItem t) {
     final src = state.objOrNull(t.source);
     if (src == null) return;
-    final a = parsed(t.source).abilities[t.ability];
-    final effects = switch (a) {
-      Triggered() => a.effects,
-      KeywordAb(kw: Kw.vision) => const <Effect>[Predict(1)],
-      _ => const <Effect>[],
-    };
+    final a = _eqAbilityAt(db[t.card]!, t.ability);
+    final effects = _eqEffectsOf(a) ??
+        switch (a) {
+          Triggered() => a.effects,
+          KeywordAb(kw: Kw.vision) => const <Effect>[Predict(1)],
+          _ => const <Effect>[],
+        };
     if (effects.isEmpty) return;
     final targets = _chooseTargets(effects, t.controller, t.source, t.loc, optional: true);
     if (_mandatoryTargetsMissing(effects, targets)) {
@@ -458,7 +469,7 @@ extension GamePlay on Game {
       }
       _pay(t.controller, 0, deflect);
     }
-    _pushChain(ChainItem(id: state.nextChainId++, source: t.source, card: t.card, ability: t.ability, controller: t.controller, targets: targets, loc: t.loc, fromTrigger: true, event: t.event));
+    _pushChain(ChainItem(id: state.nextChainId++, source: t.source, card: t.card, ability: t.ability, controller: t.controller, targets: targets, loc: t.loc, fromTrigger: true, event: t.event, via: t.via));
   }
 
   void _pushChain(ChainItem item) {
@@ -479,15 +490,16 @@ extension GamePlay on Game {
     if (item.isSpell) {
       effects = [for (final a in RiftboundParser.parse(c).abilities) if (a is SpellBody) ...a.effects];
     } else {
-      final a = RiftboundParser.parse(c).abilities[item.ability];
-      effects = switch (a) {
-        Triggered() => a.effects,
-        Activated() => a.effects,
-        KeywordAb(kw: Kw.vision) => const <Effect>[Predict(1)],
-        _ => const <Effect>[],
-      };
+      final a = _eqAbilityAt(c, item.ability);
+      effects = _eqEffectsOf(a) ??
+          switch (a) {
+            Triggered() => a.effects,
+            Activated() => a.effects,
+            KeywordAb(kw: Kw.vision) => const <Effect>[Predict(1)],
+            _ => const <Effect>[],
+          };
     }
-    final ctx = _Ctx(controller: item.controller, source: item.source, loc: item.loc, targets: item.targets, event: item.event);
+    final ctx = _Ctx(controller: item.controller, source: item.source, loc: item.loc, targets: item.targets, event: item.event, via: item.via);
     for (var r = 0; r <= item.repeats; r++) {
       _resolveEffects(effects, ctx, rep: r);
     }
@@ -574,17 +586,20 @@ extension GamePlay on Game {
   void _kill(ObjId id) {
     final o = state.obj(id);
     if (o.zone != Zone.board) return;
-    final abs = parsed(id).abilities;
+    if (_eqDieInstead(id)) return;
+    final abs = _eqInactive(id) ? const <Ability>[] : parsed(id).abilities;
     for (var i = 0; i < abs.length; i++) {
       final a = abs[i];
       if (a is Triggered && a.on.on == On.die) _queue(id, i, o.controller);
     }
+    _eqQueueAppended(id, (t) => t.on.on == On.die);
     _leaveBoard(id, toHand: false);
   }
 
   void _leaveBoard(ObjId id, {required bool toHand}) {
     final o = state.obj(id);
     final c = card(id);
+    _eqLeaving(id);
     o.reset();
     final pl = state.player(o.owner);
     if (c.token) {

@@ -5,12 +5,18 @@ library;
 import '../cards/card.dart';
 import '../ir.dart';
 
+part 'equip.dart';
+
 /// Bumped whenever parsing or the engine changes what a saved game would replay to.
-const riftboundEngineVersion = 1;
+const riftboundEngineVersion = 2;
 
 class ParsedCard {
-  ParsedCard(this.abilities, this.unsupported);
+  ParsedCard(this.abilities, this.unsupported, [this.extra = const []]);
   final List<Ability> abilities;
+
+  /// Abilities this card gives other objects (an Equipment's Effect Text, granted abilities),
+  /// put on the chain by index (parser/equip.dart).
+  final List<Ability> extra;
 
   /// Lines (or reasons) the engine can't play yet.
   final List<String> unsupported;
@@ -42,9 +48,9 @@ class RiftboundParser {
     if (c.type == CardType.rune) return ParsedCard(const [], const []);
     // Target slots are numbered across the whole card.
     final slots = [0];
-    for (final line in c.text.split('\n')) {
+    for (final line in _eqLines(c.text)) {
       if (line.trim().isEmpty) continue;
-      final a = _Line(c, slots).parse(line.trim());
+      final a = _EqLine(c, slots).parse(line.trim());
       if (a == null) {
         unsupported.add(line.trim());
       } else {
@@ -54,7 +60,7 @@ class RiftboundParser {
     if (c.type == CardType.spell && !abilities.any((a) => a is SpellBody)) {
       if (unsupported.isEmpty) unsupported.add('(a spell with no instructions)');
     }
-    return ParsedCard(abilities, unsupported);
+    return ParsedCard(abilities, unsupported, _eqExtra(c, abilities, unsupported));
   }
 }
 

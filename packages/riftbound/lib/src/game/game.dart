@@ -32,6 +32,7 @@ part 'combat.dart';
 part 'effects.dart';
 part 'query.dart';
 part 'testing.dart';
+part 'equip.dart';
 
 class NeedDecision implements Exception {
   NeedDecision(this.decision);
@@ -91,7 +92,7 @@ class Game implements TcgMatch {
     return sha256.convert(utf8.encode('${state.digest()}$d')).toString().substring(0, 24);
   }
 
-  RCard card(ObjId id) => db[state.obj(id).card]!;
+  RCard card(ObjId id) => db[_eqCardKey(id)]!;
   ParsedCard parsed(ObjId id) => RiftboundParser.parse(card(id));
   String nameOf(ObjId id) => card(id).name;
   String playerName(int p) => state.player(p).name;

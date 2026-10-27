@@ -17,6 +17,7 @@ extension GameCombat on Game {
         changed = true;
       }
     }
+    if (_eqCleanup()) changed = true;
     // 4. Control is lost of battlefields without your units (open state, no showdown there; CR 323.5).
     if (state.chain.isEmpty) {
       for (var i = 0; i < state.bfs.length; i++) {
@@ -94,6 +95,7 @@ extension GameCombat on Game {
       final a = abs[i];
       if (a is Triggered && ons.contains(a.on.on)) _queue(u, i, state.obj(u).controller);
     }
+    _eqFireUnit(u, ons);
   }
 
   /// All players passed Focus: the showdown closes (CR 348).
@@ -146,7 +148,9 @@ extension GameCombat on Game {
     state.showdown = null;
     b.contestedBy = null;
     final present = [for (var p = 0; p < state.players.length; p++) if (unitsAt(bf, player: p).isNotEmpty) p];
+    state.eq.openConquest = b.controller == null ? bf : -1;
     if (present.length == 1) _establish(present.first, bf);
+    state.eq.openConquest = -1;
   }
 
   /// Gaining control of a battlefield is a Conquer if it wasn't scored this turn (CR 468.5).
@@ -178,6 +182,7 @@ extension GameCombat on Game {
       final a = abs[i];
       if (a is Triggered && a.on.on == (conquer ? On.conquerHere : On.holdHere)) _queue(b.obj, i, p, loc: bf);
     }
+    _eqScored(p, bf, conquer);
     for (final u in unitsAt(bf, player: p)) {
       _fireUnit(u, {conquer ? On.conquer : On.hold});
     }
@@ -200,6 +205,7 @@ extension GameCombat on Game {
 
     final toDefenders = _assign(total(attackers), defenders);
     final toAttackers = _assign(total(defenders), attackers);
+    _eqNoteExcess(attackers, defenders, toDefenders, toAttackers);
     for (final e in [...toDefenders.entries, ...toAttackers.entries]) {
       if (e.value <= 0) continue;
       state.obj(e.key).damage += e.value;

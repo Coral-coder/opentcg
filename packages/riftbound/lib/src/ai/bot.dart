@@ -12,6 +12,8 @@ import '../game/state.dart';
 import '../ir.dart';
 import '../parser/parser.dart';
 
+part 'bot_equip.dart';
+
 class RiftboundBot implements TcgBot {
   RiftboundBot(this.seat, {int seed = 1}) : _rng = SeededRng(seed);
   final int seat;
@@ -71,6 +73,8 @@ class RiftboundBot implements TcgBot {
     // Main phase: play the most expensive card it can.
     final plays = legal.whereType<PlayMove>().toList()..sortStable((a, b) => g.card(b.card).energy - g.card(a.card).energy);
     if (plays.isNotEmpty) return plays.first;
+    final equip = _equipMove(g, legal);
+    if (equip != null) return equip;
     final acts = legal.whereType<ActivateMove>().where((m) => !_wasteful(g, m)).toList();
     if (acts.isNotEmpty && _rng.nextInt(2) == 0) return acts.first;
     final move = _attack(g);
@@ -80,7 +84,7 @@ class RiftboundBot implements TcgBot {
 
   /// Adding resources with nothing to spend them on wastes them.
   bool _wasteful(Game g, ActivateMove m) {
-    final a = g.parsed(m.source).abilities[m.index];
+    final a = g.abilityOfMove(m);
     return a is Activated && a.effects.every((e) => e is AddRes);
   }
 
@@ -124,6 +128,8 @@ class RiftboundBot implements TcgBot {
   /// Answers a decision the way a reasonable player would.
   List<int> answer(Game g, Decision d) {
     final s = g.state;
+    final eq = _equipAnswer(g, d);
+    if (eq != null) return eq;
     switch (d.kind) {
       case DecisionKind.yesNo:
         return const [1];
