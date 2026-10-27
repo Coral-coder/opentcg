@@ -89,6 +89,7 @@ class RiftboundBot implements TcgBot {
 
   /// Adding resources with nothing to spend them on wastes them.
   bool _wasteful(Game g, ActivateMove m) {
+    if (m.index < 0) return false;
     final a = g.parsed(m.source).abilities[m.index];
     return a is Activated && a.effects.every((e) => e is AddRes);
   }
@@ -155,6 +156,16 @@ class RiftboundBot implements TcgBot {
           return byCost.take(d.min).toList();
         }
         if (p.contains('counter')) return [d.options.first];
+        // Costs paid with its own units: the least valuable.
+        if (p.contains('to sacrifice')) {
+          final byValue = List.of(d.options)..sortStable((a, b) => _value(g, a) - _value(g, b));
+          return byValue.take(d.min > 0 ? d.min : 1).toList();
+        }
+        // "Buff up to N": as many of its own units as allowed.
+        if (p.contains('up to') && p.contains('to buff')) {
+          final mine = [for (final id in d.options) if (s.objOrNull(id)?.controller == seat) id];
+          return mine.take(d.max).toList();
+        }
         // Kill more units only if they're the opponent's; pay a kill cost with the weakest.
         if (p.startsWith('kill another')) {
           final theirs = [for (final id in d.options) if (s.objOrNull(id)?.controller != seat) id];

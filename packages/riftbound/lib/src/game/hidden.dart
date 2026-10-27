@@ -188,6 +188,7 @@ extension GameHidden on Game {
       if (has(PlayPlace.attacking) && sd != null && sd.combat && sd.bf == i && sd.attacker == p) out.add(i);
       if (extra == i) out.add(i);
     }
+    out.addAll(_powerDestinations(p, id));
     return out.toList()..sortStable((a, b) => a - b);
   }
 
@@ -305,7 +306,7 @@ extension GameHidden on Game {
     final o = state.objOrNull(id);
     if (o == null || o.zone != Zone.board || o.controller == chooser || !isUnit(id)) return true;
     for (final a in parsed(id).abilities) {
-      if (a is Static && a.passive is CantBeChosen) {
+      if (a is Static && a.passive is CantBeChosen && _gateOk(id, a.gate)) {
         final c = a.passive as CantBeChosen;
         final sd = state.showdown;
         final inCombat = sd != null && sd.combat && sd.bf == o.loc;
