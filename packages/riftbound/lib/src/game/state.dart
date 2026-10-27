@@ -40,6 +40,13 @@ class Obj {
   /// Activated abilities used this turn (for "Use only once per turn"), by index.
   List<int> usedThisTurn = [];
 
+  /// Optional additional costs paid as this permanent was played ([PlayFlags]); cleared when it
+  /// leaves the board.
+  int paidExtra = 0;
+
+  /// The object that banished this card ("a unit banished with this", Cursed Sarcophagus), or -1.
+  int banishedBy = -1;
+
   Obj clone() => Obj(id: id, card: card, owner: owner, zone: zone)
     ..controller = controller
     ..loc = loc
@@ -50,7 +57,9 @@ class Obj {
     ..mightMod = mightMod
     ..kwMod = Map.of(kwMod)
     ..enteredTurn = enteredTurn
-    ..usedThisTurn = List.of(usedThisTurn);
+    ..usedThisTurn = List.of(usedThisTurn)
+    ..paidExtra = paidExtra
+    ..banishedBy = banishedBy;
 
   /// Leaving the board (or entering it) makes a new object for rules purposes (CR 124.1).
   void reset() {
@@ -61,13 +70,14 @@ class Obj {
     mightMod = 0;
     kwMod = {};
     usedThisTurn = [];
+    paidExtra = 0;
     loc = base;
     controller = owner;
   }
 
   String digest() {
     final kws = kwMod.keys.toList()..sortStable((a, b) => a - b);
-    return '$id|${card.length}:$card|$owner|$controller|${zone.index}|$loc|$exhausted|$damage|$buffed|$stunned|$mightMod|${kws.map((k) => '$k=${kwMod[k]}').join(',')}|$enteredTurn|${usedThisTurn.join(',')}';
+    return '$id|${card.length}:$card|$owner|$controller|${zone.index}|$loc|$exhausted|$damage|$buffed|$stunned|$mightMod|${kws.map((k) => '$k=${kwMod[k]}').join(',')}|$enteredTurn|${usedThisTurn.join(',')}|$paidExtra|$banishedBy';
   }
 }
 
@@ -102,6 +112,11 @@ class Player {
   List<int> scored = [];
   bool lost = false;
 
+  /// What happened this turn and effects lasting until its end, by name (game/costs.dart):
+  /// spells played, Energy spent on spells, "the next spell costs {5} less", … Cleared as each
+  /// turn begins.
+  Map<String, int> turn = {};
+
   Player clone() => Player(name)
     ..deck = List.of(deck)
     ..hand = List.of(hand)
@@ -117,10 +132,11 @@ class Player {
     ..anyPool = anyPool
     ..playedThisTurn = playedThisTurn
     ..scored = List.of(scored)
-    ..lost = lost;
+    ..lost = lost
+    ..turn = Map.of(turn);
 
   String digest() =>
-      '${name.length}:$name|${deck.join(',')}|${hand.join(',')}|${trash.join(',')}|${banish.join(',')}|${runeDeck.join(',')}|${runes.join(',')}|${legend ?? ''}|${champion ?? ''}|$points|$energyPool|${powerPool.join(',')}|$anyPool|$playedThisTurn|${scored.join(',')}|$lost';
+      '${name.length}:$name|${deck.join(',')}|${hand.join(',')}|${trash.join(',')}|${banish.join(',')}|${runeDeck.join(',')}|${runes.join(',')}|${legend ?? ''}|${champion ?? ''}|$points|$energyPool|${powerPool.join(',')}|$anyPool|$playedThisTurn|${scored.join(',')}|$lost|${(turn.keys.toList()..sortStable((a, b) => a.compareTo(b))).map((k) => '$k=${turn[k]}').join(',')}';
 }
 
 /// A battlefield in play (CR 169, 188–190).
@@ -140,7 +156,7 @@ class Bf {
 
 /// A spell or ability on the Chain (CR 327).
 class ChainItem {
-  ChainItem({required this.id, required this.source, required this.card, required this.ability, required this.controller, this.targets = const [], this.repeats = 0, this.loc = base, this.fromTrigger = false, this.legion = false, this.event = -1});
+  ChainItem({required this.id, required this.source, required this.card, required this.ability, required this.controller, this.targets = const [], this.repeats = 0, this.loc = base, this.fromTrigger = false, this.legion = false, this.event = -1, this.paid = 0, this.costRef = -1});
   final int id;
 
   /// The card (a spell on the chain) or the object whose ability this is.
@@ -163,9 +179,15 @@ class ChainItem {
   /// The unit a trigger is about ("it"), or -1.
   final int event;
 
+  /// How it was played ([PlayFlags]: additional cost paid, recycle after resolving, …).
+  final int paid;
+
+  /// What was killed or spent to pay its additional cost ("the killed unit"), or -1.
+  final int costRef;
+
   bool get isSpell => ability < 0;
 
-  String digest() => '$id|$source|${card.length}:$card|$ability|$controller|${targets.join(',')}|$repeats|$loc|$fromTrigger|$legion|$event';
+  String digest() => '$id|$source|${card.length}:$card|$ability|$controller|${targets.join(',')}|$repeats|$loc|$fromTrigger|$legion|$event|$paid|$costRef';
 }
 
 /// A showdown, and the combat it may be part of (CR 341, 461).

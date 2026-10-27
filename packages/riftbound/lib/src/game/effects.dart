@@ -2,7 +2,7 @@ part of 'game.dart';
 
 /// Who is resolving: controller, source, the source's location ("here"), and chosen targets.
 class _Ctx {
-  _Ctx({required this.controller, required this.source, required this.loc, required this.targets, this.event = -1});
+  _Ctx({required this.controller, required this.source, required this.loc, required this.targets, this.event = -1, this.paid = 0, this.costRef = -1});
   final int controller;
   final ObjId source;
   final int loc;
@@ -10,6 +10,10 @@ class _Ctx {
 
   /// The unit a trigger is about, or -1.
   final int event;
+
+  /// How the spell was played ([PlayFlags]) and what its additional cost killed (game/costs.dart).
+  final int paid;
+  final int costRef;
 }
 
 /// Choosing targets (CR 355.5–355.10) and executing instructions (CR 158, 359.3.e).
@@ -19,18 +23,50 @@ extension GameEffects on Game {
   /// -1 for a trigger ([optional]; it then fails to go on the chain).
   List<int> _chooseTargets(List<Effect> effects, int p, ObjId source, int loc, {bool optional = false, int repeats = 0}) {
     final out = <int>[];
+    // Each execution of a Repeat chooses in its own range of slots (CR 820.2).
+    var offset = 0;
     void set(int slot, int v) {
-      while (out.length <= slot) {
+      final i = slot + offset;
+      while (out.length <= i) {
         out.add(-1);
       }
-      out[slot] = v;
+      out[i] = v;
     }
 
+    final chosenNow = <int>[];
+    void choose(Effect e, Choose t, List<int> exclude) {
+      final options = [for (final o in matching(t.filter, controller: p, source: source, here: loc)) if (!exclude.contains(o)) o];
+      if (options.isEmpty) {
+        if (t.upTo || optional) {
+          set(t.slot, -1);
+          return;
+        }
+        throw RiftboundError('No legal target for ${nameOf(source)}');
+      }
+      final a = ask(Decision(kind: DecisionKind.cards, player: p, prompt: '${nameOf(source)}: choose ${_describeChoice(e, t)}', options: options, min: t.upTo ? 0 : 1, max: 1, source: source));
+      set(t.slot, a.isEmpty ? -1 : a.first);
+      if (a.isNotEmpty) chosenNow.add(a.first);
+    }
+
+    final usedModes = <int, List<int>>{};
     void walk(List<Effect> es) {
       for (final e in es) {
         switch (e) {
           case May(:final effects):
             walk(effects);
+          case Modes(:final modes, :final slot) when slot >= 0:
+            // The mode is chosen as it's played (CR 355.3).
+            final i = _xChooseMode(e, p, source, loc, usedModes[slot] ?? const [], optional: optional);
+            if (i < 0) {
+              if (optional) {
+                set(slot, -1);
+                continue;
+              }
+              throw RiftboundError('No mode of ${nameOf(source)} can be chosen');
+            }
+            set(slot, i);
+            (usedModes[slot] ??= []).add(i);
+            walk(modes[i]);
           case Modes(:final modes):
             for (final m in modes) {
               walk(m);
@@ -44,25 +80,21 @@ extension GameEffects on Game {
               throw RiftboundError('No spell to counter');
             }
             set(0, ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Counter which spell?', options: spells, source: source)).first);
+          case XEffect():
+            _xChooseFor(e, p, source, loc, optional, set, choose, walk, () => List.of(chosenNow));
           default:
             final t = _targetOf(e);
-            if (t is Choose) {
-              final options = matching(t.filter, controller: p, source: source, here: loc);
-              if (options.isEmpty) {
-                if (t.upTo || optional) {
-                  set(t.slot, -1);
-                  continue;
-                }
-                throw RiftboundError('No legal target for ${nameOf(source)}');
-              }
-              final a = ask(Decision(kind: DecisionKind.cards, player: p, prompt: '${nameOf(source)}: choose ${_describeChoice(e, t)}', options: options, min: t.upTo ? 0 : 1, max: 1, source: source));
-              set(t.slot, a.isEmpty ? -1 : a.first);
-            }
+            if (t is Choose) choose(e, t, const []);
         }
       }
     }
 
-    walk(effects);
+    final per = repeats > 0 ? _xSlotCount(effects) : 0;
+    for (var r = 0; r <= repeats; r++) {
+      offset = r * per;
+      chosenNow.clear();
+      walk(effects);
+    }
     return out;
   }
 
@@ -70,6 +102,11 @@ extension GameEffects on Game {
   bool _mandatoryTargetsMissing(List<Effect> effects, List<int> targets) {
     for (final e in effects) {
       if (e is May) continue;
+      if (e is Modes && e.slot >= 0) {
+        final i = e.slot < targets.length ? targets[e.slot] : -1;
+        if (i < 0 || _mandatoryTargetsMissing(e.modes[i], targets)) return true;
+        continue;
+      }
       final t = _targetOf(e);
       if (t is Choose && !t.upTo && (t.slot >= targets.length || targets[t.slot] < 0)) return true;
     }
@@ -142,6 +179,7 @@ extension GameEffects on Game {
         for (final id in _resolveTarget(target, ctx)) {
           if (!isUnit(id)) continue;
           state.obj(id).damage += n;
+          _xDamaged(p, id);
           log('${nameOf(ctx.source)} deals $n to ${nameOf(id)}.', player: p, card: id, kind: 'damage', amount: n);
         }
       case Draw(:final n):
@@ -165,6 +203,7 @@ extension GameEffects on Game {
         }
       case Ready(:final target):
         for (final id in _resolveTarget(target, ctx)) {
+          if (state.obj(id).exhausted) _xBecameReady(id);
           state.obj(id).exhausted = false;
         }
       case Exhaust(:final target):
@@ -291,17 +330,28 @@ extension GameEffects on Game {
             _resolve(x, ctx);
           }
         }
+      case Modes(:final modes, :final slot) when slot >= 0:
+        // The mode chosen as it was played (CR 355.3).
+        final i = slot < ctx.targets.length ? ctx.targets[slot] : -1;
+        if (i < 0 || i >= modes.length) return;
+        for (final x in modes[i]) {
+          _resolve(x, ctx);
+        }
       case Modes(:final modes):
         final a = ask(Decision(kind: DecisionKind.option, player: p, prompt: 'Choose one', labels: [for (var i = 0; i < modes.length; i++) 'Mode ${i + 1}'], source: ctx.source));
         for (final x in modes[a.first]) {
           _resolve(x, ctx);
         }
+      case XEffect():
+        _xResolve(e, ctx);
     }
   }
 
   bool _cond(Cond c, _Ctx ctx) => switch (c) {
         HandAtMost(:final n) => state.player(ctx.controller).hand.length <= n,
         UnitsThere(:final n) => ctx.loc >= 0 && ctx.loc < state.bfs.length && unitsAt(ctx.loc, player: ctx.controller).length >= n,
+        PaidCost() => ctx.paid & PlayFlags.additional != 0 || (state.objOrNull(ctx.source)?.paidExtra ?? 0) & PlayFlags.additional != 0,
+        XCond() => _xCondNow(ctx.controller, c, source: ctx.source),
       };
 
   String _mayPrompt(List<Effect> effects) => effects.map(describeEffect).join(', then ');

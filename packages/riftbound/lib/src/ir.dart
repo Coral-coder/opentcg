@@ -5,6 +5,8 @@ library;
 
 import 'cards/card.dart';
 
+part 'ir_costs.dart';
+
 /// Keyword abilities (CR 805–826) the engine implements.
 enum Kw {
   accelerate,
@@ -284,10 +286,14 @@ class May extends Effect {
   final List<Effect> effects;
 }
 
-/// "Choose one - • … • …" (CR 355.3): the mode is chosen as it's played.
+/// "Choose one - • … • …" (CR 355.3): the mode is chosen as it's played (or as a trigger goes on
+/// the chain) and kept in target slot [slot]. [distinct]: "one you haven't already chosen" (each
+/// execution of a [Repeat] picks another); [perTurn]: "one you've not chosen this turn".
 class Modes extends Effect {
-  const Modes(this.modes);
+  const Modes(this.modes, {this.slot = -1, this.distinct = false, this.perTurn = false});
   final List<List<Effect>> modes;
+  final int slot;
+  final bool distinct, perTurn;
 }
 
 sealed class Trigger {
@@ -341,6 +347,10 @@ enum On {
 
   /// "When an enemy unit attacks a battlefield you control" (once per attacking unit; "it" is it).
   enemyAttacksYourBf,
+
+  /// Events of game/costs.dart, told apart by [XWhen.kind] (playing cards with a given cost,
+  /// becoming ready, …).
+  costsExt,
 }
 
 class When extends Trigger {
@@ -351,7 +361,7 @@ class When extends Trigger {
 
 /// What an activated ability costs (CR 204.1.b).
 class Cost {
-  const Cost({this.energy = 0, this.power = const [], this.exhaust = false, this.killMe = false});
+  const Cost({this.energy = 0, this.power = const [], this.exhaust = false, this.killMe = false, this.extra = const []});
   final int energy;
 
   /// One entry per Power symbol: a domain, or null for {A} (any domain).
@@ -361,8 +371,11 @@ class Cost {
   /// "Kill this" (Gold).
   final bool killMe;
 
-  bool get isFree => energy == 0 && power.isEmpty && !exhaust && !killMe;
-  String describe() => [if (energy > 0) '{$energy}', for (final p in power) '{${p?.letter ?? 'A'}}', if (killMe) 'kill me', if (exhaust) '{E}'].join(' ');
+  /// Other costs: "Spend my buff", "Recycle 3 from your trash" (ir_costs.dart).
+  final List<XCostPart> extra;
+
+  bool get isFree => energy == 0 && power.isEmpty && !exhaust && !killMe && extra.isEmpty;
+  String describe() => [if (energy > 0) '{$energy}', for (final p in power) '{${p?.letter ?? 'A'}}', if (killMe) 'kill me', for (final x in extra) x.describe(), if (exhaust) '{E}'].join(' ');
 }
 
 /// When a spell or ability may be played (CR 806, 813).

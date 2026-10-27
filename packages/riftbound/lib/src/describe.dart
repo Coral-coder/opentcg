@@ -1,6 +1,7 @@
 /// Short descriptions of parsed abilities, for tools, tests and the app's card details.
 library;
 
+import 'describe_costs.dart';
 import 'ir.dart';
 
 String describeTarget(Target t) => switch (t) {
@@ -36,14 +37,17 @@ String describeEffect(Effect e) => switch (e) {
       If(:final cond, :final effects) => 'if ${switch (cond) {
           HandAtMost(:final n) => 'hand ≤ $n',
           UnitsThere(:final n) => '$n+ units there',
+          XCond() => describeXCond(cond),
         }}: ${effects.map(describeEffect).join(', ')}',
       May(:final effects) => 'you may ${effects.map(describeEffect).join(', then ')}',
-      Modes(:final modes) => 'choose one: ${modes.map((m) => m.map(describeEffect).join(', ')).join(' / ')}',
+      Modes(:final modes, :final distinct, :final perTurn) => 'choose one${distinct ? ' (each different)' : ''}${perTurn ? ' (not chosen this turn)' : ''}: ${modes.map((m) => m.map(describeEffect).join(', ')).join(' / ')}',
+      XEffect() => describeXEffect(e),
     };
 
 String describeAbility(Ability a) => switch (a) {
       KeywordAb(:final kw, :final n) => 'KW ${kw.name}${n > 1 ? ' $n' : ''}',
-      Triggered(:final on, :final effects, :final legion) => 'TRIG ${legion ? 'legion ' : ''}${on.on.name}${on.moveToBattlefield ? '(bf)' : ''} → ${effects.map(describeEffect).join('; ')}',
+      Triggered(:final on, :final effects, :final legion) =>
+        'TRIG ${legion ? 'legion ' : ''}${on is XWhen && on.kind != null ? on.kind!.name : on.on.name}${on is XWhen && on.n > 0 ? '(${on.n})' : ''}${on.moveToBattlefield ? '(bf)' : ''}${on is XWhen && on.fromTrash ? ' from trash' : ''}${on is XWhen && on.cond != null ? ' if ${describeXCond(on.cond!)}' : ''} → ${effects.map(describeEffect).join('; ')}',
       Activated(:final cost, :final effects, :final timing, :final oncePerTurn, :final legion) =>
         'ACT [${cost.describe()}]${timing == Timing.normal ? '' : ' ${timing.name}'}${legion ? ' legion' : ''}${oncePerTurn ? ' once/turn' : ''} → ${effects.map(describeEffect).join('; ')}',
       SpellBody(:final effects) => 'SPELL → ${effects.map(describeEffect).join('; ')}',
@@ -55,6 +59,7 @@ String describeAbility(Ability a) => switch (a) {
           KwAnthem(:final kw, :final n, :final filter) => '${filter.describe()} have ${kw.name}${n > 1 ? ' $n' : ''}',
           EntersExhausted() => 'enters exhausted',
           CostLess(:final n, :final legion) => '${legion ? 'legion: ' : ''}costs {$n} less',
+          XPassive() => passive.describe(),
         }}',
       RepeatCost(:final cost) => 'REPEAT ${cost.describe()}',
     };
