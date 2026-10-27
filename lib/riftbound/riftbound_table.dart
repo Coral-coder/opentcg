@@ -633,25 +633,45 @@ class _Battlefield extends StatelessWidget {
     return HexPanel(
       padding: const EdgeInsets.all(4),
       glow: here ? (sd.combat ? t.danger : t.accent2) : (owner == null ? null : color),
-      child: SingleChildScrollView(
-        child: Column(
-          children: [
-            units(opp),
-            const SizedBox(height: 4),
-            GestureDetector(
-              onTap: () => onCard(b.obj),
-              onLongPress: () => onCard(b.obj),
-              child: LayoutBuilder(
-                builder: (context, c) => RiftboundCardView(card: g.card(b.obj), width: math.min(c.maxWidth, 220)),
-              ),
+      // The battlefield shrinks to leave room for a row of units on each side, so the whole
+      // zone shows without scrolling (it still scrolls when many units crowd in). A wide, short
+      // zone puts the battlefield beside its units instead.
+      child: LayoutBuilder(
+        builder: (context, c) {
+          Widget card(double w) => GestureDetector(
+            onTap: () => onCard(b.obj),
+            onLongPress: () => onCard(b.obj),
+            child: RiftboundCardView(card: g.card(b.obj), width: w),
+          );
+          final label = Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Text(status, textAlign: TextAlign.center, style: t.style(11, weight: FontWeight.w800, color: here ? (sd.combat ? t.danger : t.accent2) : color)),
+          );
+          final unitRow = width * 1.396 + 8;
+          final fit = (c.maxHeight - 8 - 2 * unitRow - 24) / 0.716;
+          if (fit < 140 && c.maxWidth > 420) {
+            return Row(
+              children: [
+                card(math.min(math.min(220.0, c.maxWidth * 0.4), (c.maxHeight - 8) / 0.716)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: SingleChildScrollView(child: Column(children: [units(opp), label, units(me)])),
+                ),
+              ],
+            );
+          }
+          return SingleChildScrollView(
+            child: Column(
+              children: [
+                units(opp),
+                const SizedBox(height: 4),
+                card(math.max(60.0, math.min(math.min(c.maxWidth, 220.0), fit))),
+                label,
+                units(me),
+              ],
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Text(status, textAlign: TextAlign.center, style: t.style(11, weight: FontWeight.w800, color: here ? (sd.combat ? t.danger : t.accent2) : color)),
-            ),
-            units(me),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
