@@ -186,26 +186,29 @@ extension GamePlay on Game {
     return e < 0 ? 0 : e;
   }
 
-  bool _canPayCard(int p, RCard c, {int extraEnergy = 0, List<Domain?> extraPower = const []}) {
-    final e = energyCost(p, c) + extraEnergy;
+  /// [free]: the card's own cost is ignored (CR 811.1.b), only [extraEnergy] and [extraPower] paid.
+  bool _canPayCard(int p, RCard c, {int extraEnergy = 0, List<Domain?> extraPower = const [], bool free = false}) {
+    final e = (free ? 0 : energyCost(p, c)) + extraEnergy;
+    final n = free ? 0 : c.power;
     final spell = c.type == CardType.spell;
-    if (c.domains.length <= 1) return canPay(p, e, [..._powerOf(c, c.power), ...extraPower], forSpell: spell);
+    if (c.domains.length <= 1) return canPay(p, e, [..._powerOf(c, n), ...extraPower], forSpell: spell);
     for (final d in c.domains) {
-      if (canPay(p, e, [...List.filled(c.power, d), ...extraPower], forSpell: spell)) return true;
+      if (canPay(p, e, [...List.filled(n, d), ...extraPower], forSpell: spell)) return true;
     }
     return false;
   }
 
-  void _payCard(int p, RCard c, {int extraEnergy = 0, List<Domain?> extraPower = const []}) {
-    final e = energyCost(p, c) + extraEnergy;
+  void _payCard(int p, RCard c, {int extraEnergy = 0, List<Domain?> extraPower = const [], bool free = false}) {
+    final e = (free ? 0 : energyCost(p, c)) + extraEnergy;
+    final n = free ? 0 : c.power;
     final spell = c.type == CardType.spell;
     if (c.domains.length <= 1) {
-      _pay(p, e, [..._powerOf(c, c.power), ...extraPower], forSpell: spell);
+      _pay(p, e, [..._powerOf(c, n), ...extraPower], forSpell: spell);
       return;
     }
     for (final d in c.domains) {
-      if (canPay(p, e, [...List.filled(c.power, d), ...extraPower], forSpell: spell)) {
-        _pay(p, e, [...List.filled(c.power, d), ...extraPower], forSpell: spell);
+      if (canPay(p, e, [...List.filled(n, d), ...extraPower], forSpell: spell)) {
+        _pay(p, e, [...List.filled(n, d), ...extraPower], forSpell: spell);
         return;
       }
     }
@@ -219,31 +222,45 @@ extension GamePlay on Game {
   void _playFromHand(int p, ObjId id) {
     final pl = state.player(p);
     final o = state.objOrNull(id);
-    if (o == null || o.owner != p || !(pl.hand.contains(id) || pl.champion == id)) throw RiftboundError('That card isn’t in your hand');
+    // A card hidden facedown at a battlefield (CR 811): played as a Reaction, ignoring its own
+    // cost, to that battlefield and choosing there.
+    final fd = o != null && o.zone == Zone.facedown ? o.loc : null;
+    if (o == null || o.owner != p || !(pl.hand.contains(id) || pl.champion == id || fd != null)) throw RiftboundError('That card isn’t in your hand');
     final c = card(id);
     final parsedCard = parsed(id);
     if (!parsedCard.supported) throw RiftboundError('${c.name} isn’t supported yet');
     if (!c.isMainDeck) throw RiftboundError('That can’t be played');
-    final timing = c.type == CardType.spell ? parsedCard.timing : Timing.normal;
+    if (fd != null) {
+      final why = _hFacedownProblem(p, o);
+      if (why != null) throw RiftboundError(why);
+    }
+    final timing = fd != null ? Timing.reaction : (c.type == CardType.spell ? parsedCard.timing : _hPermanentTiming(parsedCard));
     final t = _timingProblem(p, timing);
-    if (t != null) throw RiftboundError(t);
-    if (!_canPayCard(p, c)) throw RiftboundError('Not enough runes (${_costLabel(c)})');
+    // Ambush (CR 822.1.b): Reaction while being played to a battlefield where you have units.
+    final ambushOnly = t != null && fd == null && c.type == CardType.unit && _hAmbushTiming(p, id);
+    if (t != null && !ambushOnly) throw RiftboundError(t);
+    final free = fd != null;
+    if (!_canPayCard(p, c, free: free)) throw RiftboundError('Not enough runes (${_costLabel(c)})');
+    // Additional costs (CR 356.3) are chosen with the rest.
+    final extra = _hExtraCost(p, id, free: free);
     // Make relevant choices (CR 355).
     var loc = base;
     if (c.type == CardType.unit) {
-      final options = [base, for (var i = 0; i < state.bfs.length; i++) if (state.bfs[i].controller == p) i];
+      final options = fd != null ? [fd] : _hDestinations(p, id, ambushOnly: ambushOnly, extra: extra.kill == null ? base : state.obj(extra.kill!).loc);
+      if (options.isEmpty) throw RiftboundError('Nowhere to play ${c.name}');
+      loc = options.first;
       if (options.length > 1) {
         final a = ask(Decision(kind: DecisionKind.option, player: p, prompt: 'Play ${c.name} where?', labels: [for (final l in options) locName(l, p)], source: id));
         loc = options[a.first];
       }
     }
-    var extraE = 0;
-    final extraP = <Domain?>[];
+    var extraE = extra.energy;
+    final extraP = <Domain?>[...extra.power];
     var accelerate = false;
     if (c.type == CardType.unit && parsedCard.has(Kw.accelerate)) {
       // Accelerate (CR 805): pay {1}{C} more to enter ready.
       final pw = c.domains.isEmpty ? null : c.domains.first;
-      if (_canPayCard(p, c, extraEnergy: 1, extraPower: [pw]) && askYesNo(p, 'Pay {1}${pw == null ? '{A}' : '{${pw.letter}}'} for Accelerate so ${c.name} enters ready?', source: id)) {
+      if (_canPayCard(p, c, extraEnergy: extraE + 1, extraPower: [...extraP, pw], free: free) && askYesNo(p, 'Pay {1}${pw == null ? '{A}' : '{${pw.letter}}'} for Accelerate so ${c.name} enters ready?', source: id)) {
         accelerate = true;
         extraE += 1;
         extraP.add(pw);
@@ -251,14 +268,14 @@ extension GamePlay on Game {
     }
     var repeats = 0;
     for (final a in parsedCard.abilities.whereType<RepeatCost>()) {
-      if (_canPayCard(p, c, extraEnergy: extraE + a.cost.energy, extraPower: [...extraP, ...a.cost.power]) && askYesNo(p, 'Pay ${a.cost.describe()} to Repeat ${c.name}?', source: id)) {
+      if (_canPayCard(p, c, extraEnergy: extraE + a.cost.energy, extraPower: [...extraP, ...a.cost.power], free: free) && askYesNo(p, 'Pay ${a.cost.describe()} to Repeat ${c.name}?', source: id)) {
         repeats++;
         extraE += a.cost.energy;
         extraP.addAll(a.cost.power);
       }
     }
     final effects = [for (final a in parsedCard.abilities) if (a is SpellBody) ...a.effects];
-    final targets = c.type == CardType.spell ? _chooseTargets(effects, p, id, base, repeats: repeats) : const <int>[];
+    final targets = c.type == CardType.spell ? _chooseTargets(effects, p, id, base, repeats: repeats, restrictBf: fd ?? -1) : const <int>[];
     // Deflect (CR 809): spells that choose an opponent's Deflect object cost more Power.
     for (final tg in targets) {
       if (tg >= 0 && state.objOrNull(tg)?.zone == Zone.board && state.obj(tg).controller != p) {
@@ -268,23 +285,37 @@ extension GamePlay on Game {
       }
     }
     // Pay (CR 357) and finalize (CR 359).
-    _payCard(p, c, extraEnergy: extraE, extraPower: extraP);
+    _payCard(p, c, extraEnergy: extraE, extraPower: extraP, free: free);
+    if (extra.kill != null) {
+      log('${pl.name} kills ${nameOf(extra.kill!)} to play ${c.name}.', player: p, card: extra.kill, kind: 'die');
+      _kill(extra.kill!);
+    }
     pl.hand.remove(id);
     if (pl.champion == id) pl.champion = null;
     pl.playedThisTurn++;
+    state.marks
+      ..remove('t:fd:$id')
+      ..remove('t:fdplay:$id')
+      ..remove('t:paid:$id');
+    if (extra.paid) state.marks['t:paid:$id'] = 1;
+    if (fd != null) log('${pl.name} reveals ${c.name} from facedown.', player: p, card: id, kind: 'play');
     if (c.type == CardType.spell) {
+      if (fd != null) state.marks['t:fd:$id'] = fd;
       o.zone = Zone.chain;
       log('${pl.name} plays ${c.name}.', player: p, card: id, kind: 'play');
       _pushChain(ChainItem(id: state.nextChainId++, source: id, card: c.key, ability: -1, controller: p, targets: targets, repeats: repeats));
       if (state.showdown?.focus == p) state.showdown!.focusChain = true;
+      if (fd != null) _hPlayedFromHidden(id, p);
       return;
     }
+    if (fd != null) state.marks['t:fdplay:$id'] = fd;
     // A unit or gear resolves at once (CR 337.2).
     final passives = [for (final a in parsedCard.abilities) if (a is Static) a.passive];
     final ready = c.type == CardType.gear ? !passives.any((x) => x is EntersExhausted) : (accelerate || passives.any((x) => x is EntersReady));
     _enterBoard(id, p, loc, ready: ready);
     log('${pl.name} plays ${c.name}${loc == base ? '' : ' to ${locName(loc, p)}'}.', player: p, card: id, kind: 'play');
     _firePlayed(id);
+    if (fd != null) _hPlayedFromHidden(id, p);
     if (c.type == CardType.unit) _fire(On.youPlayUnit, player: p);
   }
 
@@ -299,7 +330,7 @@ extension GamePlay on Game {
       ..zone = Zone.board
       ..controller = controller
       ..loc = card(id).type == CardType.gear ? base : loc
-      ..exhausted = !ready
+      ..exhausted = !(ready || _hEntersReady(controller, id))
       ..enteredTurn = state.turn;
     if (o.loc != base) _contest(o.loc, controller);
   }
@@ -409,6 +440,7 @@ extension GamePlay on Game {
 
   /// Queues ability [index] of [src] to go on the chain at the next chance (CR 382).
   void _queue(ObjId src, int index, int controller, {int loc = -2, int event = -1}) {
+    if (!_hTriggerOk(src, index, controller)) return;
     final o = state.obj(src);
     state.waiting.add(ChainItem(id: 0, source: src, card: o.card, ability: index, controller: controller, loc: loc == -2 ? o.loc : loc, fromTrigger: true, event: event));
   }
@@ -437,7 +469,7 @@ extension GamePlay on Game {
       _ => const <Effect>[],
     };
     if (effects.isEmpty) return;
-    final targets = _chooseTargets(effects, t.controller, t.source, t.loc, optional: true);
+    final targets = _chooseTargets(effects, t.controller, t.source, t.loc, optional: true, restrictBf: _hPlayRestriction(t));
     if (_mandatoryTargetsMissing(effects, targets)) {
       log('${nameOf(t.source)}’s ability has no target.', card: t.source);
       return;
@@ -574,11 +606,13 @@ extension GamePlay on Game {
   void _kill(ObjId id) {
     final o = state.obj(id);
     if (o.zone != Zone.board) return;
+    if (_hSaved(id)) return;
     final abs = parsed(id).abilities;
     for (var i = 0; i < abs.length; i++) {
       final a = abs[i];
       if (a is Triggered && a.on.on == On.die) _queue(id, i, o.controller);
     }
+    _hOnDeath(id);
     _leaveBoard(id, toHand: false);
   }
 
@@ -587,7 +621,7 @@ extension GamePlay on Game {
     final c = card(id);
     o.reset();
     final pl = state.player(o.owner);
-    if (c.token) {
+    if (c.token || _hIsCopy(id)) {
       o.zone = Zone.gone;
       return;
     }

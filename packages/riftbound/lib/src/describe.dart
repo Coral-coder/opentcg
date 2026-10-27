@@ -9,6 +9,7 @@ String describeTarget(Target t) => switch (t) {
       Chosen() => 'it',
       Each(:final filter) => 'each ${filter.describe()}',
       EventUnit() => 'that unit',
+      HTarget() => t.describe(),
     };
 
 String describeEffect(Effect e) => switch (e) {
@@ -36,9 +37,11 @@ String describeEffect(Effect e) => switch (e) {
       If(:final cond, :final effects) => 'if ${switch (cond) {
           HandAtMost(:final n) => 'hand ≤ $n',
           UnitsThere(:final n) => '$n+ units there',
+          HCond() => cond.describe(),
         }}: ${effects.map(describeEffect).join(', ')}',
       May(:final effects) => 'you may ${effects.map(describeEffect).join(', then ')}',
       Modes(:final modes) => 'choose one: ${modes.map((m) => m.map(describeEffect).join(', ')).join(' / ')}',
+      HEffect() => e.describe(describeEffect, describeTarget),
     };
 
 String describeAbility(Ability a) => switch (a) {
@@ -55,6 +58,7 @@ String describeAbility(Ability a) => switch (a) {
           KwAnthem(:final kw, :final n, :final filter) => '${filter.describe()} have ${kw.name}${n > 1 ? ' $n' : ''}',
           EntersExhausted() => 'enters exhausted',
           CostLess(:final n, :final legion) => '${legion ? 'legion: ' : ''}costs {$n} less',
+          HPassive() => passive.describe(),
         }}',
       RepeatCost(:final cost) => 'REPEAT ${cost.describe()}',
     };

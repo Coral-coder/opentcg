@@ -5,6 +5,7 @@ import 'package:tcg_core/tcg_core.dart';
 
 import 'cards/card.dart';
 import 'cards/card_db.dart';
+import 'ir.dart';
 import 'parser/parser.dart';
 
 /// A deck's Champion Legend.
@@ -39,8 +40,8 @@ List<String> validateDeck(RCardDb db, List<String> keys, {bool supportedOnly = t
   for (final k in main) {
     counts[k] = (counts[k] ?? 0) + 1;
   }
-  final over = [for (final e in counts.entries) if (e.value > 3) e.key]..sortStable((a, b) => a.compareTo(b));
-  if (over.isNotEmpty) out.add('At most 3 copies of a card: ${over.first}.');
+  final over = [for (final e in counts.entries) if (e.value > copyLimit(db[e.key]!)) e.key]..sortStable((a, b) => a.compareTo(b));
+  if (over.isNotEmpty) out.add('At most ${copyLimit(db[over.first]!)} cop${copyLimit(db[over.first]!) == 1 ? 'y' : 'ies'} of ${over.first}.');
   final off = [for (final k in counts.keys) if (!inIdentity(db[k]!, legend)) k]..sortStable((a, b) => a.compareTo(b));
   if (off.isNotEmpty) out.add('${off.first} is outside ${legend.name}’s domains.');
   final sig = main.where((k) => db[k]!.signature).toList();
@@ -58,6 +59,14 @@ List<String> validateDeck(RCardDb db, List<String> keys, {bool supportedOnly = t
     if (unsupported.isNotEmpty) out.add('${unsupported.first} isn’t supported yet.');
   }
   return out;
+}
+
+/// How many copies of [c] a deck may hold: 3 (CR 103.2.c), 1 with [Unique] (CR 825.3.a), any
+/// number when the card says so.
+int copyLimit(RCard c) {
+  final p = RiftboundParser.parse(c);
+  if (p.abilities.any((a) => a is Static && a.passive is AnyNumberInDeck)) return 1 << 20;
+  return p.has(Kw.unique) ? 1 : 3;
 }
 
 /// The champion units of [legend] the engine supports, best first.
@@ -103,17 +112,22 @@ List<String> buildDeck(RCardDb db, RCard legend, {SeededRng? rng}) {
   final others = pool.where((c) => c.type != CardType.unit).toList();
   final picks = <RCard>[];
   var u = 0, o = 0;
-  while (picks.length < 13 && (u < units.length || o < others.length)) {
+  // Enough different cards to fill 40 at their copy limits.
+  var room = 37;
+  while (room > 0 && (u < units.length || o < others.length)) {
     final wantUnit = picks.length % 3 != 2;
     if ((wantUnit && u < units.length) || o >= others.length) {
       picks.add(units[u++]);
     } else {
       picks.add(others[o++]);
     }
+    final n = copyLimit(picks.last);
+    room -= n < 3 ? n : 3;
   }
   final main = <String>[for (var i = 0; i < 3; i++) champ.key];
   for (final c in picks) {
-    for (var i = 0; i < 3 && main.length < 40; i++) {
+    final n = copyLimit(c);
+    for (var i = 0; i < (n < 3 ? n : 3) && main.length < 40; i++) {
       main.add(c.key);
     }
   }

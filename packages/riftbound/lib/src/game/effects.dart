@@ -17,7 +17,9 @@ extension GameEffects on Game {
   /// Walks [effects] in text order and asks for every [Choose] (by slot). Mandatory targets
   /// with no legal choice: an error for a spell or ability being played (it can't be played),
   /// -1 for a trigger ([optional]; it then fails to go on the chain).
-  List<int> _chooseTargets(List<Effect> effects, int p, ObjId source, int loc, {bool optional = false, int repeats = 0}) {
+  ///
+  /// [restrictBf]: a card played from facedown there chooses there (CR 811.1.d).
+  List<int> _chooseTargets(List<Effect> effects, int p, ObjId source, int loc, {bool optional = false, int repeats = 0, int restrictBf = -1}) {
     final out = <int>[];
     void set(int slot, int v) {
       while (out.length <= slot) {
@@ -26,17 +28,51 @@ extension GameEffects on Game {
       out[slot] = v;
     }
 
-    void walk(List<Effect> es) {
+    void pick(Effect e, Target? t, {bool mayDecline = false}) {
+      if (t is HTarget) {
+        final h = _hOptions(t, p, source, loc, out);
+        if (h == null) return;
+        final options = _hNarrow(h.options, t, p, restrictBf);
+        if (options.isEmpty) {
+          if (h.upTo || optional || mayDecline) {
+            set(h.slot, -1);
+            return;
+          }
+          throw RiftboundError('No legal target for ${nameOf(source)}');
+        }
+        final a = ask(Decision(kind: DecisionKind.cards, player: p, prompt: '${nameOf(source)}: ${h.prompt}', options: options, min: h.upTo ? 0 : 1, max: 1, source: source));
+        set(h.slot, a.isEmpty ? -1 : a.first);
+        return;
+      }
+      if (t is! Choose) return;
+      final options = _hNarrow(matching(t.filter, controller: p, source: source, here: loc), t, p, restrictBf);
+      if (options.isEmpty) {
+        if (t.upTo || optional || mayDecline) {
+          set(t.slot, -1);
+          return;
+        }
+        throw RiftboundError('No legal target for ${nameOf(source)}');
+      }
+      final a = ask(Decision(kind: DecisionKind.cards, player: p, prompt: '${nameOf(source)}: choose ${_describeChoice(e, t)}', options: options, min: t.upTo ? 0 : 1, max: 1, source: source));
+      set(t.slot, a.isEmpty ? -1 : a.first);
+    }
+
+    void walk(List<Effect> es, {bool mayDecline = false}) {
       for (final e in es) {
         switch (e) {
+          case HEffect():
+            for (final t in e.choices) {
+              pick(e, t, mayDecline: mayDecline || e.optional);
+            }
+            walk(e.nested, mayDecline: mayDecline || e.optional);
           case May(:final effects):
-            walk(effects);
+            walk(effects, mayDecline: mayDecline);
           case Modes(:final modes):
             for (final m in modes) {
-              walk(m);
+              walk(m, mayDecline: mayDecline);
             }
           case If(:final effects):
-            walk(effects);
+            walk(effects, mayDecline: mayDecline);
           case Counter():
             final spells = [for (final it in state.chain) if (it.isSpell && it.source != source) it.source];
             if (spells.isEmpty) {
@@ -45,19 +81,7 @@ extension GameEffects on Game {
             }
             set(0, ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Counter which spell?', options: spells, source: source)).first);
           default:
-            final t = _targetOf(e);
-            if (t is Choose) {
-              final options = matching(t.filter, controller: p, source: source, here: loc);
-              if (options.isEmpty) {
-                if (t.upTo || optional) {
-                  set(t.slot, -1);
-                  continue;
-                }
-                throw RiftboundError('No legal target for ${nameOf(source)}');
-              }
-              final a = ask(Decision(kind: DecisionKind.cards, player: p, prompt: '${nameOf(source)}: choose ${_describeChoice(e, t)}', options: options, min: t.upTo ? 0 : 1, max: 1, source: source));
-              set(t.slot, a.isEmpty ? -1 : a.first);
-            }
+            pick(e, _targetOf(e), mayDecline: mayDecline);
         }
       }
     }
@@ -69,9 +93,15 @@ extension GameEffects on Game {
   /// Does a mandatory choice have no target (a trigger then doesn't go on the chain)?
   bool _mandatoryTargetsMissing(List<Effect> effects, List<int> targets) {
     for (final e in effects) {
-      if (e is May) continue;
-      final t = _targetOf(e);
-      if (t is Choose && !t.upTo && (t.slot >= targets.length || targets[t.slot] < 0)) return true;
+      if (e is May || (e is HEffect && e.optional)) continue;
+      for (final t in e is HEffect ? e.choices : [?_targetOf(e)]) {
+        final slot = switch (t) {
+          Choose(:final slot, :final upTo) when !upTo => slot,
+          ChooseBf(:final slot) || ChooseRel(:final slot) || ChooseOwnCard(:final slot) => slot,
+          _ => -1,
+        };
+        if (slot >= 0 && (slot >= targets.length || targets[slot] < 0)) return true;
+      }
     }
     return false;
   }
@@ -121,6 +151,8 @@ extension GameEffects on Game {
       case EventUnit():
         final id = ctx.event;
         return id >= 0 && state.objOrNull(id)?.zone == Zone.board ? [id] : const [];
+      case HTarget():
+        return _hResolveTarget(t, ctx);
     }
   }
 
@@ -140,9 +172,7 @@ extension GameEffects on Game {
           MyMight() => state.objOrNull(ctx.source)?.zone == Zone.board ? mightUsed(ctx.source) : 0,
         };
         for (final id in _resolveTarget(target, ctx)) {
-          if (!isUnit(id)) continue;
-          state.obj(id).damage += n;
-          log('${nameOf(ctx.source)} deals $n to ${nameOf(id)}.', player: p, card: id, kind: 'damage', amount: n);
+          _hDeal(id, n, ctx);
         }
       case Draw(:final n):
         _draw(p, n);
@@ -165,6 +195,7 @@ extension GameEffects on Game {
         }
       case Ready(:final target):
         for (final id in _resolveTarget(target, ctx)) {
+          if (_hCantReady(id)) continue;
           state.obj(id).exhausted = false;
         }
       case Exhaust(:final target):
@@ -253,10 +284,11 @@ extension GameEffects on Game {
         _channel(p, n, exhausted: exhausted);
       case PlayToken(:final token, :final count, :final here, :final ready):
         final src = state.objOrNull(ctx.source);
-        final loc = here && src != null && src.zone == Zone.board ? src.loc : base;
+        final loc = _hTokenLoc(ctx) ?? (here && src != null && src.zone == Zone.board ? src.loc : base);
         for (var i = 0; i < count; i++) {
           final id = _newObj(token, p, Zone.board);
           _enterBoard(id, p, loc, ready: ready || db[token]!.type == CardType.gear);
+          _hs.lastMade = id;
         }
         log('${playerName(p)} plays $count $token token${count == 1 ? '' : 's'}.', player: p, kind: 'play');
       case GainPoints(:final n):
@@ -291,6 +323,8 @@ extension GameEffects on Game {
             _resolve(x, ctx);
           }
         }
+      case HEffect():
+        _hResolve(e, ctx);
       case Modes(:final modes):
         final a = ask(Decision(kind: DecisionKind.option, player: p, prompt: 'Choose one', labels: [for (var i = 0; i < modes.length; i++) 'Mode ${i + 1}'], source: ctx.source));
         for (final x in modes[a.first]) {
@@ -302,6 +336,7 @@ extension GameEffects on Game {
   bool _cond(Cond c, _Ctx ctx) => switch (c) {
         HandAtMost(:final n) => state.player(ctx.controller).hand.length <= n,
         UnitsThere(:final n) => ctx.loc >= 0 && ctx.loc < state.bfs.length && unitsAt(ctx.loc, player: ctx.controller).length >= n,
+        HCond() => _hCond(c, ctx),
       };
 
   String _mayPrompt(List<Effect> effects) => effects.map(describeEffect).join(', then ');
