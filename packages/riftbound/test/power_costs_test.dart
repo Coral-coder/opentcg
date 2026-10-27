@@ -33,7 +33,7 @@ void main() {
       g.state.obj(u).buffed = true;
       final m = g.might(u);
       g.apply(PlayMove(0, g.addCard('Call to Glory', 0)));
-      answer(g, []); // don't spend the buff
+      answer(g, [0]); // don't spend the buff
       if (g.pending != null) answer(g, [u]);
       passAll(g);
       expect(g.state.obj(u).buffed, isTrue);
@@ -49,7 +49,7 @@ void main() {
       g.state.player(0).pw.xp = 3;
       expect(g.whyNot(PlayMove(0, p)), isNull);
       g.apply(PlayMove(0, p));
-      answer(g, [1]); // spend 3 XP
+      // Spending the XP is the only way to pay, so it isn't asked (CR 356).
       while (g.pending != null) {
         answer(g, Game.defaultAnswer(g.pending!.decision));
       }

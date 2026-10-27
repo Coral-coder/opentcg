@@ -190,6 +190,7 @@ class _RiftboundTableState extends State<RiftboundTable> {
       return 'You can’t pay for this card right now (or it has no target).';
     }
     if (o.zone == Zone.board && g.isUnit(id)) return o.exhausted ? 'Exhausted: it readies at the start of your turn.' : 'It can’t do anything right now.';
+    if (o.zone == Zone.trash) return 'In the trash.';
     return 'Nothing to do with this card right now.';
   }
 }
@@ -197,7 +198,7 @@ class _RiftboundTableState extends State<RiftboundTable> {
 /// What a move button says.
 String moveLabel(Game g, RMove m, int seat) => switch (m) {
   PlayMove(:final card) when g.state.obj(card).zone == Zone.facedown => 'Play ${g.nameOf(card)} from facedown (free)',
-  PlayMove(:final card) => 'Play ${g.nameOf(card)}${g.state.obj(card).zone == Zone.trash ? ' from the trash with Flow, then banish it' : ''} (${_cost(g, card, seat)})',
+  PlayMove(:final card) => 'Play ${g.nameOf(card)}${g.state.obj(card).zone == Zone.trash ? (g.playsWithFlow(seat, card) ? ' from the trash with Flow, then banish it' : ' from the trash') : ''} (${_cost(g, card, seat)})',
   HideMove(:final card) => 'Hide ${g.nameOf(card)} facedown at your battlefield (1 Power; play it free from next turn)',
   ActivateMove(:final source, :final index) => _abilityLabel(g, source, index),
   MoveUnitsMove(:final units, :final to) => 'Move ${units.length == 1 ? g.nameOf(units.first) : '${units.length} units'} to ${to == base ? 'your base' : g.locName(to, seat)}',
@@ -207,9 +208,15 @@ String moveLabel(Game g, RMove m, int seat) => switch (m) {
 };
 
 String _cost(Game g, int card, int seat) {
-  final c = g.playCost(seat, card);
-  final p = c.power.isEmpty ? '' : ' + ${c.power.length} ${c.power.first?.label ?? 'any'} Power';
-  return '${c.energy} Energy$p';
+  // The cost now, after discounts and increases (Flow and the trash price for cards played from it).
+  final now = g.playCost(seat, card);
+  final byDomain = <String, int>{};
+  for (final d in now.power) {
+    final k = d?.label ?? 'any';
+    byDomain[k] = (byDomain[k] ?? 0) + 1;
+  }
+  final p = [for (final e in byDomain.entries) '${e.value} ${e.key} Power'].join(' + ');
+  return '${now.energy} Energy${p.isEmpty ? '' : ' + $p'}';
 }
 
 String _abilityLabel(Game g, int source, int index) {
@@ -432,7 +439,14 @@ class _PlayerStrip extends StatelessWidget {
                     ),
                     chip(Icons.style, '${pl.hand.length}', 'Cards in hand'),
                     chip(Icons.layers, '${pl.deck.length}', 'Main Deck'),
-                    chip(Icons.delete_outline, '${pl.trash.length}', 'Trash'),
+                    // The trash, which can hold cards playable from there (glowing when one is).
+                    GestureDetector(
+                      onTap: pl.trash.isEmpty ? null : () => _showTrash(context, g, pl.trash, mine ? acts : RiftboundPlayable.none, onCard),
+                      child: _Glow(
+                        on: mine && pl.trash.any(acts.hasAny),
+                        child: Semantics(button: true, label: 'Trash, ${pl.trash.length} cards', child: chip(Icons.delete_outline, '${pl.trash.length}', 'Trash (tap to look)')),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -442,6 +456,50 @@ class _PlayerStrip extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The cards in a trash, newest first; ones that can be played from there glow.
+void _showTrash(BuildContext context, Game g, List<int> trash, RiftboundPlayable acts, void Function(int) onCard) {
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: riftboundTheme.surface,
+    builder: (sheet) => riftboundScope(
+      Builder(
+        builder: (sheet) {
+          final t = GameTheme.of(sheet);
+          return SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('Trash', style: t.display(18, color: t.accent)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final id in trash.reversed)
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.pop(sheet);
+                            onCard(id);
+                          },
+                          child: _Glow(
+                            on: acts.hasAny(id),
+                            child: Semantics(button: true, label: '${g.nameOf(id)}${acts.canPlay(id) ? ', playable' : ''}', excludeSemantics: true, child: RiftboundCardView(card: g.card(id), width: 72)),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    ),
+  );
 }
 
 /// The mark of an Empowered card (CR 442): a violet bolt, with a count when Empowered several
@@ -1073,6 +1131,18 @@ class _RiftboundDecisionDialogState extends State<RiftboundDecisionDialog> {
                                 if (o != null && o.zone == Zone.board)
                                   Text(
                                     '${o.controller == widget.session.localSeat ? 'Yours' : 'Theirs'} · ${o.loc == base ? 'base' : g.locName(o.loc, o.controller)}',
+                                    style: t.style(10, color: t.muted),
+                                  ),
+                                if (o != null && o.zone != Zone.board)
+                                  Text(
+                                    '${o.owner == widget.session.localSeat ? 'Your' : 'Their'} ${switch (o.zone) {
+                                      Zone.trash => 'trash',
+                                      Zone.hand => 'hand',
+                                      Zone.mainDeck => 'deck',
+                                      Zone.chain => 'spell',
+                                      Zone.banish => 'banished card',
+                                      _ => o.zone.name,
+                                    }}',
                                     style: t.style(10, color: t.muted),
                                   ),
                                 if (on) Icon(Icons.check_circle, color: t.accent2, size: 18),

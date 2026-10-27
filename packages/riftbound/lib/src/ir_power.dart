@@ -96,6 +96,7 @@ String describeCostPart(CostPart c) => switch (c) {
       KillFriendly() => 'kill a friendly unit',
       DiscardCost(:final n, :final spell) => spell ? 'discard a spell' : 'discard $n',
       EnergyLess(:final n, :final ifRunesAtMost, :final perRune) => perRune ? '{$n} less per rune' : '{$n} less if ≤$ifRunesAtMost runes',
+      RecycleTrash(:final n, :final unit) => 'recycle $n${unit ? ' unit' : ''} from trash',
     };
 
 // ---------------------------------------------------------------------------------------------
@@ -680,20 +681,6 @@ class EmpowerCostLessHere extends PowerPassive {
   const EmpowerCostLessHere();
 }
 
-/// An additional cost of XP or buffs (CR 356.3): "You may spend 3 XP as an additional cost to play
-/// me. If you do, I cost {3} less."; "As you play this, you may spend a buff as an additional cost.
-/// If you do, ignore this spell's cost."; "…spend any number of buffs as an additional cost. Reduce
-/// my cost by {O} for each buff you spend."
-class PowerExtraCost extends PowerPassive {
-  const PowerExtraCost({this.xp = 0, this.buffs = 0, this.anyBuffs = false, this.ignoreCost = false, this.energyLess = 0, this.powerPerBuff});
-  final int xp;
-  final int buffs;
-  final bool anyBuffs;
-  final bool ignoreCost;
-  final int energyLess;
-  final Domain? powerPerBuff;
-}
-
 /// "I can be played to an occupied battlefield if an enemy unit is alone there"; with [friendly],
 /// "Friendly units can be …" (Arachnoid Horror).
 class PlayToLoneEnemy extends PowerPassive {
@@ -720,8 +707,6 @@ String describePowerPassive(PowerPassive p) => switch (p) {
       EmpowerTimes(:final n) => 'empowered up to $n times',
       ManyBuffs() => 'any number of buffs',
       NoDamageOutsideCombat() => 'no damage outside combat',
-      PowerExtraCost(:final xp, :final buffs, :final anyBuffs, :final ignoreCost, :final energyLess, :final powerPerBuff) =>
-        'may spend ${xp > 0 ? '$xp XP' : anyBuffs ? 'any number of buffs' : '$buffs buff'} more${ignoreCost ? ': cost ignored' : ''}${energyLess > 0 ? ': costs {$energyLess} less' : ''}${powerPerBuff != null ? ': {${powerPerBuff.letter}} less per buff' : ''}',
       PlayToLoneEnemy(:final friendly) => '${friendly ? 'friendly units' : 'I'} may be played where an enemy unit is alone',
       GrantXpAbility() => 'units here: {E}: gain 1 XP',
       EmpowerCostLessHere() => 'empower costs here {1} or {A} less',

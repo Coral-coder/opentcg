@@ -5,6 +5,7 @@ library;
 
 import 'cards/card.dart';
 
+part 'ir_costs.dart';
 part 'ir_power.dart';
 part 'ir_hidden.dart';
 
@@ -311,10 +312,14 @@ class May extends Effect {
   final List<Effect> effects;
 }
 
-/// "Choose one - • … • …" (CR 355.3): the mode is chosen as it's played.
+/// "Choose one - • … • …" (CR 355.3): the mode is chosen as it's played (or as a trigger goes on
+/// the chain) and kept in target slot [slot]. [distinct]: "one you haven't already chosen" (each
+/// execution of a [Repeat] picks another); [perTurn]: "one you've not chosen this turn".
 class Modes extends Effect {
-  const Modes(this.modes);
+  const Modes(this.modes, {this.slot = -1, this.distinct = false, this.perTurn = false});
   final List<List<Effect>> modes;
+  final int slot;
+  final bool distinct, perTurn;
 }
 
 sealed class Trigger {
@@ -418,6 +423,9 @@ enum On {
 
   /// "When an opponent scores".
   opponentScores,
+  /// Events of game/costs.dart, told apart by [XWhen.kind] (playing cards with a given cost,
+  /// becoming ready, …).
+  costsExt,
 }
 
 class When extends Trigger {
