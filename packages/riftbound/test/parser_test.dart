@@ -28,7 +28,7 @@ void main() {
     expect(read('Lee Sin, Blind Monk'), 'ACT [{1} {E}] → buff a friendly unit');
     expect(read('Firestorm'), 'SPELL → deal 3 to each enemy unit @battlefield');
     expect(read('Darius, Hand of Noxus'), 'ACT [{E}] reaction legion → add {1}');
-    expect(read('Garen, Might of Demacia'), 'TRIG youConquer → if 4+ units there: draw 2');
+    expect(read('Garen, Might of Demacia'), 'TRIG youConquer → [if 4+ units there] draw 2', reason: 'a condition right after the trigger is part of it (CR 383.2.a.1)');
     expect(read('Ahri, Nine-Tailed Fox'), 'TRIG enemyAttacksYourBf → give that unit -1 Might this turn (min 1)');
     expect(read('Gust'), 'KW reaction | SPELL → return a unit @battlefield M≤3 to hand');
   });
