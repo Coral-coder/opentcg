@@ -40,8 +40,9 @@ class RCardDb {
 
   /// From Riftcodex card objects (https://api.riftcodex.com/cards, all pages). Alternate-art and
   /// overnumbered printings are left out; the printings of one name become one card, with its
-  /// text from its main-set, non-signature printing.
-  static RCardDb fromRaw(List<Map<String, dynamic>> raw, {String version = ''}) {
+  /// text from its main-set, non-signature printing. [gallery] (data/riftbound-gallery.json's
+  /// "cards") adds the Effect Text and Might Bonus Riftcodex leaves out of Equipment.
+  static RCardDb fromRaw(List<Map<String, dynamic>> raw, {String version = '', Map<String, dynamic> gallery = const {}}) {
     final groups = <String, List<Map<String, dynamic>>>{};
     final order = <String>[];
     for (final c in raw) {
@@ -83,6 +84,7 @@ class RCardDb {
       };
       final sup = (cl['supertype'] as String?)?.toLowerCase();
       if (sup == 'token') continue; // Tokens are built in (CR 187).
+      final extra = type == CardType.gear ? gallery[name] as Map<String, dynamic>? : null;
       cards.add(RCard(
         name: name,
         type: type,
@@ -98,6 +100,8 @@ class RCardDb {
           for (final p in g)
             Printing(((p['set'] as Map)['set_id'] as String).toUpperCase(), '${p['collector_number'] ?? ''}', ((p['media'] as Map?)?['image_url'] as String?) ?? ''),
         ],
+        effect: extra == null ? '' : normaliseText(extra['effect'] as String? ?? ''),
+        mightBonus: extra?['mightBonus'] as int?,
       ));
     }
     cards.sortStable((a, b) => a.key.compareTo(b.key));

@@ -46,6 +46,8 @@ class RCard {
     this.tags = const [],
     this.text = '',
     this.printings = const [],
+    this.effect = '',
+    this.mightBonus,
   });
 
   /// "Short Name, Subtitle" (CR 132.4).
@@ -68,6 +70,11 @@ class RCard {
   final String text;
   final List<Printing> printings;
 
+  /// An Equipment's Effect Text (CR 136), in the same form as [text]: abilities its unit has
+  /// while it's attached. Its Might Bonus (CR 137) is [mightBonus].
+  final String effect;
+  final int? mightBonus;
+
   String get key => name;
   String get shortName => name.split(', ').first;
   bool hasTag(String t) => tags.any((x) => x.toLowerCase() == t.toLowerCase());
@@ -88,6 +95,8 @@ class RCard {
         if (tags.isNotEmpty) 'g': tags,
         if (text.isNotEmpty) 'x': text,
         if (printings.isNotEmpty) 'pr': [for (final p in printings) p.toJson()],
+        if (effect.isNotEmpty) 'ef': effect,
+        if (mightBonus != null) 'mb': mightBonus,
       };
 
   static RCard fromJson(Map<String, dynamic> j) => RCard(
@@ -103,5 +112,7 @@ class RCard {
         tags: [for (final t in (j['g'] as List?) ?? const []) t as String],
         text: (j['x'] as String?) ?? '',
         printings: [for (final p in (j['pr'] as List?) ?? const []) Printing.fromJson(p as List)],
+        effect: (j['ef'] as String?) ?? '',
+        mightBonus: j['mb'] as int?,
       );
 }
