@@ -8,3 +8,4 @@ build/
 pubspec_overrides.yaml
 .lorcana-images/
 __pycache__/
+.riftbound-images/

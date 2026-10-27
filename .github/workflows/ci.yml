@@ -68,10 +68,37 @@ jobs:
           floor=$(cat test/fixtures/coverage-floor.txt)
           if [ "$supported" -lt "$floor" ]; then echo "::error::Pokémon coverage fell to $supported (floor $floor)"; exit 1; fi
 
+  riftbound:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: packages/riftbound
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: dart pub get
+      - run: dart analyze --fatal-warnings
+      - run: dart test --reporter expanded
+      - name: Chaos harness (300 bot games, each replayed)
+        run: dart run bin/chaos.dart --games 300 --seed ${{ github.run_number }}
+      - name: Same games on the Dart VM and in JavaScript
+        run: tool/xplat_check.sh
+      - name: Card coverage (must not shrink)
+        run: |
+          dart run bin/card.dart --coverage | tee coverage.txt
+          supported=$(cut -d/ -f1 coverage.txt)
+          echo "### Riftbound: $(cat coverage.txt)" >> "$GITHUB_STEP_SUMMARY"
+          floor=$(cat test/fixtures/coverage-floor.txt)
+          if [ "$supported" -lt "$floor" ]; then echo "::error::Riftbound coverage fell to $supported (floor $floor)"; exit 1; fi
+
   app:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: [lorcana, pokemon]
+    needs: [lorcana, pokemon, riftbound]
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
