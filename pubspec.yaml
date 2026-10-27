@@ -29,6 +29,8 @@ dependencies:
     path: packages/lorcana
   pokemon:
     path: packages/pokemon
+  riftbound:
+    path: packages/riftbound
   shared_preferences: ^2.5.6
 
 dev_dependencies:
@@ -47,6 +49,7 @@ flutter:
   assets:
     - data/lorcana-cards.json
     - data/pokemon-cards.json
+    - data/riftbound-cards.json
   # Display faces for Lorcana's storybook look (SIL Open Font License; see fonts/OFL-*.txt).
   fonts:
     - family: Cinzel

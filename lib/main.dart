@@ -4,6 +4,7 @@ import 'package:tcg_app/tcg_app.dart';
 
 import 'lorcana/lorcana_home.dart';
 import 'pokemon/pokemon_home.dart';
+import 'riftbound/riftbound_home.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -41,6 +42,13 @@ final games = <GameEntry>[
     blurb: 'Attach Energy, evolve and attack: take all 6 Prize cards, against the computer or a friend.',
     colors: const [Color(0xFFFFCB05), Color(0xFF2A75BB)],
     open: () => const PokemonHome(),
+  ),
+  GameEntry(
+    id: 'riftbound',
+    name: 'Riftbound',
+    blurb: 'Channel runes, send champions to the battlefields and score 8 points, against the computer or a friend.',
+    colors: const [Color(0xFFC8AA6E), Color(0xFF0B3A50)],
+    open: () => const RiftboundHome(),
   ),
 ];
 

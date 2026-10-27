@@ -647,6 +647,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.1.1"
+  riftbound:
+    dependency: "direct main"
+    description:
+      path: "packages/riftbound"
+      relative: true
+    source: path
+    version: "0.1.0"
   rules:
     dependency: "direct dev"
     description:
