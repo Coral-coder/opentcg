@@ -58,6 +58,17 @@ jobs:
           python3 tool/lorcana_images.py data/lorcana-cards.json .lorcana-images --lorcast data/lorcast-cards.json
           cp -r .lorcana-images build/web/lorcana-images
           du -sh build/web build/web/lorcana-images
+      # The same for Riftbound: Riot's image host doesn't allow cross-origin reads either.
+      - uses: actions/cache@v4
+        with:
+          path: .riftbound-images
+          key: riftbound-images-${{ hashFiles('data/riftbound-cards.json', 'tool/riftbound_images.py') }}
+          restore-keys: riftbound-images-
+      - name: Riftbound card images
+        run: |
+          python3 tool/riftbound_images.py data/riftbound-cards.json .riftbound-images
+          cp -r .riftbound-images build/web/riftbound-images
+          du -sh build/web/riftbound-images
       - uses: actions/configure-pages@v5
         with:
           enablement: true

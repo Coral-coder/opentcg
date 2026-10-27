@@ -19,6 +19,12 @@ void main(List<String> args) {
     }
     return;
   }
+  if (args.contains('--coverage')) {
+    // "supported/total": what CI checks against test/fixtures/coverage-floor.txt.
+    final ok = db.cards.where((c) => RiftboundParser.parse(c).supported).length;
+    stdout.writeln('$ok/${db.cards.length} cards fully supported, ${playableLegends(db).length} legends with full decks');
+    return;
+  }
   if (args.contains('--dump')) {
     // Every supported card with text, next to how it's read (for auditing).
     for (final c in db.cards) {
