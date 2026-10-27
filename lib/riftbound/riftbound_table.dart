@@ -184,6 +184,8 @@ class _RiftboundTableState extends State<RiftboundTable> {
       if (g.state.showdown != null) return 'Only Action and Reaction cards can be played in a showdown.';
       return 'You can’t pay for this card right now (or it has no target).';
     }
+    final on = g.attachedUnit(id);
+    if (on != null) return 'Attached to ${g.nameOf(on)}: its own text is inactive while attached; its Effect Text and Might Bonus are ${g.nameOf(on)}’s.';
     if (o.zone == Zone.board && g.isUnit(id)) return o.exhausted ? 'Exhausted: it readies at the start of your turn.' : 'It can’t do anything right now.';
     return 'Nothing to do with this card right now.';
   }
@@ -207,9 +209,10 @@ String _cost(Game g, int card, int seat) {
 }
 
 String _abilityLabel(Game g, int source, int index) {
-  final a = g.parsed(source).abilities[index];
+  final a = g.abilityOfMove(ActivateMove(-1, source, index));
   if (a is! Activated) return 'Use ${g.nameOf(source)}';
   final cost = a.cost.describe();
+  if (a is EqEquip) return 'Equip ${g.nameOf(source)}${cost.isEmpty ? '' : ' [$cost]'} to a unit';
   return 'Use ${g.nameOf(source)}${cost.isEmpty ? '' : ' [$cost]'}: ${a.effects.map(describeEffect).join(', ')}';
 }
 
@@ -241,6 +244,12 @@ class RiftboundCardText extends StatelessWidget {
         if (c.isMainDeck) Text('Cost: ${c.energy} Energy${c.power > 0 ? ' + ${c.power} Power' : ''}${c.might != null ? ' · ${c.might} Might' : ''}', style: t.style(13)),
         const SizedBox(height: 6),
         Text(c.text.isEmpty ? '(No rules text.)' : c.text, style: t.style(14, weight: FontWeight.w500)),
+        if (c.mightBonus != null || c.effect.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text('While attached, its unit gets: +${c.mightBonus ?? 0} Might${c.effect.isEmpty ? '' : ' and “${c.effect.replaceAll('\n', ' ')}”'}', style: t.style(13, weight: FontWeight.w600, color: t.accent2)),
+        ],
+        if (o.zone == Zone.board && g.attachedUnit(id) != null) Text('Attached to ${g.nameOf(g.attachedUnit(id)!)}.', style: t.style(12, color: t.muted)),
+        if (o.zone == Zone.board && g.isUnit(id) && g.attachedTo(id).isNotEmpty) Text('Equipped with ${g.attachedTo(id).map(g.nameOf).join(', ')}.', style: t.style(12, color: t.muted)),
         if (!p.supported) ...[
           const SizedBox(height: 6),
           Text('Not supported yet: ${p.unsupported.join(' / ')}', style: t.style(12, color: t.danger)),
@@ -399,6 +408,7 @@ class _PlayerStrip extends StatelessWidget {
                         ],
                       ),
                     ),
+                    if (pl.xp > 0) chip(Icons.auto_awesome, '${pl.xp}', 'XP'),
                     chip(Icons.style, '${pl.hand.length}', 'Cards in hand'),
                     chip(Icons.layers, '${pl.deck.length}', 'Main Deck'),
                     chip(Icons.delete_outline, '${pl.trash.length}', 'Trash'),
@@ -456,7 +466,7 @@ class _BaseRow extends StatelessWidget {
     final g = session.match;
     final ids = [
       for (final o in g.state.objects.values)
-        if (o.zone == Zone.board && o.controller == player && o.loc == base) o.id,
+        if (o.zone == Zone.board && o.controller == player && o.loc == base && g.attachedUnit(o.id) == null) o.id,
     ];
     return SizedBox(
       height: width * 1.396 + 10,
@@ -501,11 +511,12 @@ class _Unit extends StatelessWidget {
     final can = acts.hasAny(id);
     final sd = g.state.showdown;
     final fighting = sd != null && sd.combat && o.loc == sd.bf;
-    return Padding(
+    final gear = unit ? g.attachedTo(id) : const <int>[];
+    final card = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: Semantics(
         button: true,
-        label: '${g.nameOf(id)}${unit ? ', $m Might' : ''}${o.exhausted ? ', exhausted' : ''}${can ? ', can act' : ''}',
+        label: '${g.nameOf(id)}${unit ? ', $m Might' : ''}${o.exhausted ? ', exhausted' : ''}${can ? ', can act' : ''}${gear.isEmpty ? '' : ', equipped with ${gear.map(g.nameOf).join(', ')}'}',
         excludeSemantics: true,
         child: GestureDetector(
           onTap: () => onCard(id),
@@ -535,6 +546,45 @@ class _Unit extends StatelessWidget {
           ),
         ),
       ),
+    );
+    if (gear.isEmpty) return card;
+    // Attached cards (CR 435.1.b) stand beside their unit, each with its Might Bonus.
+    final w = width * 0.5;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        card,
+        SizedBox(
+          height: width * 1.396,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              for (final x in gear.take(3))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 1),
+                  child: Semantics(
+                    button: true,
+                    label: '${g.nameOf(x)}, attached to ${g.nameOf(id)}',
+                    excludeSemantics: true,
+                    child: GestureDetector(
+                      onTap: () => onCard(x),
+                      onLongPress: () => onCard(x),
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          SizedBox(height: width * 1.396 / 3 - 1, child: ClipRect(child: Align(alignment: Alignment.topCenter, heightFactor: 0.75, child: RiftboundCardView(card: g.card(x), width: w)))),
+                          if ((g.card(x).mightBonus ?? 0) > 0)
+                            Positioned(right: -2, bottom: -2, child: _Badge(text: '+${g.card(x).mightBonus}', color: const Color(0xFF14324A), border: t.accent2)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              if (gear.length > 3) Text('+${gear.length - 3}', style: t.style(10, color: t.muted)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

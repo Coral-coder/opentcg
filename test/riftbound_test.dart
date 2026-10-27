@@ -159,6 +159,45 @@ void main() {
     store.endSession();
   });
 
+  testWidgets('Equipment: Equip from the card sheet, then it stands beside its unit (CR 435.1.b, 818)', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final store = RiftboundStore.shared;
+    await tester.runAsync(() => store.init());
+    final db = store.db;
+    final jax = store.legendNames.firstWhere((n) => n.startsWith('Jax'));
+    final s = store.newGame(names: const ['A', 'B'], decks: [buildDeck(db, db[jax]!), buildDeck(db, db[store.legendNames[0]]!)], seed: 5, hotseat: true);
+    while (s.match.pending != null) {
+      s.perform(AnswerMove(s.match.pending!.decision.player, const []));
+    }
+    final g = s.match;
+    final me = g.toAct!;
+    g.addRunes(me, Domain.order, 1);
+    final sword = g.addCard('B.F. Sword', me, zone: Zone.board);
+    final poro = g.addCard('Daring Poro', me, zone: Zone.board);
+    await tester.pumpWidget(riftboundScope(MaterialApp(theme: riftboundTheme.material(), home: const RiftboundTable())));
+    await tester.pump();
+    expect(RiftboundPlayable.of(g, me).canUse(sword), isTrue, reason: 'Equip is ready to use: it glows');
+    await tester.tap(find.bySemanticsLabel(RegExp(r'^B\.F\. Sword, can act')));
+    await tester.pumpAndSettle();
+    final button = find.textContaining('Equip B.F. Sword');
+    expect(button, findsOneWidget);
+    await tester.tap(button);
+    await settle(tester, rounds: 5);
+    // The Equip ability is on the chain (CR 818.1); both players pass to resolve it.
+    for (var i = 0; i < 4 && g.state.chain.isNotEmpty; i++) {
+      s.perform(PassMove(g.toAct!));
+    }
+    await settle(tester, rounds: 5);
+    expect(g.attachedUnit(sword), poro);
+    expect(g.might(poro), 5);
+    expect(find.bySemanticsLabel('B.F. Sword, attached to Daring Poro'), findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp(r'^Daring Poro, 5 Might.*equipped with B\.F\. Sword')), findsOneWidget);
+    store.endSession();
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('the decision dialog answers cards, yes/no and option questions', (tester) async {
     final store = RiftboundStore.shared;
     await tester.runAsync(() => store.init());
