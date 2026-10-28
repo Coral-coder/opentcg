@@ -123,6 +123,12 @@ extension GameEffects on Game {
             for (final t in e.targets) {
               pick(e, t, mayDecline: mayDecline);
             }
+          case S1Effect():
+            for (final t in e.targets) {
+              pick(e, t, mayDecline: mayDecline);
+            }
+            _s1Choose(e, p, source, loc, (slot) => slot + offset < out.length ? out[slot + offset] : -1, set, optional: optional || mayDecline);
+            walk(e.nested.expand((x) => x).toList(), mayDecline: mayDecline);
           case W3Effect():
             _w3Choose(e, p, source, loc, out, set, optional: optional || mayDecline);
           case XEffect():
@@ -145,6 +151,7 @@ extension GameEffects on Game {
       walk(effects);
     }
     _genChosen(out, p, source);
+    _s1Chosen(out, p, source);
     _w3Chosen(out, p, source);
     return out;
   }
@@ -412,6 +419,8 @@ extension GameEffects on Game {
         state.player(o.owner).trash.add(victim);
         ctx.scratch['countered'] = victim;
         log('${nameOf(victim)} is countered.', player: p, card: victim, kind: 'info');
+      case S1EnergyToPower():
+        _s1EnergyToPower(ctx);
       case Ws2PowerToEnergy() || Ws2RestrictedAdd():
         _ws2ResolveAdd(e as AddRes, ctx);
       case AddRes(:final energy, :final anyPower, :final power):
@@ -451,6 +460,8 @@ extension GameEffects on Game {
         _genResolve(e, ctx);
       case PowerEffect():
         _resolvePower(e, ctx);
+      case S1Effect():
+        _s1Resolve(e, ctx);
       case W3Effect():
         _w3Resolve(e, ctx);
     }
@@ -464,6 +475,7 @@ extension GameEffects on Game {
         PowerCond() => _powerCondEval(c, ctx),
         HCond() => _hCond(c, ctx),
         XCond() => _xCondNow(ctx.controller, c, source: ctx.source),
+        S1Cond() => _s1Cond(c, ctx),
         W3Cond() => _w3Cond(c, ctx),
       };
 

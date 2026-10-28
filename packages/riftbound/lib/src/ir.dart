@@ -14,6 +14,7 @@ part 'ir_power.dart';
 part 'ir_hidden.dart';
 part 'ir_w2s2.dart';
 part 'ir_w2s3.dart';
+part 'ir_w2s1.dart';
 
 /// Keyword abilities (CR 805–826) the engine implements.
 enum Kw {

@@ -578,6 +578,7 @@ extension GamePowerRules on Game {
   /// After a combat at a battlefield: "When a combat that I was in ends" for [inCombat] units
   /// still on the board.
   void _combatEnded(List<ObjId> inCombat) {
+    _s1CombatEnded(inCombat);
     for (final u in inCombat) {
       if (state.obj(u).zone != Zone.board) continue;
       _fireUnit(u, const {On.combatEnds});

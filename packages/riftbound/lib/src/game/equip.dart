@@ -67,6 +67,7 @@ extension GameEquip on Game {
         }
       }
     }
+    out.addAll(_s1Granted(unit));
     return out;
   }
 

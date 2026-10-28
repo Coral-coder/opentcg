@@ -39,6 +39,8 @@ class RCardDb {
     const RCard(name: 'Gold', type: CardType.gear, token: true, text: '[Reaction] Kill this, {E}: [Add] {A}.'),
     // CR 187.8.
     const RCard(name: 'Brush', type: CardType.battlefield, token: true, text: 'Bird, Cat, Dog, Poro, and Ivern units here have +1 {M}.\nWhen you score here, you may replace this with the battlefield it replaced.'),
+    // Baron Nashor adds it to the board (game/w2s1.dart).
+    const RCard(name: 'Baron Pit', type: CardType.battlefield, token: true, text: 'Units can move here from anywhere.'),
   ];
 
   /// From Riftcodex card objects (https://api.riftcodex.com/cards, all pages). Alternate-art and

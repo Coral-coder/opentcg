@@ -63,6 +63,7 @@ extension GamePlay on Game {
         final add = a.effects.first as AddRes;
         if (add.spellsOnly && use != PayFor.spell) continue;
         if (add is Ws2PowerToEnergy || (add is Ws2RestrictedAdd && add.gear && use != PayFor.gear)) continue;
+        if (!_s1AddOk(add)) continue;
         out.add((src, i, _w3AddRes(src, add)));
       }
     }
@@ -232,7 +233,7 @@ extension GamePlay on Game {
       ambushOnly = t != null && fd == null && c.type == CardType.unit && _hAmbushTiming(p, id);
       if (t != null && !ambushOnly) throw RiftboundError(t);
     }
-    final gp = _genPlayProblem(p, id);
+    final gp = _genPlayProblem(p, id) ?? _s1PlayProblem(p, id);
     if (gp != null) throw RiftboundError(gp);
     if (!_xCanPay(p, id, x)) throw RiftboundError('Not enough runes (${_costLabel(c)})');
     return (x: x, fd: fd, ambushOnly: ambushOnly);
@@ -251,7 +252,10 @@ extension GamePlay on Game {
     state.marks.remove('t:paid:$id');
     if (x.paidAdditional) state.marks['t:paid:$id'] = 1;
     var loc = base;
-    if (c.type == CardType.unit && x.at != null) {
+    final s1At = _s1PlayAt(p, id);
+    if (s1At != null) {
+      loc = s1At;
+    } else if (c.type == CardType.unit && x.at != null) {
       loc = x.at!;
     } else if (c.type == CardType.unit && x.roostBf >= 0) {
       loc = x.roostBf;
@@ -401,7 +405,7 @@ extension GamePlay on Game {
     if (isAdd && a.timing != Timing.reaction && _timingProblem(p, Timing.normal) != null) return 'Not now';
     if (a.oncePerTurn && o.usedThisTurn.contains(index)) return 'Only once per turn';
     if (a.cost.exhaust && o.exhausted) return '${nameOf(src)} is exhausted';
-    return null;
+    return _s1ActivateProblem(a);
   }
 
   void _activate(int p, ObjId src, int index) {
@@ -433,6 +437,8 @@ extension GamePlay on Game {
         }
       }
     }
+    // What it is now: a cost may kill a copy (a Reflection) and with it what it copied.
+    final key = _eqCardKey(src);
     _pay(p, energy, [...ac.power, ...extraP], use: payFor(card(src).type));
     _genSpent(p, energy + ac.power.length + extraP.length, power: ac.power.length + extraP.length);
     _powerPayExtra(p, src, a);
@@ -441,7 +447,7 @@ extension GamePlay on Game {
     if (a.cost.exhaust) o.exhausted = true;
     o.usedThisTurn.add(index);
     if (card(src).type == CardType.gear) _genEvent(GEv.gearAbility, player: p, obj: src);
-    final item = ChainItem(id: state.nextChainId++, source: src, card: _eqCardKey(src), ability: index, controller: p, targets: targets, loc: o.loc);
+    final item = ChainItem(id: state.nextChainId++, source: src, card: key, ability: index, controller: p, targets: targets, loc: o.loc);
     if (a.cost.killMe) _kill(src);
     log('${playerName(p)} uses ${nameOf(src)}.', player: p, card: src, kind: 'ability');
     if (isAdd) {
@@ -515,6 +521,7 @@ extension GamePlay on Game {
     final ab = _eqAbilityAt(db[key]!, index);
     if (ab is Triggered && !_gateOk(src, ab.gate)) return;
     if (!_genTriggerOk(src, index, controller, loc == -2 ? o.loc : loc, event, card: key)) return;
+    if (!_s1TriggerOk(src, index, key)) return;
     state.waiting.add(ChainItem(id: 0, source: src, card: key, ability: index, controller: controller, loc: loc == -2 ? o.loc : loc, fromTrigger: true, event: event, via: via));
   }
 
@@ -612,6 +619,7 @@ extension GamePlay on Game {
         state.player(o.owner).trash.add(o.id);
         _xAfterSpellTrashed(item);
       }
+      _s1AfterSpell(item);
       // Playing a spell is complete when it resolves (CR 420.4.a).
       _fire(On.youPlaySpell, player: item.controller);
       _genSpellDone(item);
@@ -693,7 +701,7 @@ extension GamePlay on Game {
   void _kill(ObjId id) {
     final o = state.obj(id);
     if (o.zone != Zone.board) return;
-    if (_eqDieInstead(id) || _hSaved(id) || _savedFromDeath(id) || _genReplaceDeath(id) || _w3SaveFromDeath(id)) return;
+    if (_eqDieInstead(id) || _hSaved(id) || _savedFromDeath(id) || _genReplaceDeath(id) || _w3SaveFromDeath(id) || _s1ReplaceDeath(id)) return;
     _xOnKill(o);
     final abs = _eqInactive(id) ? const <Ability>[] : parsed(id).abilities;
     for (var i = 0; i < abs.length; i++) {

@@ -834,18 +834,19 @@ class _Battlefield extends StatelessWidget {
         : (b.contestedBy != null ? 'CONTESTED' : (owner == null ? 'Uncontrolled' : (owner == me ? 'You control it' : '${st.player(owner).name} controls it')));
     // A card hidden here (CR 107.3) sits with its controller's units: face up for its owner,
     // a card back for the opponent.
-    final hidden = g.facedownAt(index);
+    // Usually one; Bandle Tree holds a second.
+    final hidden = [for (final o in st.objects.values) if (o.zone == Zone.facedown && o.loc == index) o.id];
     Widget units(int p) {
       final ids = g.unitsAt(index, player: p);
-      final fd = hidden != null && st.obj(hidden).controller == p ? hidden : null;
-      if (ids.isEmpty && fd == null) return SizedBox(height: width * 0.5);
+      final fds = [for (final h in hidden) if (st.obj(h).controller == p) h];
+      if (ids.isEmpty && fds.isEmpty) return SizedBox(height: width * 0.5);
       return Wrap(
         alignment: WrapAlignment.center,
         spacing: 2,
         runSpacing: 4,
         children: [
           for (final id in ids) _Unit(session: session, id: id, acts: acts, width: width, onCard: onCard),
-          if (fd != null) _Facedown(session: session, id: fd, acts: acts, width: width * 0.8, onCard: onCard),
+          for (final fd in fds) _Facedown(session: session, id: fd, acts: acts, width: width * 0.8, onCard: onCard),
         ],
       );
     }
@@ -909,7 +910,7 @@ class _Hand extends StatelessWidget {
     final t = GameTheme.of(context);
     final g = session.match;
     final hand = g.state.player(session.localSeat).hand;
-    // Spells that can be played from the trash now (Flow) sit after the hand, marked.
+    // Cards that can be played from the trash now (Flow, Endless Riches) sit after the hand, marked.
     final fromTrash = [for (final id in g.state.player(session.localSeat).trash) if (acts.canPlay(id)) id];
     final ids = [...hand, ...fromTrash];
     final h = width * 1.396 + 14;
@@ -927,7 +928,7 @@ class _Hand extends StatelessWidget {
                     padding: EdgeInsets.only(right: 4, top: acts.hasAny(id) ? 0 : 8, bottom: acts.hasAny(id) ? 8 : 0),
                     child: Semantics(
                       button: true,
-                      label: '${g.nameOf(id)}${acts.canPlay(id) ? ', playable' : (acts.hasAny(id) ? ', can be hidden' : '')}${fromTrash.contains(id) ? ' from the trash (Flow)' : ''}',
+                      label: '${g.nameOf(id)}${acts.canPlay(id) ? ', playable' : (acts.hasAny(id) ? ', can be hidden' : '')}${fromTrash.contains(id) ? (g.playsWithFlow(session.localSeat, id) ? ' from the trash (Flow)' : ' from the trash') : ''}',
                       excludeSemantics: true,
                       child: GestureDetector(
                         onTap: () => onCard(id),
@@ -943,7 +944,7 @@ class _Hand extends StatelessWidget {
                                   left: 0,
                                   right: 0,
                                   bottom: -2,
-                                  child: Center(child: _Badge(text: 'FLOW · trash', color: const Color(0xFF3A2A6E), border: const Color(0xFFB98CFF))),
+                                  child: Center(child: _Badge(text: g.playsWithFlow(session.localSeat, id) ? 'FLOW · trash' : 'TRASH', color: const Color(0xFF3A2A6E), border: const Color(0xFFB98CFF))),
                                 ),
                             ],
                           ),

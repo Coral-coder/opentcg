@@ -219,7 +219,7 @@ extension GameQuery on Game {
   List<int> moveDestinations(ObjId u) {
     final o = state.obj(u);
     if (o.loc == base) return _genMoveDests(u, [for (var i = 0; i < state.bfs.length; i++) i]);
-    return _genMoveDests(u, [base, if (hasKw(u, Kw.ganking)) for (var i = 0; i < state.bfs.length; i++) if (i != o.loc) i]);
+    return _genMoveDests(u, _s1MoveDests(u, [base, if (hasKw(u, Kw.ganking)) for (var i = 0; i < state.bfs.length; i++) if (i != o.loc) i]));
   }
 
   /// The reason [m] isn't legal now, or null if it is (tried on a copy of the game).

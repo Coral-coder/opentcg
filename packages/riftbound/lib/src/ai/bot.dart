@@ -14,6 +14,7 @@ import '../parser/parser.dart';
 import 'bot_costs.dart';
 
 part 'bot_equip.dart';
+part 'bot_w2s1.dart';
 
 class RiftboundBot implements TcgBot {
   RiftboundBot(this.seat, {int seed = 1}) : _rng = SeededRng(seed);
@@ -139,6 +140,8 @@ class RiftboundBot implements TcgBot {
     final s = g.state;
     final eq = _equipAnswer(g, d);
     if (eq != null) return eq;
+    final s1 = _s1Answer(g, d);
+    if (s1 != null) return s1;
     switch (d.kind) {
       case DecisionKind.yesNo:
         return const [1];
