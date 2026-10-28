@@ -37,6 +37,7 @@ part 'equip.dart';
 part 'general.dart';
 part 'power.dart';
 part 'hidden.dart';
+part 'w2s2.dart';
 part 'w2s3.dart';
 
 class NeedDecision implements Exception {
@@ -251,6 +252,7 @@ class Game implements TcgMatch {
       if (champ != null) {
         rest.remove(champ);
         pl.champion = _newObj(champ, p, Zone.champion);
+        state.marks['champ:$p'] = pl.champion!;
       }
       final bfs = <String>[];
       for (final k in rest) {
@@ -328,7 +330,7 @@ class Game implements TcgMatch {
     }
     // Beginning step (CR 315.2.a): start-of-turn effects; Temporary kills before scoring (CR 816).
     for (final o in _boardOf(p)) {
-      if (_kw(o.id, Kw.temporary) > 0) {
+      if (_kw(o.id, Kw.temporary) > 0 && !_ws2TemporarySuppressed(o.id)) {
         log('${nameOf(o.id)} is Temporary and dies.', player: p, card: o.id, kind: 'die');
         _kill(o.id);
       }
@@ -392,6 +394,7 @@ class Game implements TcgMatch {
   }
 
   void _emptyPools() {
+    _ws2EmptyPools();
     for (final pl in state.players) {
       pl.energyPool = 0;
       pl.powerPool = [0, 0, 0, 0, 0, 0];

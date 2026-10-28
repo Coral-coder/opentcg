@@ -10,6 +10,7 @@ part 'general.dart';
 part 'costs.dart';
 part 'power.dart';
 part 'hidden.dart';
+part 'w2s2.dart';
 part 'w2s3.dart';
 
 /// Bumped whenever parsing or the engine changes what a saved game would replay to.
@@ -157,6 +158,8 @@ class _Line {
       t = t.substring(m.end);
     }
     if (t.isEmpty) return out;
+    final ws2 = _ws2Line(t, line);
+    if (ws2 != null) return [...out, ...ws2];
     final w3 = _w3Line(t, line);
     if (w3 != null) return [...out, ...w3];
     final pw = _powerLine(t, line);
@@ -255,6 +258,8 @@ class _Line {
   }
 
   When? _when(String s) {
+    final ws2 = _ws2When(s);
+    if (ws2 != null) return ws2;
     final hidden = _hWhen(s);
     if (hidden != null) return hidden;
     final me = card.type == CardType.unit;
@@ -395,6 +400,8 @@ class _Line {
     if (w3 != null) return w3;
     final early = _powerSentenceEarly(s0);
     if (early != null) return early;
+    final ws2 = _ws2Sentence(s0);
+    if (ws2 != null) return ws2;
     final slot = _slotCounter[0];
     final g = general ? _genSentence(s0) : null;
     if (g != null) return g;
@@ -552,6 +559,8 @@ class _Line {
   }
 
   Cond? _cond(String c) {
+    final ws2 = _ws2Cond(c);
+    if (ws2 != null) return ws2;
     final hidden = _hCond(c);
     if (hidden != null) return hidden;
     if (c == 'you have one or fewer cards in your hand') return const HandAtMost(1);

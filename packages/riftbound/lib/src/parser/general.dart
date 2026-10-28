@@ -1568,9 +1568,11 @@ extension _General on _Line {
           filter: Filter(side: Side.friendly, other: true, notTag: 'Recruit'),
         );
       case 'When one or more enemy units die' when perm:
+        // A death is its controller's event (the opponent's here), so any player's.
         return const GenWhen(
           GEv.dies,
           filter: Filter(side: Side.enemy),
+          by: Side.any,
           extra: ['once'],
         );
       case 'The first time a friendly unit dies each turn' when perm:

@@ -184,7 +184,7 @@ extension GameEquip on Game {
   }
 
   /// "I am a Mech." from an attached card.
-  bool _eqHasTag(ObjId id, String tag) => _eqOwnPassives(id).any((x) => x.$1 is EqHasTag && (x.$1 as EqHasTag).tag.toLowerCase() == tag.toLowerCase());
+  bool _eqHasTag(ObjId id, String tag) => _ws2HasTag(id, tag) || _eqOwnPassives(id).any((x) => x.$1 is EqHasTag && (x.$1 as EqHasTag).tag.toLowerCase() == tag.toLowerCase());
 
   /// "I can't be moved by enemy spells and abilities": a move by [mover] that doesn't happen.
   bool _eqUnmovable(ObjId id, int mover) => state.obj(id).controller != mover && _eqOwnPassives(id).any((x) => x.$1 is EqUnmovable);
@@ -406,9 +406,10 @@ extension GameEquip on Game {
     var energy = _xAbilityEnergy(p, src, a, ac.energy);
     if (eqc != null && eqc.lessByTargetMight && targets.isNotEmpty && targets[0] >= 0) energy = energy - mightUsed(targets[0]) < 0 ? 0 : energy - mightUsed(targets[0]);
     final power = <Domain?>[...ac.power, ..._xDeflect(p, src, targets)];
-    if (!canPay(p, energy, power)) throw RiftboundError('Not enough runes (${c.describe()})');
+    final use = payFor(card(src).type);
+    if (!canPay(p, energy, power, use: use)) throw RiftboundError('Not enough runes (${c.describe()})');
     _eqPayExtraCost(p, src, c);
-    _pay(p, energy, power);
+    _pay(p, energy, power, use: use);
     if (c.exhaust) o.exhausted = true;
     o.usedThisTurn.add(index);
     final loc = o.loc;
@@ -473,6 +474,7 @@ extension GameEquip on Game {
   /// The ability an [ActivateMove] would use (for the app's labels and the bot).
   Ability? abilityOfMove(ActivateMove m) {
     if (m.index < 0) return null;
+    if (m.index >= ws2BorrowBase) return _ws2AbilityOfMove(m);
     if (m.index >= 1000) {
       final list = _eqGrantedActivated(m.source);
       final k = m.index - 1000;

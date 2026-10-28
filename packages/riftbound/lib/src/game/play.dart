@@ -1,5 +1,17 @@
 part of 'game.dart';
 
+/// What a payment is for, for resources that can only be spent on some things ("Use only to
+/// play spells", "Spend only on units", "only on gear"): a card of that type or its abilities.
+enum PayFor { other, spell, unit, gear }
+
+/// The [PayFor] of playing a card of [type] or using its abilities.
+PayFor payFor(CardType type) => switch (type) {
+      CardType.spell => PayFor.spell,
+      CardType.unit => PayFor.unit,
+      CardType.gear => PayFor.gear,
+      _ => PayFor.other,
+    };
+
 /// Playing cards (CR 349–359), activating abilities (CR 376), the Standard Move (CR 144),
 /// paying costs with runes (CR 160–168), triggered abilities and the chain (CR 327–340).
 extension GamePlay on Game {
@@ -29,13 +41,13 @@ extension GamePlay on Game {
   // -------------------------------------------------------------------------------------------
 
   /// Can [p] pay [energy] Energy and the Power in [power] (null = any domain) from their pool
-  /// and runes? Runes exhaust for Energy and recycle for Power of their domain; a rune can do both.
-  bool canPay(int p, int energy, List<Domain?> power, {bool forSpell = false, bool forUnit = false}) => _payPlanWithAdds(p, energy, power, forSpell: forSpell, forUnit: forUnit) != null;
+  /// (including resources only spendable on [use]) and runes? Runes exhaust for Energy and recycle for Power of their domain; a rune can do both.
+  bool canPay(int p, int energy, List<Domain?> power, {PayFor use = PayFor.other}) => _payPlanWithAdds(p, energy, power, use: use) != null;
 
   /// Abilities [p] could use to add resources while paying (CR 204.4.b.1, 357.1.a): Reaction
   /// abilities that only add, cost nothing but exhausting (or killing) their source, and whose
   /// conditions hold. In a stable order.
-  List<(ObjId, int, AddRes)> _addSources(int p, {required bool forSpell}) {
+  List<(ObjId, int, AddRes)> _addSources(int p, {required PayFor use}) {
     final out = <(ObjId, int, AddRes)>[];
     final pl = state.player(p);
     for (final src in [?pl.legend, for (final o in _boardOf(p)) o.id]) {
@@ -49,7 +61,8 @@ extension GamePlay on Game {
         if (a.oncePerTurn && o.usedThisTurn.contains(i)) continue;
         if (a.legion && pl.playedThisTurn < 1) continue;
         final add = a.effects.first as AddRes;
-        if (add.spellsOnly && !forSpell) continue;
+        if (add.spellsOnly && use != PayFor.spell) continue;
+        if (add is Ws2PowerToEnergy || (add is Ws2RestrictedAdd && add.gear && use != PayFor.gear)) continue;
         out.add((src, i, _w3AddRes(src, add)));
       }
     }
@@ -57,11 +70,11 @@ extension GamePlay on Game {
   }
 
   /// A payment plan that may also use resource abilities, fewest first.
-  ({List<ObjId> exhaust, List<ObjId> recycle, int poolEnergy, List<int> poolPower, int poolAny, List<(ObjId, int, AddRes)> adds})? _payPlanWithAdds(int p, int energy, List<Domain?> power, {bool forSpell = false, bool forUnit = false}) {
-    final sources = _addSources(p, forSpell: forSpell);
+  ({List<ObjId> exhaust, List<ObjId> recycle, int poolEnergy, List<int> poolPower, int poolAny, List<(ObjId, int, AddRes)> adds})? _payPlanWithAdds(int p, int energy, List<Domain?> power, {PayFor use = PayFor.other}) {
+    final sources = _addSources(p, use: use);
     for (var k = 0; k <= sources.length; k++) {
       final used = sources.take(k).toList();
-      var e = 0, a = 0;
+      var (e, a) = _ws2Restricted(p, use);
       final dp = List.filled(6, 0);
       for (final (_, _, add) in used) {
         e += add.energy;
@@ -70,7 +83,7 @@ extension GamePlay on Game {
           dp[d.index]++;
         }
       }
-      final plan = _payPlan(p, energy, power, extraEnergy: e + (forUnit ? _w3UnitPool(p) : 0), extraAny: a, extraPower: dp);
+      final plan = _payPlan(p, energy, power, extraEnergy: e + (use == PayFor.unit ? _w3UnitPool(p) : 0), extraAny: a, extraPower: dp);
       if (plan != null) return (exhaust: plan.exhaust, recycle: plan.recycle, poolEnergy: plan.poolEnergy, poolPower: plan.poolPower, poolAny: plan.poolAny, adds: used);
     }
     return null;
@@ -142,10 +155,11 @@ extension GamePlay on Game {
     return (exhaust: exhaust, recycle: recycle, poolEnergy: poolE, poolPower: poolP, poolAny: poolA);
   }
 
-  void _pay(int p, int energy, List<Domain?> power, {bool forSpell = false, bool forUnit = false}) {
-    final plan = _payPlanWithAdds(p, energy, power, forSpell: forSpell, forUnit: forUnit);
+  void _pay(int p, int energy, List<Domain?> power, {PayFor use = PayFor.other}) {
+    final plan = _payPlanWithAdds(p, energy, power, use: use);
     if (plan == null) throw RiftboundError('Not enough runes to pay');
     final pl = state.player(p);
+    final (keepE, keepA) = _ws2AfterPay(p, plan.adds, plan.poolEnergy, plan.poolAny, use);
     for (final (src, i, _) in plan.adds) {
       final a = parsed(src).abilities[i] as Activated;
       state.obj(src).usedThisTurn.add(i);
@@ -153,9 +167,9 @@ extension GamePlay on Game {
       if (a.cost.exhaust) state.obj(src).exhausted = true;
       if (a.cost.killMe) _kill(src);
     }
-    pl.energyPool = forUnit ? _w3SettleUnitPool(p, pl.energyPool, plan.adds.fold(0, (s, x) => s + x.$3.energy), plan.poolEnergy) : plan.poolEnergy;
+    pl.energyPool = use == PayFor.unit ? _w3SettleUnitPool(p, pl.energyPool, plan.adds.fold(0, (s, x) => s + x.$3.energy), plan.poolEnergy) : plan.poolEnergy - keepE;
     pl.powerPool = plan.poolPower;
-    pl.anyPool = plan.poolAny;
+    pl.anyPool = plan.poolAny - keepA;
     for (final r in plan.exhaust) {
       state.obj(r).exhausted = true;
     }
@@ -347,6 +361,7 @@ extension GamePlay on Game {
 
   /// "When you play me" and Vision (CR 817) triggers of a permanent that just entered.
   void _firePlayed(ObjId id) {
+    _ws2AsPlayed(id);
     final p = state.obj(id).controller;
     final abs = parsed(id).abilities;
     for (var i = 0; i < abs.length; i++) {
@@ -371,6 +386,7 @@ extension GamePlay on Game {
     if (index == grantedXpAbility) return null;
     final o = state.objOrNull(src);
     if (o == null || o.controller != p || !(o.zone == Zone.board || (o.zone == Zone.legend))) return 'You don’t control that';
+    if (index >= ws2BorrowBase) return _ws2BorrowedEarlyProblem(p, src, index);
     if (index >= 1000) return null;
     if (_eqInactive(src)) return '${nameOf(src)} is attached: its own text is inactive';
     final abs = parsed(src).abilities;
@@ -395,6 +411,7 @@ extension GamePlay on Game {
     }
     final early = _activateEarlyProblem(p, src, index);
     if (early != null) throw RiftboundError(early);
+    if (index >= ws2BorrowBase) return _ws2ActivateBorrowed(p, src, index);
     final o = state.obj(src);
     if (index >= 1000) return _eqActivateGranted(p, src, index);
     final a = parsed(src).abilities[index] as Activated;
@@ -404,7 +421,7 @@ extension GamePlay on Game {
     if (problem != null) throw RiftboundError(problem);
     final ac = _activationCost(p, src, a);
     final energy = _xAbilityEnergy(p, src, a, ac.energy);
-    if (!canPay(p, energy, ac.power, forUnit: isUnit(src))) throw RiftboundError('Not enough runes (${a.cost.describe()})');
+    if (!canPay(p, energy, ac.power, use: payFor(card(src).type))) throw RiftboundError('Not enough runes (${a.cost.describe()})');
     final gx = _genActivateProblem(a, src, p);
     if (gx != null) throw RiftboundError(gx);
     final targets = _chooseTargets(a.effects, p, src, o.loc);
@@ -416,7 +433,7 @@ extension GamePlay on Game {
         }
       }
     }
-    _pay(p, energy, [...ac.power, ...extraP], forUnit: isUnit(src));
+    _pay(p, energy, [...ac.power, ...extraP], use: payFor(card(src).type));
     _genSpent(p, energy + ac.power.length + extraP.length, power: ac.power.length + extraP.length);
     _powerPayExtra(p, src, a);
     _xPayCostExtra(p, src, a);
@@ -450,6 +467,7 @@ extension GamePlay on Game {
       if (o.exhausted) throw RiftboundError('${nameOf(u)} is exhausted');
       if (!moveDestinations(u).contains(to)) throw RiftboundError('${nameOf(u)} can’t move there');
     }
+    _ws2MoveTax(p, moving, to);
     for (final u in moving) {
       state.obj(u).exhausted = true;
     }

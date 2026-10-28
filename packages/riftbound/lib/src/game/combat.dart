@@ -192,6 +192,8 @@ extension GameCombat on Game {
     } else if (conquer && pl.points >= _genVictoryScore() - 1 && pl.scored.length < state.bfs.length) {
       log('${pl.name} conquers ${nameOf(b.obj)} but needs every battlefield this turn for the final point, and draws instead.', player: p, kind: 'conquer');
       _draw(p, 1);
+    } else if (_ws2ScoreDraws(p)) {
+      // Otterpus: a draw instead of the point.
     } else {
       pl.points++;
       if (!conquer) _xHeld(p);

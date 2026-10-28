@@ -937,6 +937,9 @@ enum GEv {
 
   /// "When a player plays a spell" (anyone).
   anySpell,
+
+  /// "When you hide a card" (ir_w2s2.dart).
+  ws2Hid,
 }
 
 class GenWhen extends When {

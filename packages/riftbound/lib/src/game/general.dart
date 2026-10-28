@@ -17,6 +17,7 @@ extension GameGeneral on Game {
   // -------------------------------------------------------------------------------------------
 
   void _genChoose(GenEffect e, int p, ObjId source, int loc, List<int> out, void Function(int, int) set, void Function(List<Effect>) walk, {required bool optional, int restrictBf = -1}) {
+    if (_ws2Choose(e, p, source, set, optional: optional)) return;
     for (final t in e.targets) {
       _genChooseOne(e, t, p, source, loc, out, set, optional: optional, restrictBf: restrictBf);
     }
@@ -403,6 +404,7 @@ extension GameGeneral on Game {
   }
 
   bool _genCond(GenCond c, _Ctx ctx) {
+    if (c is Ws2Cond) return _ws2Cond(c, ctx);
     final p = ctx.controller;
     switch (c) {
       case AloneCond(:final target):
@@ -570,7 +572,7 @@ extension GameGeneral on Game {
   }
 
   bool _genMatches(Filter f, ObjId id, Obj o, RCard c, {required int controller, ObjId? source, int here = base, List<int>? slots}) {
-    if (f.tags.isNotEmpty && !f.tags.any(c.hasTag)) return false;
+    if (f.tags.isNotEmpty && !f.tags.any((t) => c.hasTag(t) || _ws2HasTag(id, t))) return false;
     if (f.domain != null && !c.domains.contains(f.domain)) return false;
     if (f.token != null && c.token != f.token) return false;
     if (f.notTag != null && c.hasTag(f.notTag!)) return false;
@@ -890,6 +892,7 @@ extension GameGeneral on Game {
   // -------------------------------------------------------------------------------------------
 
   void _genResolve(GenEffect e, _Ctx ctx) {
+    if (e is Ws2Effect) return _ws2Resolve(e, ctx);
     final p = ctx.controller;
     switch (e) {
       case ChooseOnly():
@@ -1815,6 +1818,7 @@ extension GameGeneral on Game {
 
   /// Combat begins at battlefield [bf]: attacker [att] with [mine] against [theirs].
   void _genCombatStart(int bf, int att, List<ObjId> mine, List<ObjId> theirs) {
+    _ws2CombatStart();
     final def = state.other(att);
     _gen.turn.removeWhere((k, _) => k.startsWith('att:'));
     _gen.turn['combat'] = bf + 1;
@@ -2156,6 +2160,8 @@ extension GameGeneral on Game {
   /// and whether its extra costs can be paid.
   String? _genActivateProblem(Activated a, ObjId src, int p) {
     final o = state.obj(src);
+    final ws2 = _ws2CostProblem(a, src, p);
+    if (ws2 != null) return ws2;
     if (a.effects.isNotEmpty && a.effects.first is UseOnly) {
       final u = a.effects.first as UseOnly;
       if (!_cond(u.cond, _Ctx(controller: p, source: src, loc: o.loc, targets: const []))) return 'Not now';
@@ -2177,6 +2183,7 @@ extension GameGeneral on Game {
 
   /// Pays an activated ability's extra costs (after its targets are chosen).
   void _genPayExtra(Activated a, ObjId src, int p, List<int> targets) {
+    _ws2PayExtra(a, src, p, targets);
     for (final x in a.cost.extra) {
       switch (x) {
         case KillCost(:final filter):

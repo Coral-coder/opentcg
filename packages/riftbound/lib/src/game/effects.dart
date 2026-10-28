@@ -412,6 +412,8 @@ extension GameEffects on Game {
         state.player(o.owner).trash.add(victim);
         ctx.scratch['countered'] = victim;
         log('${nameOf(victim)} is countered.', player: p, card: victim, kind: 'info');
+      case Ws2PowerToEnergy() || Ws2RestrictedAdd():
+        _ws2ResolveAdd(e as AddRes, ctx);
       case AddRes(:final energy, :final anyPower, :final power):
         if (e is W3UnitAdd) return _w3AddUnitEnergy(p, energy);
         final pl = state.player(p);

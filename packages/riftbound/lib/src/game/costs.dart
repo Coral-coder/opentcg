@@ -401,9 +401,8 @@ extension GameCosts on Game {
   }
 
   (int, List<Domain?>)? _xPayable(int p, ObjId id, XPlay x, {List<Domain?> mandatory = const []}) {
-    final spell = card(id).type == CardType.spell;
     for (final t in _xTotals(p, id, x, mandatory: mandatory)) {
-      if (canPay(p, t.$1, t.$2, forSpell: spell, forUnit: card(id).type == CardType.unit)) return t;
+      if (canPay(p, t.$1, t.$2, use: payFor(card(id).type))) return t;
     }
     return null;
   }
@@ -694,7 +693,7 @@ extension GameCosts on Game {
     final t = _xPayable(p, id, x, mandatory: mandatory);
     if (t == null) throw RiftboundError('Not enough runes to pay');
     final c = card(id);
-    _pay(p, t.$1, t.$2, forSpell: c.type == CardType.spell, forUnit: c.type == CardType.unit);
+    _pay(p, t.$1, t.$2, use: payFor(c.type));
     final pl = state.player(p);
     // Discounts used up.
     if (c.type == CardType.spell) _turn(pl).remove('nextSpell');
@@ -1440,8 +1439,8 @@ extension GameCosts on Game {
         final i = state.chain.indexWhere((it) => it.isSpell && it.source == ctx.targets[0]);
         if (i < 0) return;
         final it = state.chain[i];
-        if (canPay(p, energy, power, forSpell: true) && askYesNo(p, 'Pay ${'{$energy}' * (energy > 0 ? 1 : 0)}${power.map((d) => '{${d?.letter ?? 'A'}}').join()} to take control of ${nameOf(it.source)}?', source: ctx.source)) {
-          _pay(p, energy, power, forSpell: true);
+        if (canPay(p, energy, power, use: PayFor.spell) && askYesNo(p, 'Pay ${'{$energy}' * (energy > 0 ? 1 : 0)}${power.map((d) => '{${d?.letter ?? 'A'}}').join()} to take control of ${nameOf(it.source)}?', source: ctx.source)) {
+          _pay(p, energy, power, use: PayFor.spell);
           var targets = it.targets;
           // New choices (CR 750–755): all of them remade, or none if there are no legal ones.
           if (askYesNo(p, 'Make new choices for ${nameOf(it.source)}?', source: ctx.source)) {

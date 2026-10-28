@@ -91,6 +91,7 @@ extension GameHidden on Game {
       ..controller = p
       ..enteredTurn = state.turn;
     log('${pl.name} hides a card at ${nameOf(state.bfs[bf].obj)}.', player: p, kind: 'play');
+    _ws2Hid(p, id);
   }
 
   /// Why [p] can't play facedown card [o] now, or null (CR 811.1.b, 811.6).

@@ -497,6 +497,7 @@ extension GamePowerRules on Game {
 
   /// Unit [id] can't be dealt damage now ("unless I'm in combat").
   bool _noDamage(ObjId id) {
+    if (_ws2NoDamage(id)) return true;
     for (final a in parsed(id).abilities) {
       if (a is Static && a.passive is NoDamageOutsideCombat && _gateOk(id, a.gate)) {
         final sd = state.showdown;
