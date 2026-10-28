@@ -171,14 +171,6 @@ extension GamePlay on Game {
     }
   }
 
-  /// The Power a card's cost needs: one of its domain per symbol (CR 131.3; multi-domain cards
-  /// take any of their domains — the engine picks the first it can pay).
-  List<Domain?> _powerOf(RCard c, int n) {
-    if (n == 0) return const [];
-    if (c.domains.isEmpty) return List.filled(n, null);
-    return List.filled(n, c.domains.first);
-  }
-
   /// A card's Energy cost after its own discounts (CR 356.4), never below 0 (CR 356.6).
   int energyCost(int p, RCard c) {
     var e = c.energy;
@@ -192,72 +184,53 @@ extension GamePlay on Game {
     return e < 0 ? 0 : e;
   }
 
-  /// The ways [p] could pay for [c] (object [id] if known): one per domain of a multi-domain
-  /// card, after cost changes and Flow (game/power.dart), plus [extraEnergy] and [extraPower].
-  /// [free]: the card's own cost is ignored (CR 811.1.b), only the extras paid.
-  List<({int energy, List<Domain?> power})> _cardCosts(int p, RCard c, ObjId? id, int extraEnergy, List<Domain?> extraPower, {bool free = false}) {
-    if (free) return [(energy: extraEnergy, power: [...extraPower])];
-    final e = energyCost(p, c);
-    final powers = c.domains.length <= 1 ? [_powerOf(c, c.power)] : [for (final d in c.domains) List<Domain?>.filled(c.power, d)];
-    return [
-      for (final pw in powers)
-        if (_powerCardCost(p, c, id, e, pw) case final x) (energy: x.energy + extraEnergy, power: [...x.power, ...extraPower]),
-    ];
-  }
-
-  bool _canPayCard(int p, RCard c, {int extraEnergy = 0, List<Domain?> extraPower = const [], ObjId? id, bool free = false}) =>
-      _cardCosts(p, c, id, extraEnergy, extraPower, free: free).any((x) => canPay(p, x.energy, x.power, forSpell: c.type == CardType.spell));
-
-  void _payCard(int p, RCard c, {int extraEnergy = 0, List<Domain?> extraPower = const [], ObjId? id, bool free = false}) {
-    final spell = c.type == CardType.spell;
-    for (final x in _cardCosts(p, c, id, extraEnergy, extraPower, free: free)) {
-      if (canPay(p, x.energy, x.power, forSpell: spell)) {
-        _pay(p, x.energy, x.power, forSpell: spell);
-        return;
-      }
-    }
-    throw RiftboundError('Not enough runes to pay');
-  }
-
   // -------------------------------------------------------------------------------------------
   // Playing a card (CR 353–359)
   // -------------------------------------------------------------------------------------------
 
-  void _playFromHand(int p, ObjId id) {
+  /// Plays [id] (CR 353–359): from hand or the Champion Zone, from facedown (CR 811), from the
+  /// trash with Flow or an alternative cost, or — with [via] — as part of an effect, from
+  /// elsewhere, or with its cost replaced or ignored. The cost is worked out in one place,
+  /// game/costs.dart (CR 356).
+  void _playFromHand(int p, ObjId id, {XPlay? via}) {
     final pl = state.player(p);
     final o = state.objOrNull(id);
-    // A card hidden facedown at a battlefield (CR 811): played as a Reaction, ignoring its own
-    // cost, to that battlefield and choosing there.
-    final fd = o != null && o.zone == Zone.facedown ? o.loc : null;
-    if (o == null || o.owner != p || !(pl.hand.contains(id) || pl.champion == id || fd != null || _flowPlayable(p, id))) throw RiftboundError('That card isn’t in your hand');
+    if (o == null) throw RiftboundError('That card isn’t in your hand');
+    final x = via ?? _xPlayFromMove(p, id);
     final c = card(id);
     final parsedCard = parsed(id);
     if (!parsedCard.supported) throw RiftboundError('${c.name} isn’t supported yet');
     if (!c.isMainDeck) throw RiftboundError('That can’t be played');
+    // A card hidden facedown at a battlefield (CR 811): played as a Reaction, ignoring its own
+    // cost, to that battlefield and choosing there.
+    final fd = x.facedown >= 0 ? x.facedown : null;
     if (fd != null) {
       final why = _hFacedownProblem(p, o);
       if (why != null) throw RiftboundError(why);
     }
-    final timing = fd != null ? Timing.reaction : (c.type == CardType.spell ? parsedCard.timing : _hPermanentTiming(parsedCard));
-    final t = _timingProblem(p, timing);
-    // Ambush (CR 822.1.b): Reaction while being played to a battlefield where you have units.
-    final ambushOnly = t != null && fd == null && c.type == CardType.unit && _hAmbushTiming(p, id);
-    if (t != null && !ambushOnly) throw RiftboundError(t);
+    var ambushOnly = false;
+    if (!x.effect) {
+      final timing = fd != null ? Timing.reaction : (c.type == CardType.spell ? parsedCard.timing : _hPermanentTiming(parsedCard));
+      final t = _timingProblem(p, timing);
+      // Ambush (CR 822.1.b): Reaction while being played to a battlefield where you have units.
+      ambushOnly = t != null && fd == null && c.type == CardType.unit && _hAmbushTiming(p, id);
+      if (t != null && !ambushOnly) throw RiftboundError(t);
+    }
     final gp = _genPlayProblem(p, id);
     if (gp != null) throw RiftboundError(gp);
-    var free = fd != null;
-    if (!_canPayCard(p, c, free: free, id: id) && !_powerExtraMayPay(p, id)) throw RiftboundError('Not enough runes (${_costLabel(c)})');
-    // Additional costs (CR 356.3) are chosen with the rest.
-    final extra = _hExtraCost(p, id, free: free);
-    final paidPower = _powerExtraCost(p, id);
-    if (paidPower.ignore) free = true;
-    // Known from here on: "If you paid the additional cost, choose … instead" (Conscription).
+    if (!_xCanPay(p, id, x)) throw RiftboundError('Not enough runes (${_costLabel(c)})');
+    // Make relevant choices (CR 355): optional, additional and alternative costs first (CR
+    // 355.1.a). Known from here on: "If you paid the additional cost, choose … instead".
+    if (!x.noExtras) _xChooseCosts(p, id, x);
     state.marks.remove('t:paid:$id');
-    if (extra.paid || paidPower.paid) state.marks['t:paid:$id'] = 1;
-    // Make relevant choices (CR 355).
+    if (x.paidAdditional) state.marks['t:paid:$id'] = 1;
     var loc = base;
-    if (c.type == CardType.unit) {
-      final options = fd != null ? [fd] : _genPlayLocs(p, id, _hDestinations(p, id, ambushOnly: ambushOnly, extra: extra.kill == null ? base : state.obj(extra.kill!).loc));
+    if (c.type == CardType.unit && x.at != null) {
+      loc = x.at!;
+    } else if (c.type == CardType.unit && x.roostBf >= 0) {
+      loc = x.roostBf;
+    } else if (c.type == CardType.unit && !x.toBase) {
+      final options = fd != null ? [fd] : _genPlayLocs(p, id, _hDestinations(p, id, ambushOnly: ambushOnly, extra: x.killedBf));
       if (options.isEmpty) throw RiftboundError('Nowhere to play ${c.name}');
       loc = options.first;
       if (options.length > 1) {
@@ -265,68 +238,64 @@ extension GamePlay on Game {
         loc = options[a.first];
       }
     }
-    var extraE = extra.energy;
-    final extraP = <Domain?>[...extra.power];
     var accelerate = false;
-    if (c.type == CardType.unit && parsedCard.has(Kw.accelerate)) {
+    if (c.type == CardType.unit && !x.noExtras && (parsedCard.has(Kw.accelerate) || _xGrantsAccelerate(p, x))) {
       // Accelerate (CR 805): pay {1}{C} more to enter ready.
       final pw = c.domains.isEmpty ? null : c.domains.first;
-      if (_canPayCard(p, c, extraEnergy: extraE + 1, extraPower: [...extraP, pw], free: free, id: id) && askYesNo(p, 'Pay {1}${pw == null ? '{A}' : '{${pw.letter}}'} for Accelerate so ${c.name} enters ready?', source: id)) {
+      x.optional.add((1, [pw]));
+      if (_xPayable(p, id, x) != null && askYesNo(p, 'Pay {1}${pw == null ? '{A}' : '{${pw.letter}}'} for Accelerate so ${c.name} enters ready?', source: id)) {
         accelerate = true;
-        extraE += 1;
-        extraP.add(pw);
+      } else {
+        x.optional.removeLast();
       }
     }
     var repeats = 0;
-    for (final a in parsedCard.abilities.whereType<RepeatCost>()) {
-      if (_canPayCard(p, c, extraEnergy: extraE + a.cost.energy, extraPower: [...extraP, ...a.cost.power], free: free, id: id) && askYesNo(p, 'Pay ${a.cost.describe()} to Repeat ${c.name}?', source: id)) {
+    for (final a in x.noExtras ? const <RepeatCost>[] : parsedCard.abilities.whereType<RepeatCost>()) {
+      x.optional.add((_xRepeatEnergy(p, a.cost), a.cost.power));
+      if (_xPayable(p, id, x) != null && askYesNo(p, 'Pay ${a.cost.describe()} to Repeat ${c.name}?', source: id)) {
         repeats++;
-        extraE += a.cost.energy;
-        extraP.addAll(a.cost.power);
+      } else {
+        x.optional.removeLast();
       }
     }
+    if (_xGrantedRepeat(p, id, x)) repeats++;
     final effects = [for (final a in parsedCard.abilities) if (a is SpellBody) ...a.effects];
-    final targets = c.type == CardType.spell ? _chooseTargets(effects, p, id, base, repeats: repeats, restrictBf: fd ?? -1) : const <int>[];
+    // Only targets that leave the spell affordable are offered: discounts that depend on what
+    // it chooses are decided as it chooses (CR 356).
+    final targets = c.type == CardType.spell ? _xChooseAffordable(p, id, x, () => _chooseTargets(effects, p, id, base, repeats: repeats, restrictBf: fd ?? -1), slots: _xSlotCount(effects) * (repeats + 1)) : const <int>[];
+    x.targets = targets;
     // Deflect (CR 809): spells that choose an opponent's Deflect object cost more Power.
-    for (final tg in targets) {
-      if (tg >= 0 && state.objOrNull(tg)?.zone == Zone.board && state.obj(tg).controller != p) {
-        for (var i = 0; i < _kw(tg, Kw.deflect); i++) {
-          extraP.add(null);
-        }
-      }
-    }
+    final extraP = _xDeflect(p, id, targets);
     // Pay (CR 357) and finalize (CR 359).
-    final spent = (free ? 0 : energyCost(p, c) + c.power) + extraE + extraP.length;
-    _payCard(p, c, extraEnergy: extraE, extraPower: extraP, free: free, id: id);
-    _genSpent(p, spent, power: (free ? 0 : c.power) + extraP.length);
-    _leaveZoneForPlay(p, id);
-    if (extra.kill != null) {
-      log('${pl.name} kills ${nameOf(extra.kill!)} to play ${c.name}.', player: p, card: extra.kill, kind: 'die');
-      _kill(extra.kill!);
-    }
-    pl.hand.remove(id);
-    if (pl.champion == id) pl.champion = null;
+    final cost = _xPayable(p, id, x, mandatory: extraP);
+    if (cost == null) throw RiftboundError('${c.name} can’t be paid for with those choices');
+    final spent = _xPay(p, id, x, mandatory: extraP);
+    _genSpent(p, cost.$1 + cost.$2.length, power: cost.$2.length);
+    _xLeaveOrigin(p, id, x);
     pl.playedThisTurn++;
     state.marks
       ..remove('t:fd:$id')
       ..remove('t:fdplay:$id')
       ..remove('t:paid:$id');
-    if (extra.paid || paidPower.paid) state.marks['t:paid:$id'] = 1;
+    if (x.paidAdditional) state.marks['t:paid:$id'] = 1;
     if (fd != null) log('${pl.name} reveals ${c.name} from facedown.', player: p, card: id, kind: 'play');
+    if (x.elsewhere) x.flags |= PlayFlags.elsewhere;
+    if (x.recycleAfter) x.flags |= PlayFlags.recycleAfter;
     if (c.type == CardType.spell) {
       if (fd != null) state.marks['t:fd:$id'] = fd;
       o.zone = Zone.chain;
       log('${pl.name} plays ${c.name}.', player: p, card: id, kind: 'play');
-      _pushChain(ChainItem(id: state.nextChainId++, source: id, card: c.key, ability: -1, controller: p, targets: targets, repeats: repeats));
-      _genSpellCast(p, state.chain.last.id, spent);
+      _pushChain(ChainItem(id: state.nextChainId++, source: id, card: c.key, ability: -1, controller: p, targets: targets, repeats: repeats, paid: x.flags, costRef: x.costRef));
+      _genSpellCast(p, state.chain.last.id, cost.$1 + cost.$2.length);
       if (state.showdown?.focus == p) state.showdown!.focusChain = true;
       if (fd != null) _hPlayedFromHidden(id, p);
+      _xAfterPlay(p, id, x, spent);
       return;
     }
     if (fd != null) state.marks['t:fdplay:$id'] = fd;
     // A unit or gear resolves at once (CR 337.2).
     final passives = [for (final a in parsedCard.abilities) if (a is Static && a.gate == null) a.passive];
-    final ready = c.type == CardType.gear ? !passives.any((x) => x is EntersExhausted) : (accelerate || passives.any((x) => x is EntersReady));
+    final ready = c.type == CardType.gear ? !passives.any((x) => x is EntersExhausted) : (accelerate || x.entersReady || passives.any((x) => x is EntersReady));
     _enterBoard(id, p, loc, ready: _genEntersReady(p, id, ready));
     log('${pl.name} plays ${c.name}${loc == base ? '' : ' to ${locName(loc, p)}'}.', player: p, card: id, kind: 'play');
     _firePlayed(id);
@@ -335,6 +304,7 @@ extension GamePlay on Game {
       _fire(On.youPlayUnit, player: p);
       _unitPlayed(id, p);
     }
+    _xAfterPlay(p, id, x, spent);
     _genEvent(GEv.played, player: p, obj: id);
   }
 
@@ -391,24 +361,26 @@ extension GamePlay on Game {
     if (isAdd && a.timing != Timing.reaction && _timingProblem(p, Timing.normal) != null) throw RiftboundError('Not now');
     if (a.oncePerTurn && o.usedThisTurn.contains(index)) throw RiftboundError('Only once per turn');
     if (a.cost.exhaust && o.exhausted) throw RiftboundError('${nameOf(src)} is exhausted');
-    final problem = _powerActivateProblem(p, src, index, a);
+    final problem = _powerActivateProblem(p, src, index, a) ?? _xCostProblem(p, src, a.cost);
     if (problem != null) throw RiftboundError(problem);
     final ac = _activationCost(p, src, a);
-    if (!canPay(p, ac.energy, ac.power)) throw RiftboundError('Not enough runes (${a.cost.describe()})');
+    final energy = _xAbilityEnergy(p, src, a, ac.energy);
+    if (!canPay(p, energy, ac.power)) throw RiftboundError('Not enough runes (${a.cost.describe()})');
     final gx = _genActivateProblem(a, src, p);
     if (gx != null) throw RiftboundError(gx);
     final targets = _chooseTargets(a.effects, p, src, o.loc);
     final extraP = <Domain?>[];
     for (final tg in targets) {
-      if (tg >= 0 && state.objOrNull(tg)?.zone == Zone.board && state.obj(tg).controller != p) {
+      if (tg >= 0 && state.objOrNull(tg)?.zone == Zone.board && state.obj(tg).controller != p && !_xIgnoreDeflect(src, tg)) {
         for (var i = 0; i < _kw(tg, Kw.deflect); i++) {
           extraP.add(null);
         }
       }
     }
-    _pay(p, ac.energy, [...ac.power, ...extraP]);
-    _genSpent(p, ac.energy + ac.power.length + extraP.length, power: ac.power.length + extraP.length);
+    _pay(p, energy, [...ac.power, ...extraP]);
+    _genSpent(p, energy + ac.power.length + extraP.length, power: ac.power.length + extraP.length);
     _powerPayExtra(p, src, a);
+    _xPayCostExtra(p, src, a);
     _genPayExtra(a, src, p, targets);
     if (a.cost.exhaust) o.exhausted = true;
     o.usedThisTurn.add(index);
@@ -489,12 +461,12 @@ extension GamePlay on Game {
   /// Triggers abilities of everything [player] controls (and their legend) for an event. [bf]:
   /// the battlefield it's about ("that battlefield"); [event]: the unit it's about ("it").
   void _fire(On on, {required int player, int bf = -2, int event = -1}) {
-    final srcs = [?state.player(player).legend, for (final o in _boardOf(player)) o.id];
+    final srcs = [?state.player(player).legend, for (final o in _boardOf(player)) o.id, ..._xTrashTriggerCards(player)];
     for (final s in srcs) {
       final abs = parsed(s).abilities;
       for (var i = 0; i < abs.length; i++) {
         final a = abs[i];
-        if (a is Triggered && (a.on.on == on || _genAlsoOn(a.on, on))) _queue(s, i, player, loc: bf, event: event);
+        if (a is Triggered && (a.on.on == on || _genAlsoOn(a.on, on)) && _xZoneOk(s, a.on)) _queue(s, i, player, loc: bf, event: event);
       }
     }
   }
@@ -503,6 +475,7 @@ extension GamePlay on Game {
   void _finalizeTrigger(ChainItem t) {
     final src = state.objOrNull(t.source);
     if (src == null) return;
+    if (!_xTriggerOk(t)) return;
     final a = parsed(t.source).abilities[t.ability];
     final effects = switch (a) {
       Triggered() => a.effects,
@@ -518,7 +491,7 @@ extension GamePlay on Game {
     // Deflect (CR 809) applies to triggered abilities too: pay it, or the ability can't go on.
     final deflect = <Domain?>[];
     for (final tg in targets) {
-      if (tg >= 0 && state.objOrNull(tg)?.zone == Zone.board && state.obj(tg).controller != t.controller) {
+      if (tg >= 0 && state.objOrNull(tg)?.zone == Zone.board && state.obj(tg).controller != t.controller && !_xIgnoreDeflect(t.source, tg)) {
         for (var i = 0; i < _kw(tg, Kw.deflect); i++) {
           deflect.add(null);
         }
@@ -560,16 +533,20 @@ extension GamePlay on Game {
         _ => const <Effect>[],
       };
     }
-    final ctx = _Ctx(controller: item.controller, source: item.source, loc: item.loc, targets: item.targets, event: item.event, ability: item.ability);
-    _genBeforeResolve(item, ctx);
+    if (item.isSpell) _xBeforeSpell(item);
+    // Each execution of a Repeat has its own choices (CR 820.2).
+    final per = item.repeats > 0 ? _xSlotCount(effects) : 0;
     for (var r = 0; r <= item.repeats; r++) {
+      final ctx = _Ctx(controller: item.controller, source: item.source, loc: item.loc, targets: per == 0 ? item.targets : _xSlice(item.targets, r, per), event: item.event, paid: item.paid, costRef: item.costRef, ability: item.ability);
+      _genBeforeResolve(item, ctx);
       _resolveEffects(effects, ctx, rep: r);
     }
     if (item.isSpell) {
       final o = state.obj(item.source);
-      if (o.zone == Zone.chain && !_banishFlowed(o)) {
+      if (!_xSpellDone(item) && o.zone == Zone.chain && !_banishFlowed(o)) {
         o.zone = Zone.trash;
         state.player(o.owner).trash.add(o.id);
+        _xAfterSpellTrashed(item);
       }
       // Playing a spell is complete when it resolves (CR 420.4.a).
       _fire(On.youPlaySpell, player: item.controller);
@@ -653,6 +630,7 @@ extension GamePlay on Game {
     final o = state.obj(id);
     if (o.zone != Zone.board) return;
     if (_hSaved(id) || _savedFromDeath(id) || _genReplaceDeath(id)) return;
+    _xOnKill(o);
     final abs = parsed(id).abilities;
     for (var i = 0; i < abs.length; i++) {
       final a = abs[i];

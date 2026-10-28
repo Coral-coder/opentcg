@@ -29,6 +29,7 @@ import 'state.dart';
 
 part 'play.dart';
 part 'combat.dart';
+part 'costs.dart';
 part 'effects.dart';
 part 'query.dart';
 part 'testing.dart';
@@ -312,6 +313,7 @@ class Game implements TcgMatch {
     for (final o in state.objects.values) {
       if (o.controller == p && (o.zone == Zone.board || o.zone == Zone.runes || o.zone == Zone.legend)) {
         if (!_hCantReady(o.id) && (o.zone != Zone.board || _genCanReady(o.id, p))) {
+          if (o.zone == Zone.board && o.exhausted) _xBecameReady(o.id);
           if (o.exhausted && o.zone == Zone.board && card(o.id).type == CardType.unit) readied.add(o.id);
           o.exhausted = false;
         }

@@ -67,15 +67,6 @@ extension GameGeneral on Game {
               if (x != out[e.except]) x,
           ];
         }
-        if (e is Fight && e.a is Chosen) {
-          final s = (e.a as Chosen).slot;
-          if (s < out.length) {
-            options = [
-              for (final x in options)
-                if (x != out[s]) x,
-            ];
-          }
-        }
         if (options.isEmpty) {
           if (upTo || optional) {
             set(slot, -1);
@@ -201,7 +192,6 @@ extension GameGeneral on Game {
   String _genPromptFor(Effect e, Filter f) {
     final what = f.describe();
     return switch (e) {
-      Fight() => '$what to fight',
       DealAmt() || ExceptDeal() || DealOther() => '$what to deal damage to',
       GiveMightAmt(:final negative) => negative ? '$what to weaken' : '$what to give +Might',
       GiveMany(:final might) => might < 0 ? '$what to weaken' : '$what to give +Might',
@@ -209,7 +199,7 @@ extension GameGeneral on Game {
       Move() => '$what to move',
       Banish() => '$what to banish',
       CardToHand() => '$what to return to hand',
-      PlayFrom() || BlinkTo() => '$what to play',
+      PlayCard() || BlinkTo() => '$what to play',
       TakeControlRecall() || ToDeck() => '$what to take',
       ChooseOnly() => what,
       _ => what,
@@ -420,7 +410,7 @@ extension GameGeneral on Game {
         if (id < 0) return false;
         final o = state.obj(id);
         return unitsAt(o.loc, player: o.controller).length == 1;
-      case SpentOnSpell(:final n):
+      case SpentOnThisSpell(:final n):
         return _gen.get('p$p:resolvingSpent') >= n;
       case CombatCond(:final excess, :final afterAttack):
         // The combat that just ended (CR 467.2.c.4 excess; an attack, CR 466).
@@ -926,13 +916,6 @@ extension GameGeneral on Game {
           final d = _genDeal(id, n, ctx);
           if (d > 0) log('${nameOf(ctx.source)} deals $d to ${nameOf(id)}.', player: p, card: id, kind: 'damage', amount: d);
         }
-      case Fight(:final a, :final b):
-        final ua = _genFirst(a, ctx), ub = _genFirst(b, ctx);
-        if (ua < 0 || ub < 0 || !isUnit(ua) || !isUnit(ub) || ua == ub) return;
-        final ma = mightUsed(ua), mb = mightUsed(ub);
-        final da = _genDeal(ub, ma, ctx, byUnit: ua);
-        final db0 = _genDeal(ua, mb, ctx, byUnit: ub);
-        log('${nameOf(ua)} and ${nameOf(ub)} deal $da and $db0 to each other.', player: p, card: ub, kind: 'damage', amount: da);
       case GiveMightAmt(:final amount, :final target, :final negative):
         final n = amount is N ? amount.n : (amount is GenAmount ? _genAmount(amount, ctx) : 0);
         for (final id in _resolveTarget(target, ctx)) {
@@ -1054,7 +1037,7 @@ extension GameGeneral on Game {
         for (final q in _genPlayers(who, ctx)) {
           _genBurn(q, n);
         }
-      case RecycleTrash(:final n):
+      case RecycleFromTrash(:final n):
         final trash = state.player(p).trash;
         if (trash.isEmpty) return;
         final k = n < trash.length ? n : trash.length;
@@ -1086,7 +1069,7 @@ extension GameGeneral on Game {
             _kill(id);
           }
         }
-      case PlayFrom(:final target, :final ignoreAll):
+      case PlayCard(:final target, :final ignoreAll):
         for (final id in _resolveTarget(target, ctx)) {
           _genPlayCard(p, id, ignoreAll: ignoreAll, source: ctx.source);
         }
@@ -1152,10 +1135,6 @@ extension GameGeneral on Game {
           final was = state.obj(id).exhausted;
           state.obj(id).exhausted = ex;
           if (!ex && was && isUnit(id)) _genReadied(id, p);
-        }
-      case IfElse(:final cond, :final yes, :final no):
-        for (final x in _cond(cond, ctx) ? yes : no) {
-          _resolve(x, ctx);
         }
       case TrigIf(:final effects) || Seq(:final effects):
         for (final x in effects) {
@@ -1396,8 +1375,9 @@ extension GameGeneral on Game {
     final c = card(id);
     if (!RiftboundParser.parse(c).supported) return;
     if (!ignoreAll && c.power > 0) {
-      if (!_canPayCard(p, c, extraEnergy: -energyCost(p, c))) return;
-      _pay(p, 0, _powerOf(c, c.power));
+      final power = List<Domain?>.filled(c.power, c.domains.isEmpty ? null : c.domains.first);
+      if (!canPay(p, 0, power)) return;
+      _pay(p, 0, power);
     }
     final pl = state.player(o.owner);
     pl.trash.remove(id);
@@ -2168,10 +2148,6 @@ extension GameGeneral on Game {
     if (_genSelfRestricted(src, RKind.abilitiesOnlyAtBf) && (o.zone != Zone.board || o.loc == base)) return 'Only while it’s at a battlefield';
     for (final x in a.cost.extra) {
       switch (x) {
-        case RecycleTrashCost(:final n, :final filter):
-          final trash = state.player(p).trash;
-          final ok = filter == null ? trash.length : trash.where((id) => filter.cardTypes.contains(card(id).type)).length;
-          if (ok < n) return 'Not enough cards in your trash';
         case KillCost(:final filter):
           if (matching(filter, controller: p, source: src).isEmpty) return 'Nothing to kill';
         case ExhaustCost(:final filter):
@@ -2187,13 +2163,6 @@ extension GameGeneral on Game {
   void _genPayExtra(Activated a, ObjId src, int p, List<int> targets) {
     for (final x in a.cost.extra) {
       switch (x) {
-        case RecycleTrashCost(:final n, :final filter):
-          final trash = [
-            for (final id in state.player(p).trash)
-              if (filter == null || filter.cardTypes.contains(card(id).type)) id,
-          ];
-          final pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Recycle $n from your trash to pay', options: trash, min: n, max: n, source: src));
-          _recycleCards(p, pick);
         case KillCost(:final filter):
           final options = matching(filter, controller: p, source: src);
           final u = ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Kill one to pay', options: options, source: src)).first;

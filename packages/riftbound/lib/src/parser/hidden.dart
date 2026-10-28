@@ -108,13 +108,13 @@ extension _HiddenLine on _Line {
     m = RegExp(r'^You may pay ((?:\{[0-9A-Z]+\})+) as an additional cost to play me\.$').firstMatch(t);
     if (m != null && card.isMainDeck) {
       final cost = _cost(m[1]!);
-      return cost == null ? null : ExtraCost(cost: cost);
+      return cost == null ? null : AddCost(XPay.resources, energy: cost.energy, power: cost.power);
     }
-    if (t == 'You may exhaust your legend as an additional cost to play me.' && card.isMainDeck) return const ExtraCost(exhaustLegend: true);
+    if (t == 'You may exhaust your legend as an additional cost to play me.' && card.isMainDeck) return const AddCost(XPay.exhaustLegend);
     m = RegExp(r'^As an additional cost to play me, kill an? ((?:[A-Z][a-z]+, )*[A-Z][a-z]+,? or [A-Z][a-z]+) you control\. You may play me to its battlefield\.$').firstMatch(t);
     if (m != null && _unit) {
       final tags = m[1]!.split(RegExp(r',? or |, '));
-      return ExtraCost(killTags: tags, optional: false, toItsBattlefield: true);
+      return AddCost(XPay.kill, tags: tags, optional: false, toItsBattlefield: true);
     }
     return null;
   }

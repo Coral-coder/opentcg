@@ -14,15 +14,6 @@ abstract class GenCostPart extends CostPart {
   String describe();
 }
 
-/// "Recycle N from your trash" / "Recycle a unit from your trash" (CR 417.3).
-class RecycleTrashCost extends GenCostPart {
-  const RecycleTrashCost(this.n, {this.filter});
-  final int n;
-  final Filter? filter;
-  @override
-  String describe() => 'recycle $n from trash${filter == null ? '' : ' (${filter!.describe()})'}';
-}
-
 /// "Kill a friendly unit or gear" as a cost.
 class KillCost extends GenCostPart {
   const KillCost(this.filter);
@@ -259,16 +250,6 @@ class DealAmt extends GenEffect {
   String describe() => 'deal ${amount is N ? (amount as N).n : (amount is GenAmount ? (amount as GenAmount).describe() : 'my Might')} to ${describeTargetGen(target)}';
 }
 
-/// Two units deal damage equal to their Mights to each other (CR 418.6.b.3).
-class Fight extends GenEffect {
-  const Fight(this.a, this.b);
-  final Target a, b;
-  @override
-  List<Target> get targets => [a, b];
-  @override
-  String describe() => '${describeTargetGen(a)} and ${describeTargetGen(b)} fight';
-}
-
 /// "Give … +N {M} this turn" for an amount ("for each", "equal to its Might", "double").
 class GiveMightAmt extends GenEffect {
   const GiveMightAmt(this.amount, this.target, {this.negative = false});
@@ -463,8 +444,8 @@ class Mill extends GenEffect {
 }
 
 /// "Recycle N from your trash" (an effect: as many as possible, CR 417.4).
-class RecycleTrash extends GenEffect {
-  const RecycleTrash(this.n);
+class RecycleFromTrash extends GenEffect {
+  const RecycleFromTrash(this.n);
   final int n;
   @override
   String describe() => 'recycle $n from trash';
@@ -487,8 +468,8 @@ class EachKills extends GenEffect {
 }
 
 /// Play a card from a zone ("play a unit from your trash, ignoring its Energy cost").
-class PlayFrom extends GenEffect {
-  const PlayFrom(this.target, {this.ignoreAll = false, this.payPower = true, this.to = TokenAt.base, this.free = true});
+class PlayCard extends GenEffect {
+  const PlayCard(this.target, {this.ignoreAll = false, this.payPower = true, this.to = TokenAt.base, this.free = true});
   final Target target;
 
   /// Ignoring all costs, or only the Energy cost (Power still due).
@@ -545,17 +526,6 @@ class ReadyAny extends GenEffect {
   List<Target> get targets => [target];
   @override
   String describe() => '${either ? 'ready or exhaust' : (exhaust ? 'exhaust' : 'ready')} ${describeTargetGen(target)}';
-}
-
-/// "If [cond], [yes]. Otherwise, [no]" (also "… instead").
-class IfElse extends GenEffect {
-  const IfElse(this.cond, this.yes, this.no);
-  final Cond cond;
-  final List<Effect> yes, no;
-  @override
-  List<List<Effect>> get nested => [yes, no];
-  @override
-  String describe() => 'if ${describeCondGen(cond)}: ${yes.map(describeEffect).join(', ')}${no.isEmpty ? '' : ' else ${no.map(describeEffect).join(', ')}'}';
 }
 
 /// A triggered ability's condition (CR 383.2.a.1): checked as it triggers, not on resolution.
@@ -1371,9 +1341,11 @@ class CounteredToHand extends GenEffect {
   String describe() => 'the countered card goes to its owner\'s hand';
 }
 
-/// "If you spent {N} or more" on the spell that triggered this (When you play a spell, …).
-class SpentOnSpell extends GenCond {
-  const SpentOnSpell(this.n);
+
+/// "When you play a spell, if you spent {N} or more": on that spell (ir_costs.dart's
+/// [SpentOnSpell] is any spell this turn).
+class SpentOnThisSpell extends GenCond {
+  const SpentOnThisSpell(this.n);
   final int n;
   @override
   String describe() => 'spent ≥ $n on it';

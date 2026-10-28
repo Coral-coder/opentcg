@@ -13,7 +13,6 @@ final _powerTargetsOf = Expando<List<int>>();
 
 /// What the additional cost paid for the card being played takes off its cost (Poppy's {3},
 /// Kraken Hunter's {O} per buff), until it's paid for.
-final _powerPlayDiscount = Expando<({ObjId id, int energy, List<Domain?> power})>();
 
 extension GamePowerRules on Game {
   // -------------------------------------------------------------------------------------------
@@ -166,7 +165,7 @@ extension GamePowerRules on Game {
         case DiscardCost(:final n, :final spell):
           final hand = [for (final h in state.player(p).hand) if (x.allows(card(h).type)) h];
           if (hand.length < n) return spell ? 'No spell to discard' : 'Not enough cards to discard';
-        case EnergyLess() || GenCostPart():
+        case EnergyLess() || RecycleTrash() || GenCostPart():
           break;
       }
     }
@@ -227,7 +226,7 @@ extension GamePowerRules on Game {
           }
           log('${playerName(p)} discards ${pick.map(nameOf).join(', ')}.', player: p, kind: 'discard');
           _genDiscarded(p, pick);
-        case EnergyLess() || GenCostPart():
+        case EnergyLess() || RecycleTrash() || GenCostPart():
           break;
       }
     }
@@ -273,28 +272,42 @@ extension GamePowerRules on Game {
         best ??= (energy: f.energy, power: f.power);
       }
     }
-    if (best == null && o.pw.flowGrantedTurn == state.turn) best = (energy: c.energy, power: _powerOf(c, c.power));
+    if (best == null && o.pw.flowGrantedTurn == state.turn) best = (energy: c.energy, power: List<Domain?>.filled(c.power, c.domains.isEmpty ? null : c.domains.first));
     return best;
   }
 
-  /// The cost [p] pays to play [c] (object [id] if known): Flow from the trash replaces the base
-  /// cost; "I cost … less", "This costs … less", spell cost changes, and "to a minimum of".
-  ({int energy, List<Domain?> power}) _powerCardCost(int p, RCard c, ObjId? id, int energy, List<Domain?> power0) {
+  /// Cost increases of this family (CR 356.3): "Spells cost {1} more" on an opponent's card.
+  ({int energy, List<Domain?> power}) _powerCostMore(int p, RCard c, int energy, List<Domain?> power0) {
     var e = energy;
-    var power = List<Domain?>.of(power0);
-    final flow = id == null ? null : _flowCost(p, id);
-    if (flow != null) {
-      e = flow.energy;
-      power = List.of(flow.power);
-      // Stargazer: "Spells with [Flow] you play from your trash cost {2} less, to a minimum of {1}".
+    final power = List<Domain?>.of(power0);
+    if (c.type == CardType.spell) {
       for (final (src, pas) in _passives()) {
-        if (pas is FlowCostLess && state.obj(src).controller == p) {
-          e -= pas.n;
-          if (e < pas.minEnergy) e = flow.energy < pas.minEnergy ? flow.energy : pas.minEnergy;
+        if (pas is! SpellCostMod || pas.yours != (state.obj(src).controller == p)) continue;
+        if (pas.energy > 0) e += pas.energy;
+        for (var i = 0; i < pas.power; i++) {
+          power.add(null);
         }
       }
     }
-    // The card's own Level / conditional discounts: the largest applies ("… instead").
+    return (energy: e, power: power);
+  }
+
+  /// Discounts of this family (CR 356.4): Stargazer on spells played with Flow ([flowed]); the
+  /// card's own Level / conditional "I cost … less" (the largest applies, "… instead"); spells
+  /// costing less; each "to a minimum of".
+  ({int energy, List<Domain?> power}) _powerCostLess(int p, RCard c, int energy, List<Domain?> power0, {bool flowed = false}) {
+    var e = energy;
+    final power = List<Domain?>.of(power0);
+    if (flowed) {
+      // Stargazer: "Spells with [Flow] you play from your trash cost {2} less, to a minimum of {1}".
+      for (final (src, pas) in _passives()) {
+        if (pas is FlowCostLess && state.obj(src).controller == p) {
+          final floor = e < pas.minEnergy ? e : pas.minEnergy;
+          e -= pas.n;
+          if (e < floor) e = floor;
+        }
+      }
+    }
     var bestE = 0;
     List<Domain?> bestP = const [];
     for (final pas in _cardPassives(p, c)) {
@@ -314,93 +327,18 @@ extension GamePowerRules on Game {
     }
     if (c.type == CardType.spell) {
       for (final (src, pas) in _passives()) {
-        if (pas is! SpellCostMod) continue;
-        final mine = state.obj(src).controller == p;
-        if (pas.yours != mine) continue;
+        if (pas is! SpellCostMod || pas.yours != (state.obj(src).controller == p)) continue;
         if (pas.energy < 0) {
           final floor = e < pas.minEnergy ? e : pas.minEnergy;
           e += pas.energy;
           if (e < floor) e = floor;
-        } else {
-          e += pas.energy;
         }
-        for (var i = 0; i < pas.power.abs(); i++) {
-          if (pas.power > 0) {
-            power.add(null);
-          } else if (power.isNotEmpty) {
-            power.removeAt(power.lastIndexWhere((d) => d == null) >= 0 ? power.lastIndexWhere((d) => d == null) : power.length - 1);
-          }
+        for (var i = 0; i < -pas.power; i++) {
+          if (power.isNotEmpty) power.removeAt(power.lastIndexWhere((d) => d == null) >= 0 ? power.lastIndexWhere((d) => d == null) : power.length - 1);
         }
-      }
-    }
-    final dc = _powerPlayDiscount[this];
-    if (dc != null && dc.id == id) {
-      e -= dc.energy;
-      for (final d in dc.power) {
-        final i = power.indexOf(d);
-        if (i >= 0) power.removeAt(i);
       }
     }
     return (energy: e < 0 ? 0 : e, power: power);
-  }
-
-  /// Additional costs paid in XP or buffs (CR 356.3), asked as [id] is played: whether its cost
-  /// is then ignored and whether one was paid. A discount it gives applies to the payment after.
-  ({bool ignore, bool paid}) _powerExtraCost(int p, ObjId id) {
-    _powerPlayDiscount[this] = null;
-    for (final a in parsed(id).abilities) {
-      if (a is! Static || a.passive is! PowerExtraCost) continue;
-      final x = a.passive as PowerExtraCost;
-      if (x.xp > 0) {
-        final pl = state.player(p);
-        if (pl.pw.xp < x.xp || !askYesNo(p, 'Spend ${x.xp} XP as an additional cost to play ${nameOf(id)}?', source: id)) continue;
-        pl.pw.xp -= x.xp;
-        log('${pl.name} spends ${x.xp} XP to play ${nameOf(id)}.', player: p, card: id, kind: 'xp');
-        if (x.energyLess > 0) _powerPlayDiscount[this] = (id: id, energy: x.energyLess, power: const []);
-        return (ignore: false, paid: true);
-      }
-      final c = card(id);
-      final per = x.powerPerBuff;
-      final max = !x.anyBuffs ? x.buffs : (per == null ? 0 : _powerOf(c, c.power).where((d) => d == per).length);
-      var spent = 0;
-      while (spent < max) {
-        final options = [for (final u in units(player: p)) if (_buffs(u) > 0) u];
-        if (options.isEmpty) break;
-        // Not optional while the card can't be paid for without it.
-        if (per != null) _powerPlayDiscount[this] = (id: id, energy: 0, power: List<Domain?>.filled(spent, per));
-        final must = !_canPayCard(p, c, id: id);
-        _powerPlayDiscount[this] = null;
-        final prompt = per != null ? 'Spend a buff to play ${nameOf(id)} for {${per.letter}} less?${must ? '' : ' (none to stop)'}' : 'Spend a buff to play ${nameOf(id)} without paying its cost?';
-        final pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: prompt, options: options, min: must ? 1 : 0, max: 1, source: id));
-        if (pick.isEmpty) break;
-        _spendBuff(pick.first, p);
-        spent++;
-      }
-      if (spent == 0) continue;
-      if (per != null) _powerPlayDiscount[this] = (id: id, energy: 0, power: List<Domain?>.filled(spent, per));
-      return (ignore: x.ignoreCost, paid: true);
-    }
-    return (ignore: false, paid: false);
-  }
-
-  /// Could [p] afford [id] by paying its XP or buff additional cost (it's ignored or cheaper)?
-  bool _powerExtraMayPay(int p, ObjId id) {
-    for (final a in parsed(id).abilities) {
-      if (a is! Static || a.passive is! PowerExtraCost) continue;
-      final x = a.passive as PowerExtraCost;
-      var buffs = 0;
-      for (final u in units(player: p)) {
-        buffs += _buffs(u);
-      }
-      if (x.xp > 0 ? state.player(p).pw.xp < x.xp : buffs == 0) continue;
-      if (x.ignoreCost) return true;
-      final per = x.powerPerBuff;
-      _powerPlayDiscount[this] = (id: id, energy: x.energyLess, power: per == null ? const [] : List<Domain?>.filled(buffs, per));
-      final ok = _canPayCard(p, card(id), id: id);
-      _powerPlayDiscount[this] = null;
-      if (ok) return true;
-    }
-    return false;
   }
 
   /// Battlefields [p] may also play unit [id] to: occupied ones where an enemy unit is alone, with
@@ -414,48 +352,10 @@ extension GamePowerRules on Game {
     }
   }
 
-  /// What [p] would pay to play card [id] now (the first way they can pay, else the first way):
-  /// Flow from the trash and cost changes included.
-  ({int energy, List<Domain?> power}) playCost(int p, ObjId id) {
-    final c = card(id);
-    final costs = _cardCosts(p, c, id, 0, const []);
-    return costs.where((x) => canPay(p, x.energy, x.power, forSpell: c.type == CardType.spell)).firstOrNull ?? costs.first;
-  }
-
-  bool _canPayReduced(int p, ObjId id, int less) {
-    final c = card(id);
-    return _cardCosts(p, c, null, 0, const []).any((x) => canPay(p, x.energy - less < 0 ? 0 : x.energy - less, x.power));
-  }
-
-  void _payReduced(int p, ObjId id, int less) {
-    final c = card(id);
-    for (final x in _cardCosts(p, c, null, 0, const [])) {
-      final e = x.energy - less < 0 ? 0 : x.energy - less;
-      if (canPay(p, e, x.power)) {
-        _pay(p, e, x.power);
-        return;
-      }
-    }
-  }
-
   bool _controlsEmpowered(int p) {
     final legend = state.player(p).legend;
     if (legend != null && state.obj(legend).pw.empowered > 0) return true;
     return _boardOf(p).any((o) => o.pw.empowered > 0);
-  }
-
-  /// A card about to be played from somewhere other than the hand leaves it: a Flow spell from the
-  /// trash is marked to be banished (CR 829.1.b), and "When you play a card from anywhere other than
-  /// your hand" triggers.
-  void _leaveZoneForPlay(int p, ObjId id) {
-    _powerPlayDiscount[this] = null;
-    final o = state.obj(id);
-    if (o.zone == Zone.trash) {
-      state.player(o.owner).trash.remove(id);
-      o.pw.flowed = true;
-      log('${playerName(p)} plays ${nameOf(id)} from the trash with Flow.', player: p, card: id, kind: 'play');
-      _firePw(On.youPlayNotFromHand, player: p);
-    }
   }
 
   /// A finished spell played with Flow is banished instead (CR 829.1.b). True if it was.
@@ -606,13 +506,9 @@ extension GamePowerRules on Game {
     return false;
   }
 
-  /// Moves this family adds: Flow spells in the trash, battlefield-granted abilities.
+  /// Moves this family adds: battlefield-granted abilities (Flow spells: game/costs.dart).
   List<RMove> _powerCandidates(int seat) {
-    final pl = state.player(seat);
     final out = <RMove>[];
-    for (final id in pl.trash) {
-      if (_flowPlayable(seat, id)) out.add(PlayMove(seat, id));
-    }
     for (final u in units(player: seat)) {
       final o = state.obj(u);
       if (o.loc != base && _bfPassives(o.loc).any((x) => x is GrantXpAbility)) out.add(ActivateMove(seat, u, grantedXpAbility));
@@ -940,25 +836,6 @@ extension GamePowerRules on Game {
     log('${pl.name} burns $done.', player: p, kind: 'info', amount: done);
   }
 
-  /// Plays unit [id] (from a trash) for [p], ignoring its cost; to [p]'s base or a battlefield
-  /// they control (CR 355.2.a), or [toBase].
-  void _playUnitFree(int p, ObjId id, ObjId source, {bool toBase = false}) {
-    final o = state.obj(id);
-    state.player(o.owner).trash.remove(id);
-    var loc = base;
-    if (!toBase) {
-      final options = [base, for (var i = 0; i < state.bfs.length; i++) if (state.bfs[i].controller == p) i];
-      if (options.length > 1) loc = options[ask(Decision(kind: DecisionKind.option, player: p, prompt: 'Play ${nameOf(id)} where?', labels: [for (final l in options) locName(l, p)], source: source)).first];
-    }
-    final passives = [for (final a in parsed(id).abilities) if (a is Static && a.gate == null) a.passive];
-    _enterBoard(id, p, loc, ready: passives.any((x) => x is EntersReady));
-    log('${playerName(p)} plays ${nameOf(id)} from a trash.', player: p, card: id, kind: 'play');
-    _firePlayed(id);
-    _fire(On.youPlayUnit, player: p);
-    _unitPlayed(id, p);
-    _firePw(On.youPlayNotFromHand, player: p);
-  }
-
   void _resolvePower(PowerEffect e, _Ctx ctx) {
     final p = ctx.controller;
     switch (e) {
@@ -1081,12 +958,13 @@ extension GamePowerRules on Game {
         final from = opponentsTrash ? state.other(p) : p;
         final options = [
           for (final id in state.player(from).trash)
-            if (card(id).type == CardType.unit && (maxEnergy == null || card(id).energy <= maxEnergy) && (maxPower == null || card(id).power <= maxPower)) id,
+            if (card(id).type == CardType.unit && (maxEnergy == null || card(id).energy <= maxEnergy) && (maxPower == null || card(id).power <= maxPower) && _xCanPlayNow(p, id, XPlay(effect: true, ignoreAll: true, toBase: !opponentsTrash, elsewhere: true))) id,
         ];
         if (options.isEmpty) return;
         final pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: '${nameOf(ctx.source)}: choose a unit in ${opponentsTrash ? 'their' : 'your'} trash to play', options: options, min: 0, max: 1, source: ctx.source));
         if (pick.isEmpty) return;
-        _playUnitFree(p, pick.first, ctx.source, toBase: !opponentsTrash);
+        // Played as part of this effect, ignoring its cost (game/costs.dart).
+        _playFromHand(p, pick.first, via: XPlay(effect: true, ignoreAll: true, toBase: !opponentsTrash, elsewhere: true));
       case RevealHand(:final payXpDiscard, :final xp):
         final o = state.other(p);
         final hand = state.player(o).hand;
@@ -1183,7 +1061,7 @@ extension GamePowerRules on Game {
         // Only what can be paid for (Energy {N} less) can be chosen to play.
         final options = [
           for (final id in top)
-            if ((card(id).type == CardType.unit || card(id).type == CardType.gear) && RiftboundParser.parse(card(id)).supported && _canPayReduced(p, id, energyLess)) id,
+            if ((card(id).type == CardType.unit || card(id).type == CardType.gear) && _xCanPlayNow(p, id, XPlay(effect: true, reduceEnergy: energyLess, elsewhere: true))) id,
         ];
         final pick = options.isEmpty ? const <int>[] : ask(Decision(kind: DecisionKind.cards, player: p, prompt: '${nameOf(ctx.source)}: choose a unit or gear to banish and play for {$energyLess} less', options: options, min: 0, max: 1, source: ctx.source));
         final rest = [for (final id in top) if (!pick.contains(id)) id];
@@ -1203,24 +1081,8 @@ extension GamePowerRules on Game {
         state.obj(id).zone = Zone.banish;
         state.player(p).banish.add(id);
         _firePw(On.youBanishOwn, player: p);
-        _payReduced(p, id, energyLess);
-        state.player(p).banish.remove(id);
-        var loc = base;
-        if (card(id).type == CardType.unit) {
-          final locs = [base, for (var i = 0; i < state.bfs.length; i++) if (state.bfs[i].controller == p) i];
-          if (locs.length > 1) loc = locs[ask(Decision(kind: DecisionKind.option, player: p, prompt: 'Play ${nameOf(id)} where?', labels: [for (final l in locs) locName(l, p)], source: ctx.source)).first];
-        }
-        final passives = [for (final a in parsed(id).abilities) if (a is Static && a.gate == null) a.passive];
-        final ready = card(id).type == CardType.gear ? !passives.any((x) => x is EntersExhausted) : passives.any((x) => x is EntersReady);
-        _enterBoard(id, p, loc, ready: ready);
-        state.player(p).playedThisTurn++;
-        log('${playerName(p)} plays ${nameOf(id)} from banishment.', player: p, card: id, kind: 'play');
-        _firePlayed(id);
-        if (card(id).type == CardType.unit) {
-          _fire(On.youPlayUnit, player: p);
-          _unitPlayed(id, p);
-        }
-        _firePw(On.youPlayNotFromHand, player: p);
+        // Played as part of this effect, from banishment (game/costs.dart).
+        _playFromHand(p, id, via: XPlay(effect: true, reduceEnergy: energyLess, elsewhere: true));
         if (empowerAfter && askYesNo(p, 'Empower ${nameOf(id)}?', source: ctx.source)) _empower(id, p);
       case GiftMe():
         final o = state.objOrNull(ctx.source);

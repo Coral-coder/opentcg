@@ -610,8 +610,8 @@ extension _General on _Line {
         final prev = r.isEmpty ? null : r.removeLast();
         if (prev is If) {
           r.add(IfElse(prev.cond, prev.effects, e.effects));
-        } else if (prev is IfElse && prev.no.isEmpty) {
-          r.add(IfElse(prev.cond, prev.yes, e.effects));
+        } else if (prev is IfElse && prev.otherwise.isEmpty) {
+          r.add(IfElse(prev.cond, prev.then, e.effects));
         } else {
           return null;
         }
@@ -794,7 +794,7 @@ extension _General on _Line {
       }
     }
     if (mt(r"If you can't, draw (\d+)") != null) return [_IfCant(int.parse(m![1]!))];
-    if (s == 'Play me' && _gs.fromTrash) return [const PlayFrom(SelfAny(), ignoreAll: true)];
+    if (s == 'Play me' && _gs.fromTrash) return [const PlayCard(SelfAny(), ignoreAll: true)];
     // "Choose …" sentences: the choice only; later sentences use it.
     if (mt(r'Choose an opponent') != null) {
       _gs.they = const POpponent();
@@ -1095,7 +1095,7 @@ extension _General on _Line {
     if (lt != null) return lt;
     if (mt(r'Put the top (\d+) cards of your Main Deck into your trash') != null) return [Mill(int.parse(m![1]!))];
     if (mt(r'\[Burn (\d+)\]') != null) return [Mill(int.parse(m![1]!))];
-    if (mt(r'(?:Recycle|recycle) (\d+) from your trash') != null) return [RecycleTrash(int.parse(m![1]!))];
+    if (mt(r'(?:Recycle|recycle) (\d+) from your trash') != null) return [RecycleFromTrash(int.parse(m![1]!))];
     if (mt(r'(?:Recycle|recycle) one of your runes') != null) return [const RecycleRune()];
     // Each player…
     if (mt(r'Each player kills one of their (units|gear)') != null) return [EachKills(Filter(gear: m![1] == 'gear'))];
@@ -1104,7 +1104,7 @@ extension _General on _Line {
     if (mt(r'(?:Play|play) (a unit|a unit from your trash|.+? from your trash), ignoring its (Energy )?cost') != null) {
       final t = _target(m![1]!.contains('trash') ? m![1]! : '${m![1]} from your trash');
       if (t == null || !m![1]!.contains('trash')) return null;
-      return [PlayFrom(t, ignoreAll: m![2] == null)];
+      return [PlayCard(t, ignoreAll: m![2] == null)];
     }
     // Score and win.
     if (mt(r'(?:You|you) win the game') != null) return [const ScoreP(0, PYou(), win: true)];
@@ -1464,7 +1464,7 @@ extension _General on _Line {
     if (mt(r'your other units have total Might (\d+) or more') != null && card.type == CardType.unit) return TotalMightCond(const Filter(side: Side.friendly, other: true), int.parse(m![1]!));
     if (mt(r"there.s an enemy unit alone at that battlefield") != null) return null;
     if (mt(r'you assigned (\d+) or more excess damage(?: to enemy units)?') != null) return CombatCond(excess: int.parse(m![1]!));
-    if (mt(r'you spent \{(\d+)\} or more') != null && _gs.spellTrig) return SpentOnSpell(int.parse(m![1]!));
+    if (mt(r'you spent \{(\d+)\} or more') != null && _gs.spellTrig) return SpentOnThisSpell(int.parse(m![1]!));
     if (mt(r'there is a ready enemy unit here') != null && _unitOrBf) return const CountCond(Filter(side: Side.enemy, exhausted: false, where: Where.here), CmpOp.ge, 1);
     if (mt(r'you control fewer runes than an opponent') != null) return const StatCond(PStat.fewerRunesThanOpp, CmpOp.ge, 1);
     final o = op('');
@@ -1922,16 +1922,11 @@ extension _General on _Line {
       return true;
     }
     if (mt(r'Recycle (\d+) from your trash') != null) {
-      out.add(RecycleTrashCost(int.parse(m![1]!)));
+      out.add(RecycleTrash(int.parse(m![1]!)));
       return true;
     }
     if (mt(r'Recycle a unit from your trash') != null) {
-      out.add(
-        const RecycleTrashCost(
-          1,
-          filter: Filter(zone: FZone.trash, side: Side.friendly),
-        ),
-      );
+      out.add(const RecycleTrash(1, unit: true));
       return true;
     }
     if (mt(r'Kill a friendly unit or gear') != null) {
