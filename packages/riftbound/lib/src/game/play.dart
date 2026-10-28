@@ -1,5 +1,17 @@
 part of 'game.dart';
 
+/// What a payment is for, for resources that can only be spent on some things ("Use only to
+/// play spells", "Spend only on units", "only on gear"): a card of that type or its abilities.
+enum PayFor { other, spell, unit, gear }
+
+/// The [PayFor] of playing a card of [type] or using its abilities.
+PayFor payFor(CardType type) => switch (type) {
+      CardType.spell => PayFor.spell,
+      CardType.unit => PayFor.unit,
+      CardType.gear => PayFor.gear,
+      _ => PayFor.other,
+    };
+
 /// Playing cards (CR 349–359), activating abilities (CR 376), the Standard Move (CR 144),
 /// paying costs with runes (CR 160–168), triggered abilities and the chain (CR 327–340).
 extension GamePlay on Game {
@@ -29,13 +41,13 @@ extension GamePlay on Game {
   // -------------------------------------------------------------------------------------------
 
   /// Can [p] pay [energy] Energy and the Power in [power] (null = any domain) from their pool
-  /// and runes? Runes exhaust for Energy and recycle for Power of their domain; a rune can do both.
-  bool canPay(int p, int energy, List<Domain?> power, {bool forSpell = false, bool forGear = false}) => _payPlanWithAdds(p, energy, power, forSpell: forSpell, forGear: forGear) != null;
+  /// (including resources only spendable on [use]) and runes? Runes exhaust for Energy and recycle for Power of their domain; a rune can do both.
+  bool canPay(int p, int energy, List<Domain?> power, {PayFor use = PayFor.other}) => _payPlanWithAdds(p, energy, power, use: use) != null;
 
   /// Abilities [p] could use to add resources while paying (CR 204.4.b.1, 357.1.a): Reaction
   /// abilities that only add, cost nothing but exhausting (or killing) their source, and whose
   /// conditions hold. In a stable order.
-  List<(ObjId, int, AddRes)> _addSources(int p, {required bool forSpell, bool forGear = false}) {
+  List<(ObjId, int, AddRes)> _addSources(int p, {required PayFor use}) {
     final out = <(ObjId, int, AddRes)>[];
     final pl = state.player(p);
     for (final src in [?pl.legend, for (final o in _boardOf(p)) o.id]) {
@@ -49,20 +61,20 @@ extension GamePlay on Game {
         if (a.oncePerTurn && o.usedThisTurn.contains(i)) continue;
         if (a.legion && pl.playedThisTurn < 1) continue;
         final add = a.effects.first as AddRes;
-        if (add.spellsOnly && !forSpell) continue;
-        if (add is Ws2PowerToEnergy || (add is Ws2RestrictedAdd && add.gear && !forGear)) continue;
-        out.add((src, i, add));
+        if (add.spellsOnly && use != PayFor.spell) continue;
+        if (add is Ws2PowerToEnergy || (add is Ws2RestrictedAdd && add.gear && use != PayFor.gear)) continue;
+        out.add((src, i, _w3AddRes(src, add)));
       }
     }
     return out;
   }
 
   /// A payment plan that may also use resource abilities, fewest first.
-  ({List<ObjId> exhaust, List<ObjId> recycle, int poolEnergy, List<int> poolPower, int poolAny, List<(ObjId, int, AddRes)> adds})? _payPlanWithAdds(int p, int energy, List<Domain?> power, {bool forSpell = false, bool forGear = false}) {
-    final sources = _addSources(p, forSpell: forSpell, forGear: forGear);
+  ({List<ObjId> exhaust, List<ObjId> recycle, int poolEnergy, List<int> poolPower, int poolAny, List<(ObjId, int, AddRes)> adds})? _payPlanWithAdds(int p, int energy, List<Domain?> power, {PayFor use = PayFor.other}) {
+    final sources = _addSources(p, use: use);
     for (var k = 0; k <= sources.length; k++) {
       final used = sources.take(k).toList();
-      var (e, a) = _ws2Restricted(p, forSpell: forSpell, forGear: forGear);
+      var (e, a) = _ws2Restricted(p, use);
       final dp = List.filled(6, 0);
       for (final (_, _, add) in used) {
         e += add.energy;
@@ -71,7 +83,7 @@ extension GamePlay on Game {
           dp[d.index]++;
         }
       }
-      final plan = _payPlan(p, energy, power, extraEnergy: e, extraAny: a, extraPower: dp);
+      final plan = _payPlan(p, energy, power, extraEnergy: e + (use == PayFor.unit ? _w3UnitPool(p) : 0), extraAny: a, extraPower: dp);
       if (plan != null) return (exhaust: plan.exhaust, recycle: plan.recycle, poolEnergy: plan.poolEnergy, poolPower: plan.poolPower, poolAny: plan.poolAny, adds: used);
     }
     return null;
@@ -143,11 +155,11 @@ extension GamePlay on Game {
     return (exhaust: exhaust, recycle: recycle, poolEnergy: poolE, poolPower: poolP, poolAny: poolA);
   }
 
-  void _pay(int p, int energy, List<Domain?> power, {bool forSpell = false, bool forGear = false}) {
-    final plan = _payPlanWithAdds(p, energy, power, forSpell: forSpell, forGear: forGear);
+  void _pay(int p, int energy, List<Domain?> power, {PayFor use = PayFor.other}) {
+    final plan = _payPlanWithAdds(p, energy, power, use: use);
     if (plan == null) throw RiftboundError('Not enough runes to pay');
     final pl = state.player(p);
-    final (keepE, keepA) = _ws2AfterPay(p, plan.adds, plan.poolEnergy, plan.poolAny, forSpell: forSpell, forGear: forGear);
+    final (keepE, keepA) = _ws2AfterPay(p, plan.adds, plan.poolEnergy, plan.poolAny, use);
     for (final (src, i, _) in plan.adds) {
       final a = parsed(src).abilities[i] as Activated;
       state.obj(src).usedThisTurn.add(i);
@@ -155,7 +167,7 @@ extension GamePlay on Game {
       if (a.cost.exhaust) state.obj(src).exhausted = true;
       if (a.cost.killMe) _kill(src);
     }
-    pl.energyPool = plan.poolEnergy - keepE;
+    pl.energyPool = use == PayFor.unit ? _w3SettleUnitPool(p, pl.energyPool, plan.adds.fold(0, (s, x) => s + x.$3.energy), plan.poolEnergy) : plan.poolEnergy - keepE;
     pl.powerPool = plan.poolPower;
     pl.anyPool = plan.poolAny - keepA;
     for (final r in plan.exhaust) {
@@ -194,8 +206,10 @@ extension GamePlay on Game {
   /// trash with Flow or an alternative cost, or — with [via] — as part of an effect, from
   /// elsewhere, or with its cost replaced or ignored. The cost is worked out in one place,
   /// game/costs.dart (CR 356).
-  void _playFromHand(int p, ObjId id, {XPlay? via}) {
-    final pl = state.player(p);
+  /// The first checks of playing [id] (where it's played from, support, timing, whether it can be
+  /// paid for), which only read the state; throws the reason it can't be played. [whyNot] runs these on the game itself
+  /// before trying the play on a copy, since most cards fail here (Reactions-only windows).
+  ({XPlay x, int? fd, bool ambushOnly}) _playStart(int p, ObjId id, {XPlay? via}) {
     final o = state.objOrNull(id);
     if (o == null) throw RiftboundError('That card isn’t in your hand');
     final x = via ?? _xPlayFromMove(p, id);
@@ -203,7 +217,6 @@ extension GamePlay on Game {
     final parsedCard = parsed(id);
     if (!parsedCard.supported) throw RiftboundError('${c.name} isn’t supported yet');
     if (!c.isMainDeck) throw RiftboundError('That can’t be played');
-    final eqQuickDraw = _eqGrantedQuickDraw(p, id);
     // A card hidden facedown at a battlefield (CR 811): played as a Reaction, ignoring its own
     // cost, to that battlefield and choosing there.
     final fd = x.facedown >= 0 ? x.facedown : null;
@@ -222,6 +235,16 @@ extension GamePlay on Game {
     final gp = _genPlayProblem(p, id);
     if (gp != null) throw RiftboundError(gp);
     if (!_xCanPay(p, id, x)) throw RiftboundError('Not enough runes (${_costLabel(c)})');
+    return (x: x, fd: fd, ambushOnly: ambushOnly);
+  }
+
+  void _playFromHand(int p, ObjId id, {XPlay? via}) {
+    final pl = state.player(p);
+    final (:x, :fd, :ambushOnly) = _playStart(p, id, via: via);
+    final o = state.obj(id);
+    final c = card(id);
+    final parsedCard = parsed(id);
+    final eqQuickDraw = _eqGrantedQuickDraw(p, id);
     // Make relevant choices (CR 355): optional, additional and alternative costs first (CR
     // 355.1.a). Known from here on: "If you paid the additional cost, choose … instead".
     if (!x.noExtras) _xChooseCosts(p, id, x);
@@ -253,10 +276,12 @@ extension GamePlay on Game {
       }
     }
     var repeats = 0;
-    for (final a in x.noExtras ? const <RepeatCost>[] : parsedCard.abilities.whereType<RepeatCost>()) {
+    final w3Repeats = <RepeatCost>[];
+    for (final a in x.noExtras ? const <RepeatCost>[] : [...parsedCard.abilities.whereType<RepeatCost>(), ..._w3GrantedRepeats(p, id)]) {
       x.optional.add((_xRepeatEnergy(p, a.cost), a.cost.power));
-      if (_xPayable(p, id, x) != null && askYesNo(p, 'Pay ${a.cost.describe()} to Repeat ${c.name}?', source: id)) {
+      if (_xPayable(p, id, x) != null && _w3RepeatExtraOk(p, id, a) && askYesNo(p, 'Pay ${a.cost.describe()} to Repeat ${c.name}?', source: id)) {
         repeats++;
+        w3Repeats.add(a);
       } else {
         x.optional.removeLast();
       }
@@ -275,7 +300,9 @@ extension GamePlay on Game {
     final spent = _xPay(p, id, x, mandatory: extraP);
     _genSpent(p, cost.$1 + cost.$2.length, power: cost.$2.length);
     _xLeaveOrigin(p, id, x);
+    _w3PayRepeatExtras(p, id, w3Repeats);
     pl.playedThisTurn++;
+    _w3NotePlayed(p, id);
     state.marks
       ..remove('t:fd:$id')
       ..remove('t:fdplay:$id')
@@ -301,11 +328,13 @@ extension GamePlay on Game {
     final ready = c.type == CardType.gear ? !passives.any((x) => x is EntersExhausted) : (accelerate || x.entersReady || passives.any((x) => x is EntersReady));
     _enterBoard(id, p, loc, ready: _genEntersReady(p, id, ready));
     log('${pl.name} plays ${c.name}${loc == base ? '' : ' to ${locName(loc, p)}'}.', player: p, card: id, kind: 'play');
+    _w3AsPlayed(p, id);
     _firePlayed(id);
     if (fd != null) _hPlayedFromHidden(id, p);
     if (c.type == CardType.unit) {
       _fire(On.youPlayUnit, player: p);
       _unitPlayed(id, p);
+      _w3UnitPlayed(id, p);
     }
     _xAfterPlay(p, id, x, spent);
     _genEvent(GEv.played, player: p, obj: id);
@@ -323,10 +352,11 @@ extension GamePlay on Game {
       ..zone = Zone.board
       ..controller = controller
       ..loc = card(id).type == CardType.gear ? base : loc
-      ..exhausted = !(ready || _hEntersReady(controller, id) || _enterReady(controller, id))
+      ..exhausted = !(ready || _hEntersReady(controller, id) || _enterReady(controller, id) || _w3EntersReady(id, loc))
       ..enteredTurn = state.turn;
     if (o.loc != base) _contest(o.loc, controller);
     _genEntered(id);
+    _w3Entered(id, controller, o.loc, !o.exhausted);
   }
 
   /// "When you play me" and Vision (CR 817) triggers of a permanent that just entered.
@@ -348,33 +378,50 @@ extension GamePlay on Game {
   // Activated abilities (CR 376)
   // -------------------------------------------------------------------------------------------
 
+  /// The first checks of activating ability [index] of [src] (control, timing, once per turn,
+  /// exhausted), which only read the state: the reason it can't be activated, or null if they
+  /// pass (or the ability takes another path: granted and Equipment abilities). [whyNot] runs
+  /// these on the game itself before trying the activation on a copy.
+  String? _activateEarlyProblem(int p, ObjId src, int index) {
+    if (index == grantedXpAbility) return null;
+    final o = state.objOrNull(src);
+    if (o == null || o.controller != p || !(o.zone == Zone.board || (o.zone == Zone.legend))) return 'You don’t control that';
+    if (index >= ws2BorrowBase) return _ws2BorrowedEarlyProblem(p, src, index);
+    if (index >= 1000) return null;
+    if (_eqInactive(src)) return '${nameOf(src)} is attached: its own text is inactive';
+    final abs = parsed(src).abilities;
+    if (index < 0 || index >= abs.length || abs[index] is! Activated) return 'No such ability';
+    if (!parsed(src).supported) return '${nameOf(src)} isn’t supported yet';
+    final a = abs[index] as Activated;
+    if (a is EqEquip || a is EqActivated) return null;
+    if (a.legion && state.player(p).playedThisTurn < 1) return 'Legion: play another card this turn first';
+    final isAdd = a.adds;
+    final t = isAdd ? null : _timingProblem(p, a.timing);
+    if (t != null) return t;
+    if (isAdd && a.timing != Timing.reaction && _timingProblem(p, Timing.normal) != null) return 'Not now';
+    if (a.oncePerTurn && o.usedThisTurn.contains(index)) return 'Only once per turn';
+    if (a.cost.exhaust && o.exhausted) return '${nameOf(src)} is exhausted';
+    return null;
+  }
+
   void _activate(int p, ObjId src, int index) {
     if (index == grantedXpAbility) {
       _activateGranted(p, src);
       return;
     }
-    final o = state.objOrNull(src);
-    if (o == null || o.controller != p || !(o.zone == Zone.board || (o.zone == Zone.legend))) throw RiftboundError('You don’t control that');
+    final early = _activateEarlyProblem(p, src, index);
+    if (early != null) throw RiftboundError(early);
     if (index >= ws2BorrowBase) return _ws2ActivateBorrowed(p, src, index);
+    final o = state.obj(src);
     if (index >= 1000) return _eqActivateGranted(p, src, index);
-    if (_eqInactive(src)) throw RiftboundError('${nameOf(src)} is attached: its own text is inactive');
-    final abs = parsed(src).abilities;
-    if (index < 0 || index >= abs.length || abs[index] is! Activated) throw RiftboundError('No such ability');
-    if (!parsed(src).supported) throw RiftboundError('${nameOf(src)} isn’t supported yet');
-    final a = abs[index] as Activated;
+    final a = parsed(src).abilities[index] as Activated;
     if (a is EqEquip || a is EqActivated) return _eqActivate(p, src, index, a);
-    if (a.legion && state.player(p).playedThisTurn < 1) throw RiftboundError('Legion: play another card this turn first');
     final isAdd = a.adds;
-    final t = isAdd ? null : _timingProblem(p, a.timing);
-    if (t != null) throw RiftboundError(t);
-    if (isAdd && a.timing != Timing.reaction && _timingProblem(p, Timing.normal) != null) throw RiftboundError('Not now');
-    if (a.oncePerTurn && o.usedThisTurn.contains(index)) throw RiftboundError('Only once per turn');
-    if (a.cost.exhaust && o.exhausted) throw RiftboundError('${nameOf(src)} is exhausted');
     final problem = _powerActivateProblem(p, src, index, a) ?? _xCostProblem(p, src, a.cost);
     if (problem != null) throw RiftboundError(problem);
     final ac = _activationCost(p, src, a);
     final energy = _xAbilityEnergy(p, src, a, ac.energy);
-    if (!canPay(p, energy, ac.power, forGear: card(src).type == CardType.gear)) throw RiftboundError('Not enough runes (${a.cost.describe()})');
+    if (!canPay(p, energy, ac.power, use: payFor(card(src).type))) throw RiftboundError('Not enough runes (${a.cost.describe()})');
     final gx = _genActivateProblem(a, src, p);
     if (gx != null) throw RiftboundError(gx);
     final targets = _chooseTargets(a.effects, p, src, o.loc);
@@ -386,7 +433,7 @@ extension GamePlay on Game {
         }
       }
     }
-    _pay(p, energy, [...ac.power, ...extraP], forGear: card(src).type == CardType.gear);
+    _pay(p, energy, [...ac.power, ...extraP], use: payFor(card(src).type));
     _genSpent(p, energy + ac.power.length + extraP.length, power: ac.power.length + extraP.length);
     _powerPayExtra(p, src, a);
     _xPayCostExtra(p, src, a);
@@ -446,6 +493,7 @@ extension GamePlay on Game {
       _eqQueueAppended(u, (t) => t.on.on == On.move && (!t.on.moveToBattlefield || to != base));
     }
     _genMoved(moving, from, to, byPlayer);
+    _w3Moved(moving, from, to);
   }
 
   /// Contested status (CR 190.3.a).
@@ -645,7 +693,7 @@ extension GamePlay on Game {
   void _kill(ObjId id) {
     final o = state.obj(id);
     if (o.zone != Zone.board) return;
-    if (_eqDieInstead(id) || _hSaved(id) || _savedFromDeath(id) || _genReplaceDeath(id)) return;
+    if (_eqDieInstead(id) || _hSaved(id) || _savedFromDeath(id) || _genReplaceDeath(id) || _w3SaveFromDeath(id)) return;
     _xOnKill(o);
     final abs = _eqInactive(id) ? const <Ability>[] : parsed(id).abilities;
     for (var i = 0; i < abs.length; i++) {
@@ -661,9 +709,11 @@ extension GamePlay on Game {
     _unitDies(id);
     _leaveBoard(id, toHand: false);
     _genDied(id);
+    _w3Died(id);
   }
 
   void _leaveBoard(ObjId id, {required bool toHand}) {
+    if (toHand) _w3ReturnedToHand(id);
     final o = state.obj(id);
     final c = card(id);
     _eqLeaving(id);

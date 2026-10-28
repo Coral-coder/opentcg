@@ -123,6 +123,8 @@ extension GameEffects on Game {
             for (final t in e.targets) {
               pick(e, t, mayDecline: mayDecline);
             }
+          case W3Effect():
+            _w3Choose(e, p, source, loc, out, set, optional: optional || mayDecline);
           case XEffect():
             _xChooseFor(e, p, source, loc, optional || mayDecline, set, (e, t, exclude) => pick(e, t, mayDecline: mayDecline, exclude: exclude), (es) => walk(es, mayDecline: mayDecline), () => List.of(chosenNow), (slot, id) => _xAllowed(out, slot + offset, id));
           default:
@@ -143,6 +145,7 @@ extension GameEffects on Game {
       walk(effects);
     }
     _genChosen(out, p, source);
+    _w3Chosen(out, p, source);
     return out;
   }
 
@@ -161,6 +164,10 @@ extension GameEffects on Game {
       }
       if (e is GenEffect) {
         if (_genMissing(e, targets)) return true;
+        continue;
+      }
+      if (e is W3Effect) {
+        if (_w3Missing(e, targets)) return true;
         continue;
       }
       final t0 = _targetOf(e);
@@ -214,13 +221,14 @@ extension GameEffects on Game {
         final id = ctx.targets[slot];
         if (id < 0) return const [];
         _powerTargetsOf[this] = ctx.targets;
-        return matches(filter, id, controller: ctx.controller, source: ctx.source, here: ctx.loc) && _eqChoosable(t, id, ctx.targets) ? [id] : const [];
+        return matches(filter, id, controller: ctx.controller, source: ctx.source, here: ctx.loc, slots: ctx.targets) && _eqChoosable(t, id, ctx.targets) ? [id] : const [];
       case Chosen(:final slot):
         if (slot >= ctx.targets.length) return const [];
         final id = ctx.targets[slot];
         return id >= 0 && state.objOrNull(id)?.zone == Zone.board ? [id] : const [];
       case Each(:final filter):
-        return matching(filter, controller: ctx.controller, source: ctx.source, here: ctx.loc);
+        // "There" may name a battlefield or unit chosen earlier in this ability (CR 355.3).
+        return matching(filter, controller: ctx.controller, source: ctx.source, here: ctx.loc, slots: ctx.targets);
       case EventUnit():
         final id = ctx.event;
         return id >= 0 && state.objOrNull(id)?.zone == Zone.board ? [id] : const [];
@@ -370,7 +378,8 @@ extension GameEffects on Game {
         final loc = _hTokenLoc(ctx) ?? (here && src != null && src.zone == Zone.board ? src.loc : base);
         for (var i = 0; i < count; i++) {
           final id = _newObj(token, p, Zone.board);
-          _enterBoard(id, p, loc, ready: ready || db[token]!.type == CardType.gear);
+          // [ready] is the text's: "Play a Gold gear token exhausted" plays it exhausted.
+          _enterBoard(id, p, loc, ready: ready);
           _eqTokenPlayed(id, p);
           _hs.lastMade = id;
         }
@@ -406,8 +415,9 @@ extension GameEffects on Game {
       case Ws2PowerToEnergy() || Ws2RestrictedAdd():
         _ws2ResolveAdd(e as AddRes, ctx);
       case AddRes(:final energy, :final anyPower, :final power):
+        if (e is W3UnitAdd) return _w3AddUnitEnergy(p, energy);
         final pl = state.player(p);
-        pl.energyPool += energy;
+        pl.energyPool += energy + _w3GoldExtra(ctx.source);
         pl.anyPool += anyPower;
         for (final d in power) {
           pl.powerPool[d.index]++;
@@ -441,6 +451,8 @@ extension GameEffects on Game {
         _genResolve(e, ctx);
       case PowerEffect():
         _resolvePower(e, ctx);
+      case W3Effect():
+        _w3Resolve(e, ctx);
     }
   }
 
@@ -452,6 +464,7 @@ extension GameEffects on Game {
         PowerCond() => _powerCondEval(c, ctx),
         HCond() => _hCond(c, ctx),
         XCond() => _xCondNow(ctx.controller, c, source: ctx.source),
+        W3Cond() => _w3Cond(c, ctx),
       };
 
   String _mayPrompt(List<Effect> effects) => effects.map(describeEffect).join(', then ');

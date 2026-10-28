@@ -177,6 +177,10 @@ void main() {
       g.apply(PlayMove(0, spinner));
       expect(g.state.obj(spinner).loc, 0);
       passAll(g);
+      // The attacker chooses which defender takes lethal damage first (CR 467.2.c).
+      while (g.pending != null) {
+        answer(g, [g.pending!.decision.options.first]);
+      }
       expect(g.state.obj(att).zone, Zone.trash, reason: '3 + 3 Might against 4');
       expect(g.state.obj(def).zone == Zone.board || g.state.obj(spinner).zone == Zone.board, isTrue);
     });

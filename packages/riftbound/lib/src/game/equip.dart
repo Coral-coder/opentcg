@@ -92,9 +92,15 @@ extension GameEquip on Game {
 
   /// Passive abilities units have from attached cards, with the unit as their source.
   Iterable<(ObjId, Passive)> _eqPassives() sync* {
+    // The units something on the board is attached to, found in one pass.
+    final carriers = <ObjId>{
+      for (final g in state.objects.values)
+        if (g.zone == Zone.board && g.eq.attachedTo >= 0) g.eq.attachedTo,
+    };
+    if (carriers.isEmpty) return;
     for (final o in state.objects.values) {
+      if (!carriers.contains(o.id)) continue;
       if (o.zone != Zone.board || o.eq.attachedTo >= 0 || card(o.id).type != CardType.unit) continue;
-      if (!state.objects.values.any((g) => g.zone == Zone.board && g.eq.attachedTo == o.id)) continue;
       for (final (_, _, a, _) in _eqAppended(o.id)) {
         if (a is Static) yield (o.id, a.passive);
       }
@@ -400,10 +406,10 @@ extension GameEquip on Game {
     var energy = _xAbilityEnergy(p, src, a, ac.energy);
     if (eqc != null && eqc.lessByTargetMight && targets.isNotEmpty && targets[0] >= 0) energy = energy - mightUsed(targets[0]) < 0 ? 0 : energy - mightUsed(targets[0]);
     final power = <Domain?>[...ac.power, ..._xDeflect(p, src, targets)];
-    final gear = card(src).type == CardType.gear;
-    if (!canPay(p, energy, power, forGear: gear)) throw RiftboundError('Not enough runes (${c.describe()})');
+    final use = payFor(card(src).type);
+    if (!canPay(p, energy, power, use: use)) throw RiftboundError('Not enough runes (${c.describe()})');
     _eqPayExtraCost(p, src, c);
-    _pay(p, energy, power, forGear: gear);
+    _pay(p, energy, power, use: use);
     if (c.exhaust) o.exhausted = true;
     o.usedThisTurn.add(index);
     final loc = o.loc;

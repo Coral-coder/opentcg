@@ -254,9 +254,9 @@ void main() {
       final ornn = g.addCard('Ornn, Fire Below the Mountain', 0, zone: Zone.legend);
       g.apply(ActivateMove(0, ornn, 0));
       expect(g.state.player(0).anyPool, 0, reason: 'restricted, held apart');
-      expect(g.canPay(0, 0, const [null], forGear: true), isTrue);
+      expect(g.canPay(0, 0, const [null], use: PayFor.gear), isTrue);
       expect(g.canPay(0, 0, const [null]), isFalse);
-      expect(g.canPay(0, 0, const [null], forSpell: true), isFalse);
+      expect(g.canPay(0, 0, const [null], use: PayFor.spell), isFalse);
     });
   });
 
@@ -393,6 +393,21 @@ void main() {
       final channelled = g.state.player(0).runes.where((r) => g.card(r).name == 'Mind Rune').toList();
       expect(channelled.length, 1);
       expect(g.state.obj(channelled.single).exhausted, isTrue);
+    });
+
+    test('Sivir, Battle Mistress readies when an enemy unit dies, not a friendly one (CR 382)', () {
+      // The dying unit's controller is the event's player: an enemy death is the opponent's.
+      for (final enemy in [true, false]) {
+        final g = emptyGame();
+        final sivir = put(g, 'Sivir, Battle Mistress', 0, exhausted: true);
+        final victim = put(g, 'Shipyard Skulker', enemy ? 1 : 0, loc: 1);
+        g.addRunes(0, Domain.order, 7);
+        g.apply(PlayMove(0, g.addCard('Blast of Power', 0)));
+        if (g.pending != null) answer(g, [victim]);
+        passAll(g);
+        expect(g.state.obj(victim).zone, Zone.trash);
+        expect(g.state.obj(sivir).exhausted, !enemy, reason: 'enemy: $enemy');
+      }
     });
 
     test('Ravenbloom Prefect may banish itself to banish a gear an opponent plays', () {

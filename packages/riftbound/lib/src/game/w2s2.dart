@@ -479,24 +479,33 @@ extension GameWs2 on Game {
 
   /// Activates a borrowed ability, as [GamePlay._activate] does a printed one (CR 376): "me" and
   /// its {E} are Heimerdinger's.
-  void _ws2ActivateBorrowed(int p, ObjId src, int index) {
+  /// The read-only checks on using borrowed ability [index] of [src] (CR 376), from
+  /// [_activateEarlyProblem].
+  String? _ws2BorrowedEarlyProblem(int p, ObjId src, int index) {
     final list = _ws2Borrowed(src);
     final k = index - ws2BorrowBase;
-    if (k < 0 || k >= list.length) throw RiftboundError('No such ability');
-    final (key, i, a) = list[k];
+    if (k >= list.length) return 'No such ability';
+    final a = list[k].$3;
     final o = state.obj(src);
-    if (a.legion && state.player(p).playedThisTurn < 1) throw RiftboundError('Legion: play another card this turn first');
+    if (a.legion && state.player(p).playedThisTurn < 1) return 'Legion: play another card this turn first';
     final isAdd = a.adds;
     final t = isAdd ? null : _timingProblem(p, a.timing);
-    if (t != null) throw RiftboundError(t);
-    if (isAdd && a.timing != Timing.reaction && _timingProblem(p, Timing.normal) != null) throw RiftboundError('Not now');
-    if (a.oncePerTurn && o.usedThisTurn.contains(index)) throw RiftboundError('Only once per turn');
-    if (a.cost.exhaust && o.exhausted) throw RiftboundError('${nameOf(src)} is exhausted');
+    if (t != null) return t;
+    if (isAdd && a.timing != Timing.reaction && _timingProblem(p, Timing.normal) != null) return 'Not now';
+    if (a.oncePerTurn && o.usedThisTurn.contains(index)) return 'Only once per turn';
+    if (a.cost.exhaust && o.exhausted) return '${nameOf(src)} is exhausted';
+    return null;
+  }
+
+  /// Uses borrowed ability [index] of [src], once [_ws2BorrowedEarlyProblem] has passed.
+  void _ws2ActivateBorrowed(int p, ObjId src, int index) {
+    final (key, i, a) = _ws2Borrowed(src)[index - ws2BorrowBase];
+    final o = state.obj(src);
     final problem = _powerActivateProblem(p, src, index, a) ?? _xCostProblem(p, src, a.cost) ?? _genActivateProblem(a, src, p);
     if (problem != null) throw RiftboundError(problem);
     final ac = _activationCost(p, src, a);
     final energy = _xAbilityEnergy(p, src, a, ac.energy);
-    if (!canPay(p, energy, ac.power)) throw RiftboundError('Not enough runes (${a.cost.describe()})');
+    if (!canPay(p, energy, ac.power, use: PayFor.unit)) throw RiftboundError('Not enough runes (${a.cost.describe()})');
     final targets = _chooseTargets(a.effects, p, src, o.loc);
     final extraP = <Domain?>[];
     for (final tg in targets) {
@@ -506,7 +515,7 @@ extension GameWs2 on Game {
         }
       }
     }
-    _pay(p, energy, [...ac.power, ...extraP]);
+    _pay(p, energy, [...ac.power, ...extraP], use: PayFor.unit);
     _genSpent(p, energy + ac.power.length + extraP.length, power: ac.power.length + extraP.length);
     _powerPayExtra(p, src, a);
     _xPayCostExtra(p, src, a);
@@ -516,7 +525,7 @@ extension GameWs2 on Game {
     final item = ChainItem(id: state.nextChainId++, source: src, card: key, ability: i, controller: p, targets: targets, loc: o.loc);
     if (a.cost.killMe) _kill(src);
     log('${playerName(p)} uses ${nameOf(src)} (${db[key]!.name}’s ability).', player: p, card: src, kind: 'ability');
-    if (isAdd) {
+    if (a.adds) {
       _resolveItem(item);
       return;
     }
@@ -551,12 +560,12 @@ extension GameWs2 on Game {
   // -------------------------------------------------------------------------------------------
 
   /// Restricted Energy and {A} [p] may spend on this payment.
-  (int, int) _ws2Restricted(int p, {required bool forSpell, required bool forGear}) => (forSpell ? state.marks['t:ws2pool:s:$p'] ?? 0 : 0, forGear ? state.marks['t:ws2pool:g:$p'] ?? 0 : 0);
+  (int, int) _ws2Restricted(int p, PayFor use) => (use == PayFor.spell ? state.marks['t:ws2pool:s:$p'] ?? 0 : 0, use == PayFor.gear ? state.marks['t:ws2pool:g:$p'] ?? 0 : 0);
 
   /// After a payment that could use restricted resources: they're spent first; what's left of
   /// them stays restricted. Returns how much of the remaining pool ([leftE], [leftA]) is.
-  (int, int) _ws2AfterPay(int p, List<(ObjId, int, AddRes)> adds, int leftE, int leftA, {required bool forSpell, required bool forGear}) {
-    final (re, ra) = _ws2Restricted(p, forSpell: forSpell, forGear: forGear);
+  (int, int) _ws2AfterPay(int p, List<(ObjId, int, AddRes)> adds, int leftE, int leftA, PayFor use) {
+    final (re, ra) = _ws2Restricted(p, use);
     if (re == 0 && ra == 0) return (0, 0);
     final pl = state.player(p);
     var addE = 0, addA = 0;
@@ -568,8 +577,8 @@ extension GameWs2 on Game {
     final usedA = pl.anyPool + ra + addA - leftA;
     final keepE = re - usedE > 0 ? re - usedE : 0;
     final keepA = ra - usedA > 0 ? ra - usedA : 0;
-    if (forSpell) state.marks['t:ws2pool:s:$p'] = keepE;
-    if (forGear) state.marks['t:ws2pool:g:$p'] = keepA;
+    if (use == PayFor.spell) state.marks['t:ws2pool:s:$p'] = keepE;
+    if (use == PayFor.gear) state.marks['t:ws2pool:g:$p'] = keepA;
     return (keepE, keepA);
   }
 

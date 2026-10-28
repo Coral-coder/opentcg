@@ -38,7 +38,9 @@ extension GameQuery on Game {
 
   /// A keyword's value on an object: printed plus given this turn (CR 801.3); Assault, Shield and
   /// Deflect sum (CR 807.2, 809.2, 814.2).
-  int _kw(ObjId id, Kw k) {
+  int _kw(ObjId id, Kw k) => _memoPassives(() => _kwOf(id, k));
+
+  int _kwOf(ObjId id, Kw k) {
     var n = (_eqInactive(id) ? 0 : parsed(id).kw(k)) + (state.obj(id).kwMod[k.index] ?? 0) + _eqKw(id, k);
     if (state.obj(id).zone == Zone.board) {
       for (final (src, passive) in _passives()) {
@@ -53,7 +55,21 @@ extension GameQuery on Game {
   }
 
   /// Passive abilities in effect: those of permanents on the board and of legends (CR 363).
-  Iterable<(ObjId, Passive)> _passives() sync* {
+  Iterable<(ObjId, Passive)> _passives() => _passMemo ?? _scanPassives();
+
+  /// Runs [f], a query that doesn't change the state, scanning the passives once for all of it
+  /// rather than once per hook (Might and keyword values consult them several times each).
+  T _memoPassives<T>(T Function() f) {
+    if (_passMemo != null) return f();
+    _passMemo = _scanPassives().toList();
+    try {
+      return f();
+    } finally {
+      _passMemo = null;
+    }
+  }
+
+  Iterable<(ObjId, Passive)> _scanPassives() sync* {
     for (final o in state.objects.values) {
       if (o.zone != Zone.board && o.zone != Zone.legend && o.zone != Zone.battlefield) continue;
       if (_eqInactive(o.id)) continue;
@@ -68,7 +84,9 @@ extension GameQuery on Game {
 
   /// Effective Might (CR 143.2.a): printed, buff (CR 703), this-turn changes, passives, Assault
   /// while attacking (CR 807) and Shield while defending (CR 814).
-  int might(ObjId id) {
+  int might(ObjId id) => _memoPassives(() => _mightOf(id));
+
+  int _mightOf(ObjId id) {
     final o = state.obj(id);
     final c = card(id);
     var m = (c.might ?? 0) + (o.buffed ? 1 : 0) + o.mightMod;
@@ -209,6 +227,18 @@ extension GameQuery on Game {
     if (state.over) return 'The game is over';
     if (pending != null) return 'A decision is pending';
     if (m.seat != toAct) return 'Not your move';
+    if (m is PlayMove) {
+      // The first checks only read the state, so they run here without copying the game.
+      try {
+        _memoPassives(() => _playStart(m.seat, m.card));
+      } on TcgError catch (e) {
+        return e.message;
+      }
+    }
+    if (m is ActivateMove) {
+      final early = _memoPassives(() => _activateEarlyProblem(m.seat, m.source, m.index));
+      if (early != null) return early;
+    }
     final g = Game._probe(this);
     try {
       g._exec(m);
@@ -226,13 +256,19 @@ extension GameQuery on Game {
   /// Can [p] add something to the open chain (a Reaction)?
   bool _canReact(int p) {
     if (_probe) return false;
-    for (final m in candidateMoves(p)) {
-      if (m is PlayMove || m is ActivateMove) {
-        if (whyNot(m) == null) return true;
+    return _memoPassives(() {
+      for (final m in candidateMoves(p)) {
+        if (m is PlayMove || m is ActivateMove) {
+          if (whyNot(m) == null) return true;
+        }
       }
-    }
-    return false;
+      return false;
+    });
   }
+
+  /// Runs [f], which must not change this game's state (it may try moves with [whyNot], which
+  /// uses a copy), reading the passives in effect only once for all of it.
+  T readOnly<T>(T Function() f) => _memoPassives(f);
 
   /// Can [p], with Focus, play or activate something (an Action or Reaction)?
   bool _canActInShowdown(int p) => _canReact(p);

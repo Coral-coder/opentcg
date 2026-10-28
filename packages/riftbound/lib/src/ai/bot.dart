@@ -35,11 +35,8 @@ class RiftboundBot implements TcgBot {
       _turnSeen = s.turn;
       _failed.clear();
     }
-    final legal = [
-      for (final m in g.legalMoves(seat))
-        if (!_failed.contains(m.toString())) m,
-    ];
-    return _choose(g, legal);
+    // Choosing only reads the game (legality is tried on copies).
+    return g.readOnly(() => _choose(g, _Legal(g, seat, _failed)));
   }
 
   @override
@@ -61,35 +58,36 @@ class RiftboundBot implements TcgBot {
     return true;
   }
 
-  RMove _choose(Game g, List<RMove> legal) {
+  // The choice is made over the legal moves, but checking a move tries it on a copy of the game,
+  // so each step below checks only the moves it looks at, in the order it looks at them. The
+  // choices (and the random draws) are the same as filtering the whole list first.
+  RMove _choose(Game g, _Legal legal) {
     final s = g.state;
-    final passOrEnd = legal.where((m) => m is PassMove || m is EndTurnMove).firstOrNull ?? legal.last;
+    RMove passOrEnd() => legal.first((m) => m is PassMove || m is EndTurnMove) ?? legal.all.last;
     // In a showdown or with the chain open: removal and pump only, when it matters.
     if (s.chain.isNotEmpty || s.showdown != null) {
-      for (final m in legal) {
-        if (m is PlayMove && _isInteraction(g, g.card(m.card))) return m;
-      }
+      final hit = legal.first((m) => m is PlayMove && _isInteraction(g, g.card(m.card)));
+      if (hit != null) return hit;
       // Ambush and Reaction units join a combat now and then.
       if (s.showdown?.combat ?? false) {
-        for (final m in legal) {
-          if (m is PlayMove && g.card(m.card).type == CardType.unit && _rng.nextInt(2) == 0) return m;
-        }
+        final joined = legal.first((m) => m is PlayMove && g.card(m.card).type == CardType.unit, then: (_) => _rng.nextInt(2) == 0);
+        if (joined != null) return joined;
       }
-      return passOrEnd;
+      return passOrEnd();
     }
     // Hide a card with Hidden now and then: it can be played free on a later turn.
-    final hides = legal.whereType<HideMove>().toList();
-    if (hides.isNotEmpty && _rng.nextInt(3) == 0) return hides.first;
+    final hide = legal.first((m) => m is HideMove);
+    if (hide != null && _rng.nextInt(3) == 0) return hide;
     // Main phase: play the most expensive card it can.
-    final plays = legal.whereType<PlayMove>().toList()..sortStable((a, b) => g.card(b.card).energy - g.card(a.card).energy);
-    if (plays.isNotEmpty) return plays.first;
+    final play = legal.firstIn(legal.candidates.whereType<PlayMove>().toList()..sortStable((a, b) => g.card(b.card).energy - g.card(a.card).energy));
+    if (play != null) return play;
     final equip = _equipMove(g, legal);
     if (equip != null) return equip;
-    final acts = legal.whereType<ActivateMove>().where((m) => !_wasteful(g, m)).toList();
-    if (acts.isNotEmpty && _rng.nextInt(2) == 0) return acts.first;
+    final act = legal.first((m) => m is ActivateMove && !_wasteful(g, m));
+    if (act != null && _rng.nextInt(2) == 0) return act;
     final move = _attack(g);
-    if (move != null && legal.any((m) => m is MoveUnitsMove)) return move;
-    return passOrEnd;
+    if (move != null && legal.first((m) => m is MoveUnitsMove) != null) return move;
+    return passOrEnd();
   }
 
   /// Adding resources with nothing to spend them on wastes them.
@@ -148,6 +146,8 @@ class RiftboundBot implements TcgBot {
         // Where to play a unit: a battlefield it controls if there is one (it helps hold).
         if (d.prompt.contains('where?')) return [d.labels.length - 1];
         if (d.prompt.endsWith('choose a mode')) return [costsMode(g, seat, d.labels)];
+        // "Pay any amount of {A}": as much as it can.
+        if (d.prompt.endsWith('pay how many {A}?')) return [d.labels.length - 1];
         return const [0];
       case DecisionKind.cards:
         final p = d.prompt.toLowerCase();
@@ -166,6 +166,8 @@ class RiftboundBot implements TcgBot {
           return byCost.take(d.min).toList();
         }
         if (p.contains('counter')) return [d.options.first];
+        // Combat damage: lethal to the weakest first (offered first), killing as many as it can.
+        if (p.startsWith('combat damage')) return [d.options.first];
         // Costs paid with its own units: the least valuable.
         if (p.contains('to sacrifice')) {
           final byValue = List.of(d.options)..sortStable((a, b) => _value(g, a) - _value(g, b));
@@ -212,4 +214,37 @@ bool runBots(Game g, List<RiftboundBot> bots, {int maxMoves = 3000}) {
     if (!bots[seat].step(g)) break;
   }
   return g.over;
+}
+
+/// The legal moves for [seat], checked one at a time as the bot asks about them (in the order of
+/// [Game.candidateMoves], skipping moves that failed this turn), each at most once.
+class _Legal {
+  _Legal(this.g, this.seat, this.failed) : candidates = g.candidateMoves(seat);
+  final Game g;
+  final int seat;
+  final Set<String> failed;
+  final List<RMove> candidates;
+  final Map<RMove, bool> _ok = Map.identity();
+
+  bool ok(RMove m) => _ok[m] ??= !failed.contains(m.toString()) && (m is PassMove || m is EndTurnMove || g.whyNot(m) == null);
+
+  /// The first legal candidate passing [test] (checked before legality) and then [then] (asked
+  /// only of legal ones, in order: it may draw from the bot's random numbers).
+  RMove? first(bool Function(RMove m) test, {bool Function(RMove m)? then}) {
+    for (final m in candidates) {
+      if (test(m) && ok(m) && (then == null || then(m))) return m;
+    }
+    return null;
+  }
+
+  /// The first of [moves] (candidates, reordered) that is legal.
+  RMove? firstIn(List<RMove> moves) {
+    for (final m in moves) {
+      if (ok(m)) return m;
+    }
+    return null;
+  }
+
+  /// Every legal candidate.
+  List<RMove> get all => [for (final m in candidates) if (ok(m)) m];
 }

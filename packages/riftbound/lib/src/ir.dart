@@ -13,6 +13,7 @@ part 'ir_costs.dart';
 part 'ir_power.dart';
 part 'ir_hidden.dart';
 part 'ir_w2s2.dart';
+part 'ir_w2s3.dart';
 
 /// Keyword abilities (CR 805–826) the engine implements.
 enum Kw {
@@ -545,6 +546,9 @@ enum On {
 
   /// Equipment events, told apart by [EqWhen.event] (ir_equip.dart).
   eq,
+
+  /// Wave 2, slice 3's events, told apart by [W3When.kind] (ir_w2s3.dart).
+  w2s3,
 }
 
 class When extends Trigger {

@@ -1017,6 +1017,7 @@ extension GameGeneral on Game {
       case LookTop():
         _genLookTop(e, ctx);
       case RevealTop(:final filter, :final yes, :final no):
+        _w3BeforeReveal(p);
         final deck = state.player(p).deck;
         if (deck.isEmpty) return;
         final top = deck.first;
@@ -1511,8 +1512,22 @@ extension GameGeneral on Game {
       }
     }
     if (e.optional && !askYesNo(p, '${nameOf(ctx.source)}: ${e.describe().replaceFirst('may ', '')}?', source: ctx.source)) return;
-    _pay(p, e.energy, e.power);
-    _genSpent(p, e.energy + e.power.length, power: e.power.length);
+    // "Pay any amount of {A} to …" (Bullet Time): the player picks how many, up to what they can
+    // pay; "that much" is the number paid.
+    var power = e.power;
+    if (e.anyAmount) {
+      var most = 0;
+      while (most < 30 && canPay(p, e.energy, [...e.power, for (var i = 0; i <= most; i++) null])) {
+        most++;
+      }
+      final k = most == 0
+          ? 0
+          : ask(Decision(kind: DecisionKind.option, player: p, prompt: '${nameOf(ctx.source)}: pay how many {A}?', labels: [for (var i = 0; i <= most; i++) '$i'], source: ctx.source)).first;
+      power = [...e.power, for (var i = 0; i < k; i++) null];
+      ctx.scratch['that'] = k;
+    }
+    _pay(p, e.energy, power);
+    _genSpent(p, e.energy + power.length, power: power.length);
     if (e.exhaustMe) src!.exhausted = true;
     for (final x in e.parts) {
       switch (x.kind) {
@@ -1655,6 +1670,8 @@ extension GameGeneral on Game {
     final path = cardKey.isEmpty ? null : _genPath(_genRootEffects(cardKey, ctx.ability), e);
     final objs = e.target == null ? <ObjId>[e.kind == DelayKind.noSpells && e.n == 1 ? (ctx.scratch['counteredCtl'] ?? -1) : -1] : _resolveTarget(e.target!, ctx);
     for (final id in objs) {
+      // "They can't move it this turn": read by _genMoveDests.
+      if (e.kind == DelayKind.cantMove && id > 0) _gen.add('o$id:cantMove');
       _gen.delayed.add(
         GenDelayed(
           kind: e.kind.index,
@@ -1934,7 +1951,7 @@ extension GameGeneral on Game {
           _gen.add(k);
         }
         if (w.extra.contains('once')) {
-          final k = 'once:$src:$i:${ev.index}:${state.log.length}';
+          final k = 'once:$src:$i:${ev.index}:${state.logCount}';
           if (_gen.get(k) > 0) continue;
           _gen.add(k);
         }

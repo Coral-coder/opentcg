@@ -315,6 +315,12 @@ class GameState {
   Map<String, int> marks = {};
   final List<LogEntry> log = [];
 
+  /// Entries a legality probe's copy left out of [log] (see [clone]); [logCount] counts them.
+  int logBase = 0;
+
+  /// How many entries the log has, including any a probe's copy left out.
+  int get logCount => logBase + log.length;
+
   /// The general effects' bookkeeping (gen_state.dart).
   GenState gen = GenState();
   /// Delayed effects of Empower/XP/buff cards (state_power.dart).
@@ -326,7 +332,9 @@ class GameState {
   Obj? objOrNull(ObjId id) => objects[id];
   int other(int p) => 1 - p;
 
-  GameState clone() {
+  /// A copy. A [probe] copy (one a legality check throws away) skips the log's entries, which
+  /// only the app reads, and keeps their count.
+  GameState clone({bool probe = false}) {
     final s = GameState._(seed, SeededRng.fromState(rng.state), [for (final p in players) p.clone()]);
     for (final e in objects.entries) {
       s.objects[e.key] = e.value.clone();
@@ -351,7 +359,12 @@ class GameState {
       ..pw = pw.clone()
       ..marks = Map.of(marks)
       ..gen = gen.clone();
-    s.log.addAll(log);
+    if (probe) {
+      s.logBase = logCount;
+    } else {
+      s.logBase = logBase;
+      s.log.addAll(log);
+    }
     return s;
   }
 
@@ -369,7 +382,7 @@ class GameState {
     for (final id in ids) {
       b.write('${objects[id]!.digest()};');
     }
-    b.write('log${log.length}');
+    b.write('log$logCount');
     return b.toString();
   }
 }
