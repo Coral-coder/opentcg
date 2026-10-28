@@ -35,8 +35,8 @@ class RCardDb {
     const RCard(name: 'Reflection', type: CardType.unit, token: true, might: 0),
     const RCard(name: 'Bird', type: CardType.unit, token: true, might: 1, tags: ['Bird'], text: '[Deflect]'),
     const RCard(name: 'Tentacle', type: CardType.unit, token: true, might: 1, tags: ['Bilgewater']),
-    const RCard(name: 'Gold', type: CardType.gear, token: true, text: '[Reaction] Kill this, {E}: [Add] {A}.'),
     const RCard(name: 'Shadow Clone', type: CardType.unit, token: true, might: 0, text: 'When I attack, you may banish a unit from your trash. If you do, give me [Assault 4] this turn.'),
+    const RCard(name: 'Gold', type: CardType.gear, token: true, text: '[Reaction] Kill this, {E}: [Add] {A}.'),
   ];
 
   /// From Riftcodex card objects (https://api.riftcodex.com/cards, all pages). Alternate-art and
@@ -122,7 +122,9 @@ class RCardDb {
 
   /// Rich text → one ability per line, reminder text removed, symbols as {…} (see [RCard.text]).
   static String normaliseText(String rich) {
-    var t = rich.replaceAll(RegExp(r'<br\s*/?>'), '\n').replaceAll('</p>', '\n').replaceAll(RegExp(r'<[^>]+>'), '');
+    // A bulleted list of modes stays on the line that introduces it: "Choose one - • A • B" (CR 355.3).
+    var t = rich.replaceAll(RegExp(r'</p>\s*<ul>'), ' ').replaceAll('<ul>', ' ').replaceAll('</ul>', '\n').replaceAll('<li>', ' • ').replaceAll('</li>', '');
+    t = t.replaceAll(RegExp(r'<br\s*/?>'), '\n').replaceAll('</p>', '\n').replaceAll(RegExp(r'<[^>]+>'), '');
     t = t.replaceAll('&gt;', '>').replaceAll('&lt;', '<').replaceAll('&amp;', '&').replaceAll('&quot;', '"').replaceAll('&#39;', "'").replaceAll('&#x27;', "'");
     t = t.replaceAllMapped(RegExp(r':rb_energy_(\d+):'), (m) => '{${m[1]}}');
     const runes = {'fury': 'R', 'calm': 'G', 'mind': 'B', 'body': 'O', 'chaos': 'P', 'order': 'Y', 'rainbow': 'A'};

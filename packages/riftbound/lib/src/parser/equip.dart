@@ -3,20 +3,6 @@ part of 'parser.dart';
 // Equipment (CR 150, 716–725, 818 Equip, 819 Quick-Draw, 821 Weaponmaster) and the cards built
 // around it: their rules text, and the Effect Text (CR 136) an Equipment gives its unit.
 
-/// The lines of rules text, with an ability printed over two lines joined: "… choose one that
-/// hasn't been chosen this turn -" and the line of its options.
-List<String> _eqLines(String text) {
-  final out = <String>[];
-  for (final l in text.split('\n')) {
-    if (out.isNotEmpty && out.last.endsWith(' -')) {
-      out[out.length - 1] = '${out.last} $l';
-    } else {
-      out.add(l);
-    }
-  }
-  return out;
-}
-
 /// The Effect Text of an Equipment, read as abilities of the unit it's attached to ("I", "me"),
 /// with "this" meaning the Equipment (CR 136.2.c–d). Lines it can't read go to [unsupported].
 List<Ability> _eqEffectAbilities(RCard c, List<String> unsupported) {
@@ -24,7 +10,7 @@ List<Ability> _eqEffectAbilities(RCard c, List<String> unsupported) {
   final asUnit = RCard(name: c.name, type: CardType.unit, domains: c.domains, might: 0, text: c.effect);
   final slots = [0];
   final out = <Ability>[];
-  for (final line in _eqLines(c.effect)) {
+  for (final line in c.effect.split('\n')) {
     if (line.trim().isEmpty) continue;
     final a = _EqLine(asUnit, slots, effectText: true).parse(line.trim());
     if (a == null) {
@@ -100,7 +86,7 @@ class _EqLine extends _Line {
       if (cost == null) return null;
       final e = cost is EqCost ? cost : EqCost(energy: cost.energy, power: cost.power, exhaust: cost.exhaust, extra: cost.extra);
       if (e.exhaust || e.banishMe || cost.killMe) return null;
-      return [EqEquip(line, m[2] == null ? e : EqCost(energy: e.energy, power: e.power, extra: e.extra, recycleTrash: e.recycleTrash, lessByTargetMight: true))];
+      return [EqEquip(line, m[2] == null ? e : EqCost(energy: e.energy, power: e.power, extra: e.extra, lessByTargetMight: true))];
     }
     // Hunt (CR 823): "When I conquer or hold, my controller gains N XP".
     m = RegExp(r'^\[Hunt(?: (\d+))?\]$').firstMatch(t);
@@ -137,15 +123,11 @@ class _EqLine extends _Line {
     m = RegExp(r'^When you attach an Equipment to me, (.+)$').firstMatch(t);
     if (m != null && unit) {
       final body = m[1]!;
-      final mm = RegExp(r"^choose one that hasn't been chosen this turn - (.+)$").firstMatch(body);
+      // Aphelios: the same as "Choose one you've not chosen this turn" (CR 355.3).
+      final mm = RegExp(r"^choose one that hasn't been chosen this turn - (• .+)$").firstMatch(body);
       if (mm != null) {
-        final modes = <List<Effect>>[];
-        for (final s in _Line._sentences(mm[1]!)) {
-          final e = _sentence(s);
-          if (e == null) return null;
-          modes.add(e);
-        }
-        return modes.length < 2 ? null : Triggered(line, const EqWhen(EqEvent.attachedToMe), [EqModesOnce(modes)]);
+        final e = _effects("Choose one you've not chosen this turn - ${mm[1]}");
+        return e == null ? null : Triggered(line, const EqWhen(EqEvent.attachedToMe), e);
       }
       final e = _effects(_Line._cap(body));
       return e == null ? null : Triggered(line, const EqWhen(EqEvent.attachedToMe), e);
@@ -207,28 +189,27 @@ class _EqLine extends _Line {
 
   @override
   Cost? _cost(String s) {
-    var killFriendly = false, banishMe = false;
-    var recycle = 0;
+    final extra = <CostPart>[];
+    var banishMe = false;
     final rest = <String>[];
     for (final part in s.split(', ')) {
       final r = RegExp(r'^Recycle (\d+) cards? from your trash$').firstMatch(part);
       if (part == 'Kill a friendly unit') {
-        killFriendly = true;
+        extra.add(const KillFriendly());
       } else if (part == 'Banish this' && card.isPermanent) {
         banishMe = true;
       } else if (r != null) {
-        recycle = int.parse(r[1]!);
+        extra.add(RecycleTrash(int.parse(r[1]!)));
       } else {
         rest.add(part);
       }
     }
-    if (!killFriendly && !banishMe && recycle == 0) return super._cost(s);
+    if (extra.isEmpty && !banishMe) return super._cost(s);
     final base = rest.isEmpty ? const Cost() : super._cost(rest.join(', '));
     if (base == null) return null;
-    final extra = [if (killFriendly) const KillFriendly(), ...base.extra];
-    if (!banishMe && recycle == 0) return Cost(energy: base.energy, power: base.power, exhaust: base.exhaust, killMe: base.killMe, extra: extra);
+    if (!banishMe) return Cost(energy: base.energy, power: base.power, exhaust: base.exhaust, killMe: base.killMe, extra: [...extra, ...base.extra]);
     if (base.killMe) return null;
-    return EqCost(energy: base.energy, power: base.power, exhaust: base.exhaust, extra: extra, recycleTrash: recycle, banishMe: banishMe);
+    return EqCost(energy: base.energy, power: base.power, exhaust: base.exhaust, extra: [...extra, ...base.extra], banishMe: true);
   }
 
   @override

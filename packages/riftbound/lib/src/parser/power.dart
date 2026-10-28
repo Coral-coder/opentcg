@@ -104,13 +104,13 @@ extension _PowerLine on _Line {
     }
     // Additional costs of XP or buffs (CR 356.3).
     m = RegExp(r'^You may spend (\d+) XP as an additional cost to play (?:me|this)(?:\. If you do, I cost \{(\d+)\} less)?\.?$').firstMatch(t);
-    if (m != null && card.isMainDeck) return [Static(line, PowerExtraCost(xp: int.parse(m[1]!), energyLess: int.tryParse(m[2] ?? '') ?? 0))];
+    if (m != null && card.isMainDeck) return [Static(line, AddCost(XPay.xp, n: int.parse(m[1]!), discount: int.tryParse(m[2] ?? '') ?? 0))];
     m = RegExp(r"^As you play this, you may spend a buff as an additional cost\. If you do, ignore this spell's cost\.?$").firstMatch(t);
-    if (m != null && _isSpell) return [Static(line, const PowerExtraCost(buffs: 1, ignoreCost: true))];
+    if (m != null && _isSpell) return [Static(line, const AddCost(XPay.spendBuff, ignoreCost: true))];
     m = RegExp(r'^As you play me, you may spend any number of buffs as an additional cost\. Reduce my cost by \{([A-Z])\} for each buff you spend\.?$').firstMatch(t);
     if (m != null && _isUnit) {
       final d = Domain.values.where((d) => d.letter == m![1]).firstOrNull;
-      return d == null ? null : [Static(line, PowerExtraCost(anyBuffs: true, powerPerBuff: d))];
+      return d == null ? null : [Static(line, AddCost(XPay.spendBuff, anyNumber: true, discountEach: d))];
     }
     m = RegExp(r"^When you play me, each player must kill one of their units\. If you paid my additional cost, you don't kill a unit this way\.?$").firstMatch(t);
     if (m != null && _isUnit && card.text.contains('as an additional cost')) return [Triggered(line, const When(On.played), const [EachKillsOne(notYouIfPaid: true)])];

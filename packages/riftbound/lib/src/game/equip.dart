@@ -324,34 +324,42 @@ extension GameEquip on Game {
   // Equip costs (CR 818.1.c), Weaponmaster (CR 821)
   // -------------------------------------------------------------------------------------------
 
-  /// [equipment]'s Equip ability and its cost when attaching to [unit] (CR 818.1.c.4); with
-  /// [weaponmaster], reduced by one Power of any domain (CR 821.1.c.3). Null if it has none.
+  /// [equipment]'s Equip ability and its cost when attaching to [unit] (CR 818.1.c.4): the
+  /// shared ability cost (game/power.dart, game/costs.dart), then, with [weaponmaster], one
+  /// Power of any domain less (a discount, CR 821.1.c.3, 356.4.f). Null if it has none.
   (EqCost, int, List<Domain?>)? _eqEquipCost(ObjId equipment, ObjId unit, {bool weaponmaster = false}) {
     final eq = RiftboundParser.parse(db[_eqCardKey(equipment)]!).abilities.whereType<EqEquip>().firstOrNull;
     if (eq == null) return null;
+    final p = state.obj(equipment).controller;
     final c = eq.eqCost;
-    var energy = c.energy;
+    final ac = _activationCost(p, equipment, eq);
+    var energy = _xAbilityEnergy(p, equipment, eq, ac.energy);
     if (c.lessByTargetMight) energy = energy - mightUsed(unit) < 0 ? 0 : energy - mightUsed(unit);
-    final power = List<Domain?>.of(c.power);
+    final power = List<Domain?>.of(ac.power);
     if (weaponmaster && power.isNotEmpty) power.removeAt(0);
     return (c, energy, power);
   }
 
-  /// Can [p] pay the parts of [c] beyond runes for [src]? (Power's cost parts, CR 202.)
-  String? _eqExtraCostProblem(int p, ObjId src, EqCost c) {
-    if (c.recycleTrash > state.player(p).trash.length) return 'Needs ${c.recycleTrash} cards in your trash';
-    return c.extra.isEmpty ? null : _powerActivateProblem(p, src, -1, Activated('', c, const []));
-  }
+  /// Can [p] pay the parts of [c] beyond runes for [src]? (The shared cost parts, CR 202.)
+  String? _eqExtraCostProblem(int p, ObjId src, Cost c) => c.extra.isEmpty ? null : _powerActivateProblem(p, src, -1, Activated('', c, const [])) ?? _xCostProblem(p, src, c);
 
-  /// Pays the parts of [c] beyond runes (CR 202).
-  void _eqPayExtraCost(int p, ObjId src, EqCost c) {
-    final pl = state.player(p);
-    if (c.recycleTrash > 0) {
-      final pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Cost: recycle ${c.recycleTrash} cards from your trash', options: List.of(pl.trash), min: c.recycleTrash, max: c.recycleTrash, source: src));
-      _recycleCards(p, pick);
-      log('${pl.name} recycles ${pick.length} cards from the trash.', player: p, kind: 'info');
+  /// Pays the parts of [c] beyond runes (CR 202): as an activated ability's cost, or ([activated]
+  /// false) as Weaponmaster pays an Equip cost, which isn't activating it (CR 821.1.c).
+  void _eqPayExtraCost(int p, ObjId src, Cost c, {bool activated = true}) {
+    final a = Activated('', c, const []);
+    _powerPayExtra(p, src, a);
+    if (activated) {
+      _xPayCostExtra(p, src, a);
+      return;
     }
-    if (c.extra.isNotEmpty) _powerPayExtra(p, src, Activated('', c, const []));
+    for (final part in c.extra) {
+      if (part case RecycleTrash(:final n, :final unit)) {
+        final options = [for (final id in state.player(p).trash) if (!unit || card(id).type == CardType.unit) id];
+        final pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Cost: recycle $n${unit ? ' unit' : ''} from your trash', options: options, min: n, max: n, source: src));
+        _recycleCards(p, pick);
+        log('${playerName(p)} recycles ${pick.length} from their trash.', player: p, kind: 'info');
+      }
+    }
   }
 
   /// Weaponmaster resolves (CR 821.1.c): [p] may choose an Equipment they control and pay its
@@ -370,7 +378,7 @@ extension GameEquip on Game {
     final pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Weaponmaster: choose an Equipment to attach to ${nameOf(unit)} (its Equip cost less one Power)', options: options, min: 0, max: 1, source: unit));
     if (pick.isEmpty) return;
     final cost = _eqEquipCost(pick.first, unit, weaponmaster: true)!;
-    _eqPayExtraCost(p, pick.first, cost.$1);
+    _eqPayExtraCost(p, pick.first, cost.$1, activated: false);
     if (!canPay(p, cost.$2, cost.$3)) return;
     _pay(p, cost.$2, cost.$3);
     _eqAttach(pick.first, unit, p);
@@ -391,30 +399,25 @@ extension GameEquip on Game {
     if (a is EqActivated && a.onlyIfPlayedEquipment && state.eq.equipmentPlayed[p] != state.turn) throw RiftboundError('Use only if you’ve played an Equipment this turn');
     if (a.oncePerTurn && o.usedThisTurn.contains(index)) throw RiftboundError('Only once per turn');
     if (a.cost.exhaust && o.exhausted) throw RiftboundError('${nameOf(src)} is exhausted');
-    final c = a.cost is EqCost ? a.cost as EqCost : EqCost(energy: a.cost.energy, power: a.cost.power, exhaust: a.cost.exhaust, extra: a.cost.extra);
+    final c = a.cost;
+    final eqc = c is EqCost ? c : null;
     final problem = _eqExtraCostProblem(p, src, c);
     if (problem != null) throw RiftboundError(problem);
-    // Choices first (CR 355), then costs (CR 357).
+    // Choices first (CR 355), then costs (CR 357), worked out as for any activated ability.
     var targets = _chooseTargets(a.effects, p, src, o.loc);
-    var energy = c.energy;
-    if (c.lessByTargetMight && targets.isNotEmpty && targets[0] >= 0) energy = energy - mightUsed(targets[0]) < 0 ? 0 : energy - mightUsed(targets[0]);
-    final power = <Domain?>[...c.power];
-    for (final tg in targets) {
-      if (tg >= 0 && state.objOrNull(tg)?.zone == Zone.board && state.obj(tg).controller != p) {
-        for (var i = 0; i < _kw(tg, Kw.deflect); i++) {
-          power.add(null);
-        }
-      }
-    }
+    final ac = _activationCost(p, src, a);
+    var energy = _xAbilityEnergy(p, src, a, ac.energy);
+    if (eqc != null && eqc.lessByTargetMight && targets.isNotEmpty && targets[0] >= 0) energy = energy - mightUsed(targets[0]) < 0 ? 0 : energy - mightUsed(targets[0]);
+    final power = <Domain?>[...ac.power, ..._xDeflect(p, src, targets)];
     if (!canPay(p, energy, power)) throw RiftboundError('Not enough runes (${c.describe()})');
     _eqPayExtraCost(p, src, c);
     _pay(p, energy, power);
     if (c.exhaust) o.exhausted = true;
     o.usedThisTurn.add(index);
     final loc = o.loc;
-    if (c.banishMe) {
-      // "Banish this": what it remembers goes with the ability (The Zero Drive).
-      targets = List.of(o.eq.banishedWith);
+    if (eqc != null && eqc.banishMe) {
+      // "Banish this": the cards banished with it go with the ability (The Zero Drive).
+      targets = [for (final b in state.objects.values) if (b.zone == Zone.banish && b.banishedBy == src) b.id]..sortStable((x, y) => x.compareTo(y));
       _eqBanish(src);
     }
     log('${playerName(p)} uses ${nameOf(src)}${a is EqEquip ? ' (Equip)' : ''}.', player: p, card: src, kind: 'ability');
@@ -519,36 +522,6 @@ extension GameEquip on Game {
         _queue(id, 1000 + RiftboundParser.parse(db[key]!).extra.indexOf(x.ability), p, card: key);
       }
     }
-  }
-
-  /// Plays a permanent from a zone other than the hand by an effect: [free] ignores its cost.
-  void _eqPlayFromZone(int p, ObjId id, {required bool free}) {
-    final o = state.obj(id);
-    final c = card(id);
-    if (!c.isPermanent) return;
-    if (!free && !_canPayCard(p, c)) return;
-    final quickDraw = _eqGrantedQuickDraw(p, id);
-    var loc = base;
-    if (c.type == CardType.unit) {
-      final options = [base, for (var i = 0; i < state.bfs.length; i++) if (state.bfs[i].controller == p) i];
-      if (options.length > 1) {
-        final a = ask(Decision(kind: DecisionKind.option, player: p, prompt: 'Play ${c.name} where?', labels: [for (final l in options) locName(l, p)], source: id));
-        loc = options[a.first];
-      }
-    }
-    if (!free) _payCard(p, c);
-    final from = state.player(o.owner);
-    from.hand.remove(id);
-    from.trash.remove(id);
-    from.banish.remove(id);
-    state.player(p).playedThisTurn++;
-    final passives = [for (final a in parsed(id).abilities) if (a is Static) a.passive];
-    final ready = c.type == CardType.gear ? !passives.any((x) => x is EntersExhausted) : passives.any((x) => x is EntersReady);
-    _enterBoard(id, p, loc, ready: ready);
-    log('${playerName(p)} plays ${c.name}${loc == base ? '' : ' to ${locName(loc, p)}'}.', player: p, card: id, kind: 'play');
-    _firePlayed(id);
-    if (c.type == CardType.unit) _fire(On.youPlayUnit, player: p);
-    _eqAfterPlay(p, id, quickDraw: quickDraw);
   }
 
   /// Banishes a permanent or a card in a trash (CR 425).
@@ -804,19 +777,19 @@ extension GameEquip on Game {
       case EqPlayFromTrash():
         final options = [
           for (final id in state.player(p).trash)
-            if (card(id).type == CardType.unit && parsed(id).supported && _canPayCard(p, card(id))) id,
+            if (card(id).type == CardType.unit && _xCanPlayNow(p, id, XPlay(effect: true, elsewhere: true))) id,
         ];
         if (options.isEmpty) return;
         final pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Choose a unit to play from your trash (paying its cost)', options: options, source: ctx.source));
-        _eqPlayFromZone(p, pick.first, free: false);
+        _xPlayAsEffect(p, pick.first, XPlay(effect: true, elsewhere: true));
       case EqPlayEquipmentFree(:final maxEnergy):
         final options = [
           for (final id in state.player(p).hand)
-            if (isEquipmentObj(id) && card(id).energy <= maxEnergy && parsed(id).supported) id,
+            if (isEquipmentObj(id) && card(id).energy <= maxEnergy && _xCanPlayNow(p, id, XPlay(effect: true, ignoreAll: true))) id,
         ];
         if (options.isEmpty) return;
         final pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Choose an Equipment to play free and attach to ${nameOf(ctx.source)}', options: options, source: ctx.source)).first;
-        _eqPlayFromZone(p, pick, free: true);
+        _xPlayAsEffect(p, pick, XPlay(effect: true, ignoreAll: true));
         final me = state.objOrNull(ctx.source);
         if (me != null && me.zone == Zone.board) _eqAttach(pick, ctx.source, p);
       case EqBanishMe():
@@ -824,23 +797,10 @@ extension GameEquip on Game {
         if (me == null || me.zone != Zone.trash) return;
         _eqBanish(ctx.source);
         final via = state.objOrNull(ctx.via);
-        if (via != null && via.zone == Zone.board) via.eq.banishedWith.add(ctx.source);
+        if (via != null && via.zone == Zone.board) state.obj(ctx.source).banishedBy = ctx.via;
       case EqPlayBanishedWith():
         for (final id in ctx.targets) {
-          if (state.objOrNull(id)?.zone == Zone.banish && card(id).type == CardType.unit) _eqPlayFromZone(p, id, free: true);
-        }
-      case EqModesOnce(:final modes):
-        final used = [for (final s in state.eq.modesChosen) if (s.startsWith('${state.turn}:${ctx.source}:')) int.parse(s.split(':')[2])];
-        final open = [for (var i = 0; i < modes.length; i++) if (!used.contains(i)) i];
-        if (open.isEmpty) return;
-        final a = ask(Decision(kind: DecisionKind.option, player: p, prompt: '${nameOf(ctx.source)}: choose one', labels: [for (final i in open) modes[i].map(describeEffect).join(', ')], source: ctx.source));
-        final mode = open[a.first];
-        state.eq.modesChosen.add('${state.turn}:${ctx.source}:$mode');
-        // The mode's own choices are made now.
-        final targets = _chooseTargets(modes[mode], p, ctx.source, ctx.loc, optional: true);
-        final sub = _Ctx(controller: p, source: ctx.source, loc: ctx.loc, targets: targets, event: ctx.event, via: ctx.via);
-        for (final x in modes[mode]) {
-          _resolve(x, sub);
+          if (state.objOrNull(id)?.zone == Zone.banish && card(id).type == CardType.unit) _xPlayAsEffect(p, id, XPlay(effect: true, ignoreAll: true, elsewhere: true));
         }
     }
   }

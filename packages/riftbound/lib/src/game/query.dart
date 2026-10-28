@@ -86,6 +86,7 @@ extension GameQuery on Game {
       m += _eqMight(id);
       m += _powerMight(id);
       m += _hMight(id);
+      m += _xMight(id);
       if (isAttacking(id)) m += _kw(id, Kw.assault);
       if (isDefending(id)) m += _kw(id, Kw.shield);
     }
@@ -162,7 +163,7 @@ extension GameQuery on Game {
   List<RMove> candidateMoves(int seat) {
     final out = <RMove>[];
     final pl = state.player(seat);
-    for (final id in [...pl.hand, ?pl.champion]) {
+    for (final id in [...pl.hand, ?pl.champion, ..._xExtraPlayable(seat)]) {
       out.add(PlayMove(seat, id));
     }
     for (final src in [?pl.legend, for (final o in _boardOf(seat)) o.id]) {

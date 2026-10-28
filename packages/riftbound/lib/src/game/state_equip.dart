@@ -12,8 +12,6 @@ class EqObj {
   /// leaves the board (Akshan, Mischievous), or -1.
   int controlUntil = -1;
 
-  /// Units "banished with this" (The Zero Drive).
-  List<int> banishedWith = [];
 
   /// A unit's conquests: the last turn it conquered and how many times that turn.
   int conquerTurn = 0;
@@ -37,7 +35,6 @@ class EqObj {
     ..attachedTo = attachedTo
     ..attachedTurn = attachedTurn
     ..controlUntil = controlUntil
-    ..banishedWith = List.of(banishedWith)
     ..conquerTurn = conquerTurn
     ..conquests = conquests
     ..copyOf = copyOf
@@ -45,7 +42,7 @@ class EqObj {
     ..textOf = textOf
     ..grants = List.of(grants);
 
-  String digest() => '$attachedTo/$attachedTurn/$controlUntil/${banishedWith.join(',')}/$conquerTurn/$conquests/${copyOf.length}:$copyOf/$copyVia/${textOf.length}:$textOf/${grants.join(';')}';
+  String digest() => '$attachedTo/$attachedTurn/$controlUntil/$conquerTurn/$conquests/${copyOf.length}:$copyOf/$copyVia/${textOf.length}:$textOf/${grants.join(';')}';
 }
 
 /// Game-wide Equipment bookkeeping.
@@ -61,16 +58,12 @@ class EqState {
   int excessBf = -1;
   int excessTurn = 0;
 
-  /// Modes chosen this turn by "choose one that hasn't been chosen this turn": "turn:source:mode".
-  List<String> modesChosen = [];
-
   EqState clone() => EqState()
     ..equipmentPlayed = List.of(equipmentPlayed)
     ..openConquest = openConquest
     ..excess = List.of(excess)
     ..excessBf = excessBf
-    ..excessTurn = excessTurn
-    ..modesChosen = List.of(modesChosen);
+    ..excessTurn = excessTurn;
 
-  String digest() => '${equipmentPlayed.join(',')}/$openConquest/${excess.join(',')}/$excessBf/$excessTurn/${modesChosen.join(';')}';
+  String digest() => '${equipmentPlayed.join(',')}/$openConquest/${excess.join(',')}/$excessBf/$excessTurn';
 }

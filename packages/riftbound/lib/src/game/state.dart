@@ -67,6 +67,9 @@ class Obj {
   /// Empowered, extra buffs, Flow (state_power.dart).
   ObjPower pw = ObjPower();
 
+  /// The object that banished this card ("a unit banished with this", Cursed Sarcophagus), or -1.
+  int banishedBy = -1;
+
   Obj clone() => Obj(id: id, card: card, owner: owner, zone: zone)
     ..controller = controller
     ..loc = loc
@@ -79,7 +82,8 @@ class Obj {
     ..enteredTurn = enteredTurn
     ..usedThisTurn = List.of(usedThisTurn)
     ..eq = eq.clone()
-    ..pw = pw.clone();
+    ..pw = pw.clone()
+    ..banishedBy = banishedBy;
 
   /// Leaving the board (or entering it) makes a new object for rules purposes (CR 124.1).
   void reset() {
@@ -98,7 +102,7 @@ class Obj {
 
   String digest() {
     final kws = kwMod.keys.toList()..sortStable((a, b) => a - b);
-    return '$id|${card.length}:$card|$owner|$controller|${zone.index}|$loc|$exhausted|$damage|$buffed|$stunned|$mightMod|${kws.map((k) => '$k=${kwMod[k]}').join(',')}|$enteredTurn|${usedThisTurn.join(',')}|${eq.digest()}|${pw.digest()}';
+    return '$id|${card.length}:$card|$owner|$controller|${zone.index}|$loc|$exhausted|$damage|$buffed|$stunned|$mightMod|${kws.map((k) => '$k=${kwMod[k]}').join(',')}|$enteredTurn|${usedThisTurn.join(',')}|${eq.digest()}|${pw.digest()}|$banishedBy';
   }
 }
 
@@ -175,7 +179,7 @@ class Bf {
 
 /// A spell or ability on the Chain (CR 327).
 class ChainItem {
-  ChainItem({required this.id, required this.source, required this.card, required this.ability, required this.controller, this.targets = const [], this.repeats = 0, this.loc = base, this.fromTrigger = false, this.legion = false, this.event = -1, this.via = -1});
+  ChainItem({required this.id, required this.source, required this.card, required this.ability, required this.controller, this.targets = const [], this.repeats = 0, this.loc = base, this.fromTrigger = false, this.legion = false, this.event = -1, this.paid = 0, this.costRef = -1, this.via = -1});
   final int id;
 
   /// The card (a spell on the chain) or the object whose ability this is.
@@ -201,9 +205,15 @@ class ChainItem {
   /// For an ability a unit has from an attached card's Effect Text: that card ("this"), or -1.
   final int via;
 
+  /// How it was played ([PlayFlags]: additional cost paid, recycle after resolving, …).
+  final int paid;
+
+  /// What was killed or spent to pay its additional cost ("the killed unit"), or -1.
+  final int costRef;
+
   bool get isSpell => ability < 0;
 
-  String digest() => '$id|$source|${card.length}:$card|$ability|$controller|${targets.join(',')}|$repeats|$loc|$fromTrigger|$legion|$event|$via';
+  String digest() => '$id|$source|${card.length}:$card|$ability|$controller|${targets.join(',')}|$repeats|$loc|$fromTrigger|$legion|$event|$via|$paid|$costRef';
 }
 
 /// A showdown, and the combat it may be part of (CR 341, 461).

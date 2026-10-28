@@ -41,6 +41,7 @@ extension GameCombat on Game {
         changed = true;
       }
     }
+    _xAfterCleanup();
     return changed;
   }
 
@@ -179,6 +180,7 @@ extension GameCombat on Game {
       _draw(p, 1);
     } else {
       pl.points++;
+      if (!conquer) _xHeld(p);
       _hScored(p);
       log('${pl.name} ${conquer ? 'conquers' : 'holds'} ${nameOf(b.obj)}: ${pl.points} point${pl.points == 1 ? '' : 's'}.', player: p, kind: conquer ? 'conquer' : 'hold', amount: 1);
     }

@@ -489,21 +489,6 @@ class HideForEnergy extends HPassive {
   String describe() => 'hide for {$n} instead of {A}';
 }
 
-/// An additional cost to play me (CR 356.3): Power and Energy ([cost]), or killing a unit you
-/// control with one of [killTags] ("You may play me to its battlefield": [toItsBattlefield]).
-class ExtraCost extends HPassive {
-  const ExtraCost({this.cost, this.killTags = const [], this.optional = true, this.toItsBattlefield = false, this.exhaustLegend = false});
-  final Cost? cost;
-  final List<String> killTags;
-  final bool optional;
-  final bool toItsBattlefield;
-
-  /// "You may exhaust your legend as an additional cost".
-  final bool exhaustLegend;
-  @override
-  String describe() => '${optional ? 'may pay' : 'must pay'} ${exhaustLegend ? 'exhausting your legend' : (cost?.describe() ?? 'kill a ${killTags.join('/')}')} more';
-}
-
 /// "The next time a friendly unit would die, kill this instead. Recall that unit exhausted."
 /// (CR 369.1: it's healed, exhausted and recalled.)
 class SavesFromDeath extends HPassive {

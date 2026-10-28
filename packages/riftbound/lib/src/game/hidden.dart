@@ -196,41 +196,6 @@ extension GameHidden on Game {
   Timing _hPermanentTiming(ParsedCard pc) => pc.has(Kw.reaction) ? Timing.reaction : Timing.normal;
 
   // -------------------------------------------------------------------------------------------
-  // Additional costs (CR 356.3)
-  // -------------------------------------------------------------------------------------------
-
-  /// Asks for [id]'s additional costs and returns what they add: Energy and Power to pay, a unit
-  /// to kill, and whether one was paid. Throws if a mandatory one can't be.
-  ({int energy, List<Domain?> power, ObjId? kill, bool paid}) _hExtraCost(int p, ObjId id, {bool free = false}) {
-    for (final a in parsed(id).abilities) {
-      if (a is! Static || a.passive is! ExtraCost) continue;
-      final x = a.passive as ExtraCost;
-      final cost = x.cost;
-      if (x.exhaustLegend) {
-        final legend = state.player(p).legend;
-        if (legend != null && !state.obj(legend).exhausted && askYesNo(p, 'Exhaust your legend to play ${nameOf(id)} with its extra effect?', source: id)) {
-          state.obj(legend).exhausted = true;
-          return (energy: 0, power: const <Domain?>[], kill: null, paid: true);
-        }
-      } else if (cost != null) {
-        if (_canPayCard(p, card(id), extraEnergy: cost.energy, extraPower: cost.power, free: free) && askYesNo(p, 'Pay ${cost.describe()} more to play ${nameOf(id)}?', source: id)) {
-          return (energy: cost.energy, power: cost.power, kill: null, paid: true);
-        }
-        if (!x.optional) throw RiftboundError('${nameOf(id)} needs its additional cost');
-      } else if (x.killTags.isNotEmpty) {
-        final options = [
-          for (final u in units(player: p))
-            if (x.killTags.any(card(u).hasTag)) u,
-        ];
-        if (options.isEmpty) throw RiftboundError('${nameOf(id)} needs a ${x.killTags.join(', ')} of yours to kill');
-        final pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Kill a ${x.killTags.join('/')} to play ${nameOf(id)}', options: options, source: id)).first;
-        return (energy: 0, power: const [], kill: pick, paid: true);
-      }
-    }
-    return (energy: 0, power: const [], kill: null, paid: false);
-  }
-
-  // -------------------------------------------------------------------------------------------
   // Choosing (CR 355.5–355.10, 811.1.d)
   // -------------------------------------------------------------------------------------------
 
@@ -566,7 +531,7 @@ extension GameHidden on Game {
         if (options.isEmpty) break;
         final pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Choose a unit from their hand for them to play there', options: options, min: 0, max: 1, source: ctx.source));
         if (pick.isEmpty) break;
-        _hPlayFree(opp, pick.first, _bfIndex(r.first), fromZone: Zone.hand);
+        _hPlayFree(opp, pick.first, _bfIndex(r.first), fromZone: Zone.hand, allCosts: true);
         if (isUnit(pick.first)) _resolve(Stun(EventUnit()), _Ctx(controller: p, source: ctx.source, loc: ctx.loc, targets: ctx.targets, event: pick.first));
       case EnterReadyThisTurn():
         state.marks['t:readyEnter:$p'] = 1;
@@ -631,27 +596,10 @@ extension GameHidden on Game {
 
   /// [p] plays [id] (from [fromZone]) by an effect, ignoring its cost: a unit to [loc] (gear to
   /// base), a spell onto the chain with its choices made now.
-  void _hPlayFree(int p, ObjId id, int loc, {required Zone fromZone}) {
-    final pl = state.player(state.obj(id).owner);
-    pl.hand.remove(id);
-    final c = card(id);
-    state.marks.remove('t:fd:$id');
-    state.player(p).playedThisTurn++;
-    if (c.type == CardType.spell) {
-      final effects = [for (final a in parsed(id).abilities) if (a is SpellBody) ...a.effects];
-      final targets = _chooseTargets(effects, p, id, base, optional: true);
-      state.obj(id)
-        ..zone = Zone.chain
-        ..controller = p;
-      log('${playerName(p)} plays ${c.name}.', player: p, card: id, kind: 'play');
-      _pushChain(ChainItem(id: state.nextChainId++, source: id, card: c.key, ability: -1, controller: p, targets: targets));
-      return;
-    }
-    final passives = [for (final a in parsed(id).abilities) if (a is Static) a.passive];
-    _enterBoard(id, p, c.type == CardType.gear ? base : loc, ready: c.type == CardType.gear ? !passives.any((x) => x is EntersExhausted) : passives.any((x) => x is EntersReady));
-    log('${playerName(p)} plays ${c.name}${loc == base ? '' : ' to ${locName(loc, p)}'}.', player: p, card: id, kind: 'play');
-    _firePlayed(id);
-    if (c.type == CardType.unit) _fire(On.youPlayUnit, player: p);
+  /// [allCosts]: "ignoring any and all costs" — no additional costs either (CR 356.1.b).
+  void _hPlayFree(int p, ObjId id, int loc, {required Zone fromZone, bool allCosts = false}) {
+    // Played as part of the effect, ignoring its cost (game/costs.dart).
+    _xPlayAsEffect(p, id, XPlay(effect: true, ignoreAll: true, noExtras: allCosts, at: loc, elsewhere: fromZone != Zone.hand));
   }
 
   bool _hCond(HCond c, _Ctx ctx) {

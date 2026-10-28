@@ -11,6 +11,7 @@ import '../game/moves.dart';
 import '../game/state.dart';
 import '../ir.dart';
 import '../parser/parser.dart';
+import 'bot_costs.dart';
 
 part 'bot_equip.dart';
 
@@ -100,7 +101,8 @@ class RiftboundBot implements TcgBot {
   bool _isInteraction(Game g, RCard c) {
     if (c.type != CardType.spell) return false;
     final abs = RiftboundParser.parse(c).abilities;
-    return abs.any((a) => a is SpellBody && a.effects.any((e) => e is Deal || e is Kill || e is Stun || e is GiveMight || e is Counter));
+    bool hits(Effect e) => e is Deal || e is Kill || e is Stun || e is GiveMight || e is Counter || e is Fight || e is CounterByCost || e is StealOrCounter || e is KillThenReplay || e is IfElse || (e is Modes && e.modes.any((m) => m.any(hits)));
+    return abs.any((a) => a is SpellBody && a.effects.any(hits));
   }
 
   /// Sends ready units from base to the battlefield it can best take or hold.
@@ -145,9 +147,12 @@ class RiftboundBot implements TcgBot {
       case DecisionKind.option:
         // Where to play a unit: a battlefield it controls if there is one (it helps hold).
         if (d.prompt.contains('where?')) return [d.labels.length - 1];
+        if (d.prompt.endsWith('choose a mode')) return [costsMode(g, seat, d.labels)];
         return const [0];
       case DecisionKind.cards:
         final p = d.prompt.toLowerCase();
+        final x = costsCards(g, seat, d);
+        if (x != null) return x;
         if (p.startsWith('mulligan')) {
           final expensive = [for (final id in d.options) if (g.card(id).energy >= 6) id];
           return expensive.take(d.max).toList();

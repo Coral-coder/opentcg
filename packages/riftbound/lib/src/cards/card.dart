@@ -77,7 +77,8 @@ class RCard {
 
   String get key => name;
   String get shortName => name.split(', ').first;
-  bool hasTag(String t) => tags.any((x) => x.toLowerCase() == t.toLowerCase());
+  /// Has tag [t]; "domain:Body" asks for a domain instead ("an enemy Body unit").
+  bool hasTag(String t) => t.startsWith('domain:') ? domains.any((d) => d.label == t.substring(7)) : tags.any((x) => x.toLowerCase() == t.toLowerCase());
   String? get image => printings.isEmpty ? null : printings.first.image;
   bool get isPermanent => type == CardType.unit || type == CardType.gear;
   bool get isMainDeck => type == CardType.unit || type == CardType.gear || type == CardType.spell;

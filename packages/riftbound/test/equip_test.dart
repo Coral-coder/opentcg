@@ -211,6 +211,27 @@ void main() {
       expect(g.attachedUnit(sword), poro, reason: '{Y} less {A} is free, though the player has no Order rune');
       expect(g.might(poro), 5);
     });
+
+    test('376, 356 Equip is a gear activated ability: Piltovan Forge takes {1} off the first one each turn', () {
+      final g = emptyGame(battlefields: const ['Piltovan Forge', 'Zaun Warrens']);
+      g.setControl(0, 0);
+      g.addCard('Vanguard Sergeant', 0, zone: Zone.board, loc: 0); // holds the Forge
+      g.addRunes(0, Domain.fury, 1);
+      final gl = g.addCard('Hextech Gauntlets', 0, zone: Zone.board); // [Equip] {3}{A}, less the unit's Might
+      final r = g.addCard('Recruit', 0, zone: Zone.board); // 1 Might
+      final i = g.parsed(gl).abilities.indexWhere((a) => a is EqEquip);
+      g.apply(ActivateMove(0, gl, i));
+      if (g.pending != null) answer(g, [r]);
+      passAll(g);
+      expect(g.attachedUnit(gl), r, reason: '{3}{A} less 1 Might less {1} is {1}{A}: one rune');
+      // The second gear ability this turn pays in full: {2}{A} needs two runes.
+      final gl2 = g.addCard('Hextech Gauntlets', 0, zone: Zone.board);
+      final r2 = g.addCard('Recruit', 0, zone: Zone.board);
+      g.addRunes(0, Domain.fury, 1);
+      g.apply(ActivateMove(0, gl2, i));
+      expect(g.pending, isNotNull, reason: 'which unit: the cost depends on its Might');
+      expect(() => answer(g, [r2]), throwsA(isA<TcgError>().having((e) => e.message, 'message', contains('Not enough runes'))));
+    });
   });
 
   group('Effect Text (CR 136, 718.3)', () {
@@ -493,7 +514,7 @@ void main() {
       g.apply(MoveUnitsMove(1, [enemy], 0));
       passAll(g);
       expect(g.state.obj(u).zone, Zone.banish);
-      expect(g.state.obj(zd).eq.banishedWith, [u]);
+      expect(g.state.obj(u).banishedBy, zd, reason: "banished with this");
       g.state.active = 0;
       final i = g.parsed(zd).abilities.indexWhere((a) => a is EqActivated);
       g.apply(ActivateMove(0, zd, i));

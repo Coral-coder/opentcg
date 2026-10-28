@@ -22,10 +22,7 @@ class EqWhen extends When {
 
 /// A cost with parts beyond Energy, Power and exhausting (CR 202, 818.1.c.3).
 class EqCost extends Cost {
-  const EqCost({super.energy, super.power, super.exhaust, super.extra, this.recycleTrash = 0, this.lessByTargetMight = false, this.banishMe = false});
-
-  /// "Recycle N cards from your trash".
-  final int recycleTrash;
+  const EqCost({super.energy, super.power, super.exhaust, super.extra, this.lessByTargetMight = false, this.banishMe = false});
 
   /// "This ability's Energy cost is reduced by the Might of the unit you choose."
   final bool lessByTargetMight;
@@ -34,13 +31,12 @@ class EqCost extends Cost {
   final bool banishMe;
 
   @override
-  bool get isFree => super.isFree && recycleTrash == 0 && !banishMe;
+  bool get isFree => super.isFree && !banishMe;
 
   @override
   String describe() => [
         super.describe(),
         if (lessByTargetMight) '(less by its Might)',
-        if (recycleTrash > 0) 'recycle $recycleTrash from trash',
         if (banishMe) 'banish this',
       ].where((s) => s.isNotEmpty).join(', ');
 }
@@ -471,10 +467,3 @@ class EqPlayBanishedWith extends EqEffect {
   String describe() => 'play all units banished with this free';
 }
 
-/// "Choose one that hasn't been chosen this turn - …" (each mode once per turn).
-class EqModesOnce extends EqEffect {
-  const EqModesOnce(this.modes);
-  final List<List<Effect>> modes;
-  @override
-  String describe() => 'choose one not chosen this turn';
-}

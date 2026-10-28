@@ -2,7 +2,7 @@ part of 'game.dart';
 
 /// Who is resolving: controller, source, the source's location ("here"), and chosen targets.
 class _Ctx {
-  _Ctx({required this.controller, required this.source, required this.loc, required this.targets, this.event = -1, this.via = -1});
+  _Ctx({required this.controller, required this.source, required this.loc, required this.targets, this.event = -1, this.paid = 0, this.costRef = -1, this.via = -1});
   final int controller;
   final ObjId source;
   final int loc;
@@ -13,6 +13,9 @@ class _Ctx {
 
   /// The attached card whose Effect Text this ability is ("this"), or -1 (game/equip.dart).
   final int via;
+  /// How the spell was played ([PlayFlags]) and what its additional cost killed (game/costs.dart).
+  final int paid;
+  final int costRef;
 }
 
 /// Choosing targets (CR 355.5–355.10) and executing instructions (CR 158, 359.3.e).
@@ -26,18 +29,22 @@ extension GameEffects on Game {
     final out = <int>[];
     _powerTargetsOf[this] = out;
     final asked = <int>{};
+    // Each execution of a Repeat chooses in its own range of slots (CR 820.2).
+    var offset = 0;
     void set(int slot, int v) {
-      while (out.length <= slot) {
+      final i = slot + offset;
+      while (out.length <= i) {
         out.add(-1);
       }
-      out[slot] = v;
+      out[i] = v;
     }
 
-    void pick(Effect e, Target? t, {bool mayDecline = false}) {
+    final chosenNow = <int>[];
+    void pick(Effect e, Target? t, {bool mayDecline = false, List<int> exclude = const []}) {
       if (t is HTarget) {
-        final h = _hOptions(t, p, source, loc, out);
+        final h = _hOptions(t, p, source, loc, offset == 0 ? out : out.sublist(offset < out.length ? offset : out.length));
         if (h == null) return;
-        final options = [for (final id in _hNarrow(h.options, t, p, restrictBf)) if (!_unchoosable(id, p)) id];
+        final options = [for (final id in _hNarrow(h.options, t, p, restrictBf)) if (!_unchoosable(id, p) && _xAllowed(out, h.slot + offset, id)) id];
         if (options.isEmpty) {
           if (h.upTo || optional || mayDecline) {
             set(h.slot, -1);
@@ -49,8 +56,8 @@ extension GameEffects on Game {
         set(h.slot, a.isEmpty ? -1 : a.first);
         return;
       }
-      if (t is! Choose || !asked.add(t.slot)) return;
-      final options = [for (final id in _hNarrow(matching(t.filter, controller: p, source: source, here: loc), t, p, restrictBf)) if (!_unchoosable(id, p) && _eqChoosable(t, id, out)) id];
+      if (t is! Choose || !asked.add(t.slot + offset)) return;
+      final options = [for (final id in _hNarrow(matching(t.filter, controller: p, source: source, here: loc), t, p, restrictBf)) if (!_unchoosable(id, p) && !exclude.contains(id) && _xAllowed(out, t.slot + offset, id) && _eqChoosable(t, id, out)) id];
       if (options.isEmpty) {
         if (t.upTo || optional || mayDecline) {
           set(t.slot, -1);
@@ -60,8 +67,10 @@ extension GameEffects on Game {
       }
       final a = ask(Decision(kind: DecisionKind.cards, player: p, prompt: '${nameOf(source)}: choose ${_describeChoice(e, t)}', options: options, min: t.upTo ? 0 : 1, max: 1, source: source));
       set(t.slot, a.isEmpty ? -1 : a.first);
+      if (a.isNotEmpty) chosenNow.add(a.first);
     }
 
+    final usedModes = <int, List<int>>{};
     void walk(List<Effect> es, {bool mayDecline = false}) {
       for (final e in es) {
         switch (e) {
@@ -72,6 +81,19 @@ extension GameEffects on Game {
             walk(e.nested, mayDecline: mayDecline || e.optional);
           case May(:final effects):
             walk(effects, mayDecline: mayDecline);
+          case Modes(:final modes, :final slot) when slot >= 0:
+            // The mode is chosen as it's played (CR 355.3).
+            final i = _xChooseMode(e, p, source, loc, usedModes[slot] ?? const [], optional: optional || mayDecline);
+            if (i < 0) {
+              if (optional || mayDecline) {
+                set(slot, -1);
+                continue;
+              }
+              throw RiftboundError('No mode of ${nameOf(source)} can be chosen');
+            }
+            set(slot, i);
+            (usedModes[slot] ??= []).add(i);
+            walk(modes[i], mayDecline: mayDecline);
           case Modes(:final modes):
             for (final m in modes) {
               walk(m, mayDecline: mayDecline);
@@ -87,21 +109,26 @@ extension GameEffects on Game {
               throw RiftboundError('No spell to counter');
             }
             set(0, ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Counter which spell?', options: spells, source: source)).first);
-          case EqModesOnce():
-            break; // A mode's choices are made as it's chosen (game/equip.dart).
           case EqMayPay(:final effects):
             walk(effects, mayDecline: mayDecline);
           case EqEffect():
             for (final t in e.targets) {
               pick(e, t, mayDecline: mayDecline);
             }
+          case XEffect():
+            _xChooseFor(e, p, source, loc, optional || mayDecline, set, (e, t, exclude) => pick(e, t, mayDecline: mayDecline, exclude: exclude), (es) => walk(es, mayDecline: mayDecline), () => List.of(chosenNow), (slot, id) => _xAllowed(out, slot + offset, id));
           default:
             pick(e, _targetOf(e), mayDecline: mayDecline);
         }
       }
     }
 
-    walk(effects);
+    final per = repeats > 0 ? _xSlotCount(effects) : 0;
+    for (var r = 0; r <= repeats; r++) {
+      offset = r * per;
+      chosenNow.clear();
+      walk(effects);
+    }
     return out;
   }
 
@@ -111,6 +138,11 @@ extension GameEffects on Game {
       if (e is May || (e is HEffect && e.optional)) continue;
       if (e is EqEffect) {
         if (_eqMissing(e, targets)) return true;
+        continue;
+      }
+      if (e is Modes && e.slot >= 0) {
+        final i = e.slot < targets.length ? targets[e.slot] : -1;
+        if (i < 0 || _mandatoryTargetsMissing(e.modes[i], targets)) return true;
         continue;
       }
       for (final t in e is HEffect ? e.choices : [?_targetOf(e)]) {
@@ -194,6 +226,7 @@ extension GameEffects on Game {
         for (final id in _resolveTarget(target, ctx)) {
           if (!isUnit(id) || _noDamage(id)) continue;
           _hDeal(id, n, ctx);
+          _xDamaged(p, id);
         }
       case Draw(:final n):
         _draw(p, n);
@@ -215,6 +248,7 @@ extension GameEffects on Game {
       case Ready(:final target):
         for (final id in _resolveTarget(target, ctx)) {
           if (_hCantReady(id)) continue;
+          if (state.obj(id).exhausted) _xBecameReady(id);
           state.obj(id).exhausted = false;
         }
       case Exhaust(:final target):
@@ -347,6 +381,13 @@ extension GameEffects on Game {
             _resolve(x, ctx);
           }
         }
+      case Modes(:final modes, :final slot) when slot >= 0:
+        // The mode chosen as it was played (CR 355.3).
+        final i = slot < ctx.targets.length ? ctx.targets[slot] : -1;
+        if (i < 0 || i >= modes.length) return;
+        for (final x in modes[i]) {
+          _resolve(x, ctx);
+        }
       case HEffect():
         _hResolve(e, ctx);
       case Modes(:final modes):
@@ -356,6 +397,8 @@ extension GameEffects on Game {
         }
       case EqEffect():
         _eqResolve(e, ctx);
+      case XEffect():
+        _xResolve(e, ctx);
       case PowerEffect():
         _resolvePower(e, ctx);
     }
@@ -367,6 +410,7 @@ extension GameEffects on Game {
         EqCond() => _eqCond(c, ctx),
         PowerCond() => _powerCondEval(c, ctx),
         HCond() => _hCond(c, ctx),
+        XCond() => _xCondNow(ctx.controller, c, source: ctx.source),
       };
 
   String _mayPrompt(List<Effect> effects) => effects.map(describeEffect).join(', then ');

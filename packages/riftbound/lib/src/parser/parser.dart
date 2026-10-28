@@ -6,11 +6,12 @@ import '../cards/card.dart';
 import '../ir.dart';
 
 part 'equip.dart';
+part 'costs.dart';
 part 'power.dart';
 part 'hidden.dart';
 
 /// Bumped whenever parsing or the engine changes what a saved game would replay to.
-const riftboundEngineVersion = 4;
+const riftboundEngineVersion = 5;
 
 class ParsedCard {
   ParsedCard(this.abilities, this.unsupported, [this.extra = const []]);
@@ -50,7 +51,7 @@ class RiftboundParser {
     if (c.type == CardType.rune) return ParsedCard(const [], const []);
     // Target slots are numbered across the whole card.
     final slots = [0];
-    for (final line in _eqLines(c.text)) {
+    for (final line in c.text.split('\n')) {
       if (line.trim().isEmpty) continue;
       final a = _EqLine(c, slots).parse(line.trim());
       if (a == null) {
@@ -123,6 +124,8 @@ class _Line {
     if (t.isEmpty) return out;
     final pw = _powerLine(t, line);
     if (pw != null) return [...out, ...pw];
+    final x = _xLine(t, line);
+    if (x != null) return [...out, ...x];
     // "[Repeat] {2}{R}".
     final rep = RegExp(r'^\[Repeat\]\s*((?:\{[0-9A-Z]+\})+)$').firstMatch(t);
     if (rep != null) {
@@ -276,7 +279,7 @@ class _Line {
     var exhaust = false, killMe = false;
     final extra = <CostPart>[];
     for (final part in s.split(', ')) {
-      final x = _powerCostPart(part);
+      final x = _powerCostPart(part) ?? _xCostPart(part);
       if (x != null) {
         extra.add(x);
         continue;
@@ -312,6 +315,8 @@ class _Line {
 
   /// Sentences → effects; null if any sentence isn't understood.
   List<Effect>? _effects(String text) {
+    final x = _xEffects(text);
+    if (x != null) return x;
     final out = <Effect>[];
     for (final s in _sentences(text)) {
       final e = _sentence(s);
@@ -345,7 +350,11 @@ class _Line {
     final core = _sentenceCore(s0);
     if (core != null) return core;
     _slotCounter[0] = slot;
-    return _powerSentence(s0);
+    final pw = _powerSentence(s0);
+    if (pw != null) return pw;
+    _slotCounter[0] = slot;
+    // Costs, modes and playing from elsewhere (parser/costs.dart).
+    return _xSentence(s0);
   }
 
   List<Effect>? _sentenceCore(String s0) {
@@ -562,10 +571,10 @@ class _Line {
     } else if (s.endsWith(' at a battlefield')) {
       where = Where.battlefield;
       s = s.substring(0, s.length - 17);
-    } else if (s.endsWith(' in a base') || s.endsWith(' in your base')) {
+    } else if (s.endsWith(' in a base') || s.endsWith(' in your base') || s.endsWith(' at a base')) {
       if (s.endsWith(' in your base')) side = Side.friendly;
       where = Where.base;
-      s = s.substring(0, s.lastIndexOf(' in '));
+      s = s.substring(0, s.endsWith(' at a base') ? s.length - 10 : s.lastIndexOf(' in '));
     } else if (s.endsWith(' you control')) {
       side = Side.friendly;
       s = s.substring(0, s.length - 12);

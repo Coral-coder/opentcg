@@ -29,6 +29,7 @@ import 'state.dart';
 
 part 'play.dart';
 part 'combat.dart';
+part 'costs.dart';
 part 'effects.dart';
 part 'query.dart';
 part 'testing.dart';
@@ -309,7 +310,10 @@ class Game implements TcgMatch {
     pl.scored = [];
     for (final o in state.objects.values) {
       if (o.controller == p && (o.zone == Zone.board || o.zone == Zone.runes || o.zone == Zone.legend)) {
-        if (!_hCantReady(o.id)) o.exhausted = false;
+        if (!_hCantReady(o.id)) {
+          if (o.zone == Zone.board && o.exhausted) _xBecameReady(o.id);
+          o.exhausted = false;
+        }
         o.usedThisTurn = [];
       }
     }
