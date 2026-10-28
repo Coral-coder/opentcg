@@ -163,9 +163,9 @@ extension GamePowerRules on Game {
         case KillFriendly():
           if (units(player: p).isEmpty) return 'No friendly unit to kill';
         case DiscardCost(:final n, :final spell):
-          final hand = [for (final h in state.player(p).hand) if (!spell || card(h).type == CardType.spell) h];
+          final hand = [for (final h in state.player(p).hand) if (x.allows(card(h).type)) h];
           if (hand.length < n) return spell ? 'No spell to discard' : 'Not enough cards to discard';
-        case EnergyLess() || RecycleTrash():
+        case EnergyLess() || RecycleTrash() || GenCostPart():
           break;
       }
     }
@@ -217,7 +217,7 @@ extension GamePowerRules on Game {
           _kill(pick.first);
         case DiscardCost(:final n, :final spell):
           final hand = state.player(p).hand;
-          final options = [for (final h in hand) if (!spell || card(h).type == CardType.spell) h];
+          final options = [for (final h in hand) if (x.allows(card(h).type)) h];
           final pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Discard ${spell ? 'a spell' : '$n'} for ${nameOf(src)}', options: options, min: n, max: n, source: src));
           for (final id in pick) {
             hand.remove(id);
@@ -225,7 +225,8 @@ extension GamePowerRules on Game {
             state.player(p).trash.add(id);
           }
           log('${playerName(p)} discards ${pick.map(nameOf).join(', ')}.', player: p, kind: 'discard');
-        case EnergyLess() || RecycleTrash():
+          _genDiscarded(p, pick);
+        case EnergyLess() || RecycleTrash() || GenCostPart():
           break;
       }
     }
@@ -655,6 +656,7 @@ extension GamePowerRules on Game {
         N(:final n) => n,
         MyMight() => state.objOrNull(ctx.source)?.zone == Zone.board ? mightUsed(ctx.source) : 0,
         PowerAmount() => _powerAmount(a, ctx),
+        GenAmount() => _genAmount(a, ctx),
       };
 
   ObjId? _chosen(int slot, _Ctx ctx) {
@@ -806,6 +808,7 @@ extension GamePowerRules on Game {
     final o = state.obj(id);
     log('${nameOf(id)} is banished.', player: by, card: id, kind: 'die');
     final owner = o.owner;
+    _genBanishing(id);
     o.reset();
     if (card(id).token) {
       o.zone = Zone.gone;
@@ -1016,8 +1019,9 @@ extension GamePowerRules on Game {
         var kills = 0;
         for (final e in split.entries) {
           if (e.value <= 0) continue;
-          state.obj(e.key).damage += e.value;
-          log('${nameOf(from)} deals ${e.value} to ${nameOf(e.key)}.', player: p, card: e.key, kind: 'damage', amount: e.value);
+          final d = _genDeal(e.key, e.value, ctx, byUnit: from);
+          if (d <= 0) continue;
+          log('${nameOf(from)} deals $d to ${nameOf(e.key)}.', player: p, card: e.key, kind: 'damage', amount: d);
           if (state.obj(e.key).damage >= might(e.key)) kills++;
         }
         gainXp(p, kills * xpPerKill);

@@ -33,6 +33,7 @@ part 'costs.dart';
 part 'effects.dart';
 part 'query.dart';
 part 'testing.dart';
+part 'general.dart';
 part 'power.dart';
 part 'hidden.dart';
 
@@ -307,10 +308,13 @@ class Game implements TcgMatch {
     final pl = state.player(p);
     pl.playedThisTurn = 0;
     pl.scored = [];
+    _genNewTurn(p);
+    final readied = <ObjId>[];
     for (final o in state.objects.values) {
       if (o.controller == p && (o.zone == Zone.board || o.zone == Zone.runes || o.zone == Zone.legend)) {
-        if (!_hCantReady(o.id)) {
+        if (!_hCantReady(o.id) && (o.zone != Zone.board || _genCanReady(o.id, p))) {
           if (o.zone == Zone.board && o.exhausted) _xBecameReady(o.id);
+          if (o.exhausted && o.zone == Zone.board && card(o.id).type == CardType.unit) readied.add(o.id);
           o.exhausted = false;
         }
         o.usedThisTurn = [];
@@ -324,6 +328,10 @@ class Game implements TcgMatch {
       }
     }
     _fire(On.startOfTurn, player: p);
+    _genEvent(GEv.startOfEachTurn, player: p);
+    for (final u in readied) {
+      _genReadied(u, p);
+    }
   }
 
   /// Walks the steps of the turn while nothing is waiting (CR 305).
@@ -348,6 +356,7 @@ class Game implements TcgMatch {
         state.step = Step.main;
         // Main phase (CR 316.3): rune pools empty.
         _emptyPools();
+        _genMainStart(p);
       case Step.main:
         break;
       case Step.ending:
@@ -363,7 +372,8 @@ class Game implements TcgMatch {
           }
         }
         _emptyPools();
-        _beginTurn(state.other(p));
+        _genExpire();
+        _beginTurn(_genNextPlayer(p));
     }
   }
 
@@ -372,6 +382,7 @@ class Game implements TcgMatch {
     log('${playerName(seat)} ends the turn.', player: seat);
     state.step = Step.ending;
     _fire(On.endOfTurn, player: seat);
+    _genEndOfTurn();
   }
 
   void _emptyPools() {

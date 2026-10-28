@@ -709,6 +709,7 @@ extension GameCosts on Game {
             state.obj(o).zone = Zone.trash;
             pl.trash.add(o);
             log('${pl.name} discards ${nameOf(o)}.', player: p, card: o, kind: 'discard');
+            _genDiscarded(p, [o]);
           case XPay.kill:
             log('${nameOf(o)} is killed to play ${c.name}.', player: p, card: o, kind: 'die');
             _kill(o);
@@ -1168,11 +1169,11 @@ extension GameCosts on Game {
         final y = _resolveTarget(b, ctx).where(isUnit).firstOrNull;
         if (x == null || y == null) return;
         final mx = mightUsed(x), my = mightUsed(y);
-        state.obj(x).damage += my;
-        state.obj(y).damage += mx;
+        final dy = _genDeal(y, mx, ctx, byUnit: x);
+        final dx = _genDeal(x, my, ctx, byUnit: y);
         _xDamaged(p, x);
         _xDamaged(p, y);
-        log('${nameOf(x)} and ${nameOf(y)} deal $mx and $my to each other.', player: p, card: x, kind: 'damage', amount: mx);
+        log('${nameOf(x)} and ${nameOf(y)} deal $dy and $dx to each other.', player: p, card: x, kind: 'damage', amount: dy);
       case IfElse(:final cond, :final then, :final otherwise):
         for (final x in _cond(cond, ctx) ? then : otherwise) {
           _resolve(x, ctx);

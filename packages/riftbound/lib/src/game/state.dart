@@ -10,6 +10,8 @@ import 'state_power.dart';
 
 export 'state_power.dart';
 
+part 'gen_state.dart';
+
 typedef ObjId = int;
 
 /// Zones (CR 105–108). Board objects are in [Zone.board] at a location ([Obj.loc]).
@@ -303,6 +305,8 @@ class GameState {
   Map<String, int> marks = {};
   final List<LogEntry> log = [];
 
+  /// The general effects' bookkeeping (gen_state.dart).
+  GenState gen = GenState();
   /// Delayed effects of Empower/XP/buff cards (state_power.dart).
   GamePower pw = GamePower();
 
@@ -334,7 +338,8 @@ class GameState {
       ..showdown = showdown?.clone()
       ..waiting = List.of(waiting)
       ..pw = pw.clone()
-      ..marks = Map.of(marks);
+      ..marks = Map.of(marks)
+      ..gen = gen.clone();
     s.log.addAll(log);
     return s;
   }
@@ -344,7 +349,7 @@ class GameState {
       ..write('rb1|$seed|${rng.state}|$nextId|$turn|$active|$firstPlayer|${phase.index}|${step.index}|${winner ?? ''}|$victoryScore|')
       ..write('${bfs.map((x) => x.digest()).join(';')}|')
       ..write('${chain.map((c) => c.digest()).join(';')}|$nextChainId|$priority|$passes|${showdown?.digest() ?? ''}|')
-      ..write('${waiting.map((c) => c.digest()).join(';')}|${pw.digest()}|')
+      ..write('${waiting.map((c) => c.digest()).join(';')}|${pw.digest()}|${gen.digest()}|')
       ..write('${(marks.keys.toList()..sortStable((a, b) => a.compareTo(b))).map((k) => '$k=${marks[k]}').join(',')}|');
     for (final p in players) {
       b.write('${p.digest()}#');
