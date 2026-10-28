@@ -161,7 +161,12 @@ class _RiftboundRoomLobbyState extends State<RiftboundRoomLobby> {
                         children: [
                           Row(
                             children: [
-                              Expanded(child: SelectableText(code ?? '', style: t.display(30, color: t.accent))),
+                              Expanded(
+                                child: Semantics(
+                                  label: 'Room code ${code ?? ''}',
+                                  child: ExcludeSemantics(child: SelectableText(code ?? '', style: t.display(30, color: t.accent))),
+                                ),
+                              ),
                               IconButton(
                                 tooltip: 'Copy the code',
                                 icon: Icon(Icons.copy, color: t.accent),
