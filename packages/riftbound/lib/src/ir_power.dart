@@ -177,6 +177,7 @@ String describeAmount(Amount a) => switch (a) {
       MyMight() => 'my Might',
       PerFriendlyUnit() => '1 per friendly unit',
       ChosenMight(:final slot) => 'Might of #$slot',
+      EqAmount() => a.describe(),
       GenAmount() => a.describe(),
     };
 

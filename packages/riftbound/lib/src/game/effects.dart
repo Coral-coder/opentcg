@@ -2,7 +2,7 @@ part of 'game.dart';
 
 /// Who is resolving: controller, source, the source's location ("here"), and chosen targets.
 class _Ctx {
-  _Ctx({required this.controller, required this.source, required this.loc, required this.targets, this.event = -1, this.paid = 0, this.costRef = -1, this.ability = -2});
+  _Ctx({required this.controller, required this.source, required this.loc, required this.targets, this.event = -1, this.paid = 0, this.costRef = -1, this.ability = -2, this.via = -1});
   final int controller;
   final ObjId source;
   final int loc;
@@ -11,6 +11,8 @@ class _Ctx {
   /// The unit a trigger is about, or -1.
   final int event;
 
+  /// The attached card whose Effect Text this ability is ("this"), or -1 (game/equip.dart).
+  final int via;
   /// How the spell was played ([PlayFlags]) and what its additional cost killed (game/costs.dart).
   final int paid;
   final int costRef;
@@ -61,7 +63,7 @@ extension GameEffects on Game {
         return;
       }
       if (t is! Choose || !asked.add(t.slot + offset)) return;
-      final options = [for (final id in _hNarrow(matching(t.filter, controller: p, source: source, here: loc, slots: out), t, p, restrictBf)) if (!_unchoosable(id, p) && !_genUntargetable(id, p) && !exclude.contains(id) && _xAllowed(out, t.slot + offset, id)) id];
+      final options = [for (final id in _hNarrow(matching(t.filter, controller: p, source: source, here: loc, slots: out), t, p, restrictBf)) if (!_unchoosable(id, p) && !_genUntargetable(id, p) && !exclude.contains(id) && _xAllowed(out, t.slot + offset, id) && _eqChoosable(t, id, out)) id];
       if (options.isEmpty) {
         if (t.upTo || optional || mayDecline) {
           set(t.slot, -1);
@@ -115,6 +117,12 @@ extension GameEffects on Game {
               throw RiftboundError('No spell to counter');
             }
             set(0, ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Counter which spell?', options: spells, source: source)).first);
+          case EqMayPay(:final effects):
+            walk(effects, mayDecline: mayDecline);
+          case EqEffect():
+            for (final t in e.targets) {
+              pick(e, t, mayDecline: mayDecline);
+            }
           case XEffect():
             _xChooseFor(e, p, source, loc, optional || mayDecline, set, (e, t, exclude) => pick(e, t, mayDecline: mayDecline, exclude: exclude), (es) => walk(es, mayDecline: mayDecline), () => List.of(chosenNow), (slot, id) => _xAllowed(out, slot + offset, id));
           default:
@@ -142,6 +150,10 @@ extension GameEffects on Game {
   bool _mandatoryTargetsMissing(List<Effect> effects, List<int> targets) {
     for (final e in effects) {
       if (e is May || (e is HEffect && e.optional)) continue;
+      if (e is EqEffect) {
+        if (_eqMissing(e, targets)) return true;
+        continue;
+      }
       if (e is Modes && e.slot >= 0) {
         final i = e.slot < targets.length ? targets[e.slot] : -1;
         if (i < 0 || _mandatoryTargetsMissing(e.modes[i], targets)) return true;
@@ -202,7 +214,7 @@ extension GameEffects on Game {
         final id = ctx.targets[slot];
         if (id < 0) return const [];
         _powerTargetsOf[this] = ctx.targets;
-        return matches(filter, id, controller: ctx.controller, source: ctx.source, here: ctx.loc) ? [id] : const [];
+        return matches(filter, id, controller: ctx.controller, source: ctx.source, here: ctx.loc) && _eqChoosable(t, id, ctx.targets) ? [id] : const [];
       case Chosen(:final slot):
         if (slot >= ctx.targets.length) return const [];
         final id = ctx.targets[slot];
@@ -212,6 +224,8 @@ extension GameEffects on Game {
       case EventUnit():
         final id = ctx.event;
         return id >= 0 && state.objOrNull(id)?.zone == Zone.board ? [id] : const [];
+      case EqTarget():
+        return _eqResolveTarget(t, ctx);
       case GenTarget():
         return _genResolveTarget(t, ctx);
       case HTarget():
@@ -305,6 +319,7 @@ extension GameEffects on Game {
         for (final id in _resolveTarget(target, ctx)) {
           final o = state.obj(id);
           if (o.loc == base) continue;
+          if (asMove && _eqUnmovable(id, p)) continue;
           if (asMove) {
             _moveUnits([id], base, p);
           } else {
@@ -321,6 +336,7 @@ extension GameEffects on Game {
       case ToOrFromBase(:final target):
         for (final id in _resolveTarget(target, ctx)) {
           final o = state.obj(id);
+          if (_eqUnmovable(id, p)) continue;
           if (o.loc != base) {
             _moveUnits([id], base, p);
           } else if (state.bfs.isNotEmpty) {
@@ -355,6 +371,7 @@ extension GameEffects on Game {
         for (var i = 0; i < count; i++) {
           final id = _newObj(token, p, Zone.board);
           _enterBoard(id, p, loc, ready: ready || db[token]!.type == CardType.gear);
+          _eqTokenPlayed(id, p);
           _hs.lastMade = id;
         }
         log('${playerName(p)} plays $count $token token${count == 1 ? '' : 's'}.', player: p, kind: 'play');
@@ -414,6 +431,8 @@ extension GameEffects on Game {
         for (final x in modes[a.first]) {
           _resolve(x, ctx);
         }
+      case EqEffect():
+        _eqResolve(e, ctx);
       case XEffect():
         _xResolve(e, ctx);
       case GenEffect():
@@ -426,6 +445,7 @@ extension GameEffects on Game {
   bool _cond(Cond c, _Ctx ctx) => switch (c) {
         HandAtMost(:final n) => state.player(ctx.controller).hand.length <= n,
         UnitsThere(:final n) => ctx.loc >= 0 && ctx.loc < state.bfs.length && unitsAt(ctx.loc, player: ctx.controller).length >= n,
+        EqCond() => _eqCond(c, ctx),
         GenCond() => _genCond(c, ctx),
         PowerCond() => _powerCondEval(c, ctx),
         HCond() => _hCond(c, ctx),

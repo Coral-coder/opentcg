@@ -287,7 +287,7 @@ extension GameHidden on Game {
   /// The battlefield a card was played from facedown at, for its play effects' choices
   /// (CR 811.1.d.3), or -1.
   int _hPlayRestriction(ChainItem t) {
-    final a = parsed(t.source).abilities[t.ability];
+    final a = _eqAbilityAt(db[t.card]!, t.ability);
     if (a is! Triggered || (a.on.on != On.played && a.on.on != On.playedFaceDown)) return -1;
     return state.marks['t:fdplay:${t.source}'] ?? -1;
   }
@@ -344,7 +344,7 @@ extension GameHidden on Game {
         break;
       case MoveTo(:final target, :final dest, :final bfSlot):
         for (final id in _resolveTarget(target, ctx)) {
-          if (!isUnit(id)) continue;
+          if (!isUnit(id) || _eqUnmovable(id, p)) continue;
           final o = state.obj(id);
           final from = o.loc;
           final List<int> options;

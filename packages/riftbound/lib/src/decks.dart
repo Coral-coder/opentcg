@@ -16,6 +16,8 @@ RCard? deckLegend(RCardDb db, List<String> keys) {
   return null;
 }
 
+/// Copies of [c] a deck may have: 3 (CR 103.2.c), or 1 for a [Unique] card.
+
 /// Does [c] fit [legend]'s Domain Identity (CR 103.2.b)?
 bool inIdentity(RCard c, RCard legend) => c.domains.every(legend.domains.contains);
 
@@ -41,7 +43,7 @@ List<String> validateDeck(RCardDb db, List<String> keys, {bool supportedOnly = t
     counts[k] = (counts[k] ?? 0) + 1;
   }
   final over = [for (final e in counts.entries) if (e.value > copyLimit(db[e.key]!)) e.key]..sortStable((a, b) => a.compareTo(b));
-  if (over.isNotEmpty) out.add('At most ${copyLimit(db[over.first]!)} cop${copyLimit(db[over.first]!) == 1 ? 'y' : 'ies'} of ${over.first}.');
+  if (over.isNotEmpty) out.add('At most ${copyLimit(db[over.first]!)} cop${copyLimit(db[over.first]!) == 1 ? 'y' : 'ies'} of ${over.first}${copyLimit(db[over.first]!) == 1 ? ' ([Unique])' : ''}.');
   final off = [for (final k in counts.keys) if (!inIdentity(db[k]!, legend)) k]..sortStable((a, b) => a.compareTo(b));
   if (off.isNotEmpty) out.add('${off.first} is outside ${legend.name}’s domains.');
   final sig = main.where((k) => db[k]!.signature).toList();
@@ -103,8 +105,9 @@ List<String> buildDeck(RCardDb db, RCard legend, {SeededRng? rng}) {
   if (rng != null) {
     rng.shuffle(pool);
   } else {
-    // A starter: units first, then by a sensible curve (2–5 cost), then name.
-    int score(RCard c) => (c.type == CardType.unit ? 0 : (c.type == CardType.spell ? 100 : 200)) + ((c.energy - 3).abs() * 10);
+    // A starter: units first, then spells and gear alike (Equipment decks need their gear), by a
+    // sensible curve (2–5 cost), then name.
+    int score(RCard c) => (c.type == CardType.unit ? 0 : 100) + ((c.energy - 3).abs() * 10);
     pool.sortStable((a, b) => score(a) != score(b) ? score(a) - score(b) : a.key.compareTo(b.key));
   }
   // About two thirds units.
@@ -126,6 +129,13 @@ List<String> buildDeck(RCardDb db, RCard legend, {SeededRng? rng}) {
   }
   final main = <String>[for (var i = 0; i < 3; i++) champ.key];
   for (final c in picks) {
+    final n = copyLimit(c);
+    for (var i = 0; i < (n < 3 ? n : 3) && main.length < 40; i++) {
+      main.add(c.key);
+    }
+  }
+  // [Unique] cards come one at a time: fill up from the rest of the pool.
+  for (final c in [...units.skip(u), ...others.skip(o)]) {
     final n = copyLimit(c);
     for (var i = 0; i < (n < 3 ? n : 3) && main.length < 40; i++) {
       main.add(c.key);

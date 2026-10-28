@@ -10,6 +10,7 @@ import 'state_power.dart';
 
 export 'state_power.dart';
 
+part 'state_equip.dart';
 part 'gen_state.dart';
 
 typedef ObjId = int;
@@ -62,6 +63,8 @@ class Obj {
   /// Activated abilities used this turn (for "Use only once per turn"), by index.
   List<int> usedThisTurn = [];
 
+  /// Equipment: attachment, copies and the like (game/equip.dart).
+  EqObj eq = EqObj();
   /// Empowered, extra buffs, Flow (state_power.dart).
   ObjPower pw = ObjPower();
 
@@ -79,6 +82,7 @@ class Obj {
     ..kwMod = Map.of(kwMod)
     ..enteredTurn = enteredTurn
     ..usedThisTurn = List.of(usedThisTurn)
+    ..eq = eq.clone()
     ..pw = pw.clone()
     ..banishedBy = banishedBy;
 
@@ -94,11 +98,12 @@ class Obj {
     pw = ObjPower();
     loc = base;
     controller = owner;
+    eq = EqObj();
   }
 
   String digest() {
     final kws = kwMod.keys.toList()..sortStable((a, b) => a - b);
-    return '$id|${card.length}:$card|$owner|$controller|${zone.index}|$loc|$exhausted|$damage|$buffed|$stunned|$mightMod|${kws.map((k) => '$k=${kwMod[k]}').join(',')}|$enteredTurn|${usedThisTurn.join(',')}|${pw.digest()}|$banishedBy';
+    return '$id|${card.length}:$card|$owner|$controller|${zone.index}|$loc|$exhausted|$damage|$buffed|$stunned|$mightMod|${kws.map((k) => '$k=${kwMod[k]}').join(',')}|$enteredTurn|${usedThisTurn.join(',')}|${eq.digest()}|${pw.digest()}|$banishedBy';
   }
 }
 
@@ -175,7 +180,7 @@ class Bf {
 
 /// A spell or ability on the Chain (CR 327).
 class ChainItem {
-  ChainItem({required this.id, required this.source, required this.card, required this.ability, required this.controller, this.targets = const [], this.repeats = 0, this.loc = base, this.fromTrigger = false, this.legion = false, this.event = -1, this.paid = 0, this.costRef = -1});
+  ChainItem({required this.id, required this.source, required this.card, required this.ability, required this.controller, this.targets = const [], this.repeats = 0, this.loc = base, this.fromTrigger = false, this.legion = false, this.event = -1, this.paid = 0, this.costRef = -1, this.via = -1});
   final int id;
 
   /// The card (a spell on the chain) or the object whose ability this is.
@@ -198,6 +203,9 @@ class ChainItem {
   /// The unit a trigger is about ("it"), or -1.
   final int event;
 
+  /// For an ability a unit has from an attached card's Effect Text: that card ("this"), or -1.
+  final int via;
+
   /// How it was played ([PlayFlags]: additional cost paid, recycle after resolving, …).
   final int paid;
 
@@ -206,7 +214,7 @@ class ChainItem {
 
   bool get isSpell => ability < 0;
 
-  String digest() => '$id|$source|${card.length}:$card|$ability|$controller|${targets.join(',')}|$repeats|$loc|$fromTrigger|$legion|$event|$paid|$costRef';
+  String digest() => '$id|$source|${card.length}:$card|$ability|$controller|${targets.join(',')}|$repeats|$loc|$fromTrigger|$legion|$event|$via|$paid|$costRef';
 }
 
 /// A showdown, and the combat it may be part of (CR 341, 461).
@@ -300,6 +308,8 @@ class GameState {
   /// Triggered abilities waiting to be put on the chain (CR 382), in order.
   List<ChainItem> waiting = [];
 
+  /// Equipment bookkeeping (game/equip.dart).
+  EqState eq = EqState();
   /// Small facts effects leave behind, by name ("readyEnter:0" = player 0's units enter ready
   /// this turn). Looked up by key; the digest lists them sorted.
   Map<String, int> marks = {};
@@ -337,6 +347,7 @@ class GameState {
       ..passes = passes
       ..showdown = showdown?.clone()
       ..waiting = List.of(waiting)
+      ..eq = eq.clone()
       ..pw = pw.clone()
       ..marks = Map.of(marks)
       ..gen = gen.clone();
@@ -349,7 +360,7 @@ class GameState {
       ..write('rb1|$seed|${rng.state}|$nextId|$turn|$active|$firstPlayer|${phase.index}|${step.index}|${winner ?? ''}|$victoryScore|')
       ..write('${bfs.map((x) => x.digest()).join(';')}|')
       ..write('${chain.map((c) => c.digest()).join(';')}|$nextChainId|$priority|$passes|${showdown?.digest() ?? ''}|')
-      ..write('${waiting.map((c) => c.digest()).join(';')}|${pw.digest()}|${gen.digest()}|')
+      ..write('${waiting.map((c) => c.digest()).join(';')}|${eq.digest()}|${pw.digest()}|${gen.digest()}|')
       ..write('${(marks.keys.toList()..sortStable((a, b) => a.compareTo(b))).map((k) => '$k=${marks[k]}').join(',')}|');
     for (final p in players) {
       b.write('${p.digest()}#');

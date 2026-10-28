@@ -830,7 +830,7 @@ extension GameCosts on Game {
 
   /// Does a waiting trigger's condition still hold (CR 383.2.a.1)?
   bool _xTriggerOk(ChainItem t) {
-    final a = parsed(t.source).abilities[t.ability];
+    final a = _eqAbilityAt(db[t.card]!, t.ability);
     if (a is! Triggered || a.on is! XWhen) return true;
     final w = a.on as XWhen;
     if (w.fromTrash && state.obj(t.source).zone != Zone.trash) return false;

@@ -11,12 +11,13 @@ String describeTarget(Target t) => switch (t) {
       Chosen() => 'it',
       Each(:final filter) => 'each ${filter.describe()}',
       EventUnit() => 'that unit',
+      EqTarget() => t.describe(),
       GenTarget() => t.describe(),
       HTarget() => t.describe(),
     };
 
 String describeEffect(Effect e) => switch (e) {
-      Deal(:final amount, :final target) => 'deal ${amount is N ? amount.n : 'my Might'} to ${describeTarget(target)}',
+      Deal(:final amount, :final target) => 'deal ${amount is N ? amount.n : (amount is EqAmount ? amount.describe() : 'my Might')} to ${describeTarget(target)}',
       Draw(:final n) => 'draw $n',
       Discard(:final n) => 'discard $n',
       Buff(:final target) => 'buff ${describeTarget(target)}',
@@ -42,6 +43,8 @@ String describeEffect(Effect e) => switch (e) {
       Modes(:final modes, :final distinct, :final perTurn) => 'choose one${distinct ? ' (each different)' : ''}${perTurn ? ' (not chosen this turn)' : ''}: ${modes.map((m) => m.map(describeEffect).join(', ')).join(' / ')}',
       PowerEffect() => describePower(e),
       HEffect() => e.describe(describeEffect, describeTarget),
+      EqMayPay(:final cost, :final effects) => 'you may pay ${cost.describe()} to ${effects.map(describeEffect).join(', ')}',
+      EqEffect() => e.describe(),
       XEffect() => describeXEffect(e),
       GenEffect() => e.describe(),
     };
@@ -51,6 +54,7 @@ String describeCond(Cond c) => switch (c) {
       UnitsThere(:final n) => '$n+ units there',
       PowerCond() => describePowerCond(c),
       HCond() => c.describe(),
+      EqCond() => c.describe(),
       XCond() => describeXCond(c),
       GenCond() => c.describe(),
     };
@@ -58,7 +62,7 @@ String describeCond(Cond c) => switch (c) {
 String describeAbility(Ability a) => switch (a) {
       KeywordAb(:final kw, :final n) => 'KW ${kw.name}${n > 1 ? ' $n' : ''}',
       Triggered(:final on, :final effects, :final legion, :final gate) =>
-        'TRIG ${gate == null ? '' : '[${describeGate(gate)}] '}${legion ? 'legion ' : ''}${on is GenWhen ? on.describe() : (on is XWhen && on.kind != null ? on.kind!.name : on.on.name)}${on is XWhen && on.n > 0 ? '(${on.n})' : ''}${on.moveToBattlefield ? '(bf)' : ''}${on is XWhen && on.fromTrash ? ' from trash' : ''}${on is XWhen && on.cond != null ? ' if ${describeCond(on.cond!)}' : ''} → ${effects.map(describeEffect).join('; ')}',
+        'TRIG ${gate == null ? '' : '[${describeGate(gate)}] '}${legion ? 'legion ' : ''}${on is EqWhen ? on.event.name : on is GenWhen ? on.describe() : (on is XWhen && on.kind != null ? on.kind!.name : on.on.name)}${on is XWhen && on.n > 0 ? '(${on.n})' : ''}${on.moveToBattlefield ? '(bf)' : ''}${on is XWhen && on.fromTrash ? ' from trash' : ''}${on is XWhen && on.cond != null ? ' if ${describeCond(on.cond!)}' : ''} → ${effects.map(describeEffect).join('; ')}',
       Activated(:final cost, :final effects, :final timing, :final oncePerTurn, :final legion, :final gate) =>
         'ACT ${gate == null ? '' : '[${describeGate(gate)}] '}[${cost.describe()}]${timing == Timing.normal ? '' : ' ${timing.name}'}${legion ? ' legion' : ''}${oncePerTurn ? ' once/turn' : ''} → ${effects.map(describeEffect).join('; ')}',
       SpellBody(:final effects) => 'SPELL → ${effects.map(describeEffect).join('; ')}',
@@ -70,6 +74,7 @@ String describeAbility(Ability a) => switch (a) {
           KwAnthem(:final kw, :final n, :final filter) => '${filter.describe()} have ${kw.name}${n > 1 ? ' $n' : ''}',
           EntersExhausted() => 'enters exhausted',
           CostLess(:final n, :final legion) => '${legion ? 'legion: ' : ''}costs {$n} less',
+          EqPassive() => passive.describe(),
           PowerPassive() => describePowerPassive(passive),
           HPassive() => passive.describe(),
           XPassive() => passive.describe(),

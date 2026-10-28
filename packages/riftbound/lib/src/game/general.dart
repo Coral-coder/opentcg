@@ -1618,8 +1618,8 @@ extension GameGeneral on Game {
           if (a is SpellBody) ...a.effects,
       ];
     }
-    if (ability >= abs.length) return const [];
-    return switch (abs[ability]) {
+    if (ability >= abs.length && ability < 1000) return const [];
+    return switch (_eqAbilityAt(db[cardKey]!, ability)) {
       Triggered(:final effects) || Activated(:final effects) => effects,
       _ => const [],
     };
@@ -1778,10 +1778,9 @@ extension GameGeneral on Game {
   }
 
   /// A triggered ability's own condition (CR 383.2.a.1), checked as it triggers.
-  bool _genTriggerOk(ObjId src, int index, int controller, int loc, int event) {
-    final abs = parsed(src).abilities;
-    if (index < 0 || index >= abs.length) return true;
-    final a = abs[index];
+  bool _genTriggerOk(ObjId src, int index, int controller, int loc, int event, {String? card}) {
+    if (index < 0) return true;
+    final a = _eqAbilityAt(db[card ?? _eqCardKey(src)]!, index);
     if (a is! Triggered || a.effects.length != 1 || a.effects.first is! TrigIf) return true;
     final t = a.effects.first as TrigIf;
     return _cond(t.cond, _Ctx(controller: controller, source: src, loc: loc, targets: const [], event: event, ability: index));

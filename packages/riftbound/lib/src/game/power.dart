@@ -656,6 +656,7 @@ extension GamePowerRules on Game {
         N(:final n) => n,
         MyMight() => state.objOrNull(ctx.source)?.zone == Zone.board ? mightUsed(ctx.source) : 0,
         PowerAmount() => _powerAmount(a, ctx),
+        EqAmount() => _eqAmount(a, ctx),
         GenAmount() => _genAmount(a, ctx),
       };
 

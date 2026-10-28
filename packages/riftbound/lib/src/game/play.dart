@@ -201,6 +201,7 @@ extension GamePlay on Game {
     final parsedCard = parsed(id);
     if (!parsedCard.supported) throw RiftboundError('${c.name} isn’t supported yet');
     if (!c.isMainDeck) throw RiftboundError('That can’t be played');
+    final eqQuickDraw = _eqGrantedQuickDraw(p, id);
     // A card hidden facedown at a battlefield (CR 811): played as a Reaction, ignoring its own
     // cost, to that battlefield and choosing there.
     final fd = x.facedown >= 0 ? x.facedown : null;
@@ -210,7 +211,7 @@ extension GamePlay on Game {
     }
     var ambushOnly = false;
     if (!x.effect) {
-      final timing = fd != null ? Timing.reaction : (c.type == CardType.spell ? parsedCard.timing : _hPermanentTiming(parsedCard));
+      final timing = fd != null ? Timing.reaction : _eqPlayTiming(p, id) ?? (c.type == CardType.spell ? parsedCard.timing : _hPermanentTiming(parsedCard));
       final t = _timingProblem(p, timing);
       // Ambush (CR 822.1.b): Reaction while being played to a battlefield where you have units.
       ambushOnly = t != null && fd == null && c.type == CardType.unit && _hAmbushTiming(p, id);
@@ -306,6 +307,7 @@ extension GamePlay on Game {
     }
     _xAfterPlay(p, id, x, spent);
     _genEvent(GEv.played, player: p, obj: id);
+    _eqAfterPlay(p, id, quickDraw: eqQuickDraw);
   }
 
   String _costLabel(RCard c) => '{${c.energy}}${'{${c.domains.isEmpty ? 'A' : c.domains.first.letter}}' * c.power}';
@@ -350,10 +352,13 @@ extension GamePlay on Game {
     }
     final o = state.objOrNull(src);
     if (o == null || o.controller != p || !(o.zone == Zone.board || (o.zone == Zone.legend))) throw RiftboundError('You don’t control that');
+    if (index >= 1000) return _eqActivateGranted(p, src, index);
+    if (_eqInactive(src)) throw RiftboundError('${nameOf(src)} is attached: its own text is inactive');
     final abs = parsed(src).abilities;
     if (index < 0 || index >= abs.length || abs[index] is! Activated) throw RiftboundError('No such ability');
     if (!parsed(src).supported) throw RiftboundError('${nameOf(src)} isn’t supported yet');
     final a = abs[index] as Activated;
+    if (a is EqEquip || a is EqActivated) return _eqActivate(p, src, index, a);
     if (a.legion && state.player(p).playedThisTurn < 1) throw RiftboundError('Legion: play another card this turn first');
     final isAdd = a.adds;
     final t = isAdd ? null : _timingProblem(p, a.timing);
@@ -385,7 +390,7 @@ extension GamePlay on Game {
     if (a.cost.exhaust) o.exhausted = true;
     o.usedThisTurn.add(index);
     if (card(src).type == CardType.gear) _genEvent(GEv.gearAbility, player: p, obj: src);
-    final item = ChainItem(id: state.nextChainId++, source: src, card: o.card, ability: index, controller: p, targets: targets, loc: o.loc);
+    final item = ChainItem(id: state.nextChainId++, source: src, card: _eqCardKey(src), ability: index, controller: p, targets: targets, loc: o.loc);
     if (a.cost.killMe) _kill(src);
     log('${playerName(p)} uses ${nameOf(src)}.', player: p, card: src, kind: 'ability');
     if (isAdd) {
@@ -433,6 +438,7 @@ extension GamePlay on Game {
         final a = abs[i];
         if (a is Triggered && a.on.on == On.move && (!a.on.moveToBattlefield || to != base)) _queue(u, i, state.obj(u).controller);
       }
+      _eqQueueAppended(u, (t) => t.on.on == On.move && (!t.on.moveToBattlefield || to != base));
     }
     _genMoved(moving, from, to, byPlayer);
   }
@@ -448,14 +454,15 @@ extension GamePlay on Game {
   // -------------------------------------------------------------------------------------------
 
   /// Queues ability [index] of [src] to go on the chain at the next chance (CR 382).
-  void _queue(ObjId src, int index, int controller, {int loc = -2, int event = -1}) {
-    if (!_hTriggerOk(src, index, controller)) return;
+  void _queue(ObjId src, int index, int controller, {int loc = -2, int event = -1, String? card, int via = -1}) {
+    if (card == null && !_hTriggerOk(src, index, controller)) return;
     final o = state.obj(src);
+    final key = card ?? _eqCardKey(src);
     // A dependent ability triggers only while it's active (CR 824.1.c, 828.1.c).
-    final ab = parsed(src).abilities[index];
+    final ab = _eqAbilityAt(db[key]!, index);
     if (ab is Triggered && !_gateOk(src, ab.gate)) return;
-    if (!_genTriggerOk(src, index, controller, loc == -2 ? o.loc : loc, event)) return;
-    state.waiting.add(ChainItem(id: 0, source: src, card: o.card, ability: index, controller: controller, loc: loc == -2 ? o.loc : loc, fromTrigger: true, event: event));
+    if (!_genTriggerOk(src, index, controller, loc == -2 ? o.loc : loc, event, card: key)) return;
+    state.waiting.add(ChainItem(id: 0, source: src, card: key, ability: index, controller: controller, loc: loc == -2 ? o.loc : loc, fromTrigger: true, event: event, via: via));
   }
 
   /// Triggers abilities of everything [player] controls (and their legend) for an event. [bf]:
@@ -463,11 +470,13 @@ extension GamePlay on Game {
   void _fire(On on, {required int player, int bf = -2, int event = -1}) {
     final srcs = [?state.player(player).legend, for (final o in _boardOf(player)) o.id, ..._xTrashTriggerCards(player)];
     for (final s in srcs) {
+      if (_eqInactive(s)) continue;
       final abs = parsed(s).abilities;
       for (var i = 0; i < abs.length; i++) {
         final a = abs[i];
         if (a is Triggered && (a.on.on == on || _genAlsoOn(a.on, on)) && _xZoneOk(s, a.on)) _queue(s, i, player, loc: bf, event: event);
       }
+      _eqQueueAppended(s, (t) => t.on.on == on, loc: bf, event: event);
     }
   }
 
@@ -476,12 +485,13 @@ extension GamePlay on Game {
     final src = state.objOrNull(t.source);
     if (src == null) return;
     if (!_xTriggerOk(t)) return;
-    final a = parsed(t.source).abilities[t.ability];
-    final effects = switch (a) {
-      Triggered() => a.effects,
-      KeywordAb(kw: Kw.vision) => const <Effect>[Predict(1)],
-      _ => const <Effect>[],
-    };
+    final a = _eqAbilityAt(db[t.card]!, t.ability);
+    final effects = _eqEffectsOf(a) ??
+        switch (a) {
+          Triggered() => a.effects,
+          KeywordAb(kw: Kw.vision) => const <Effect>[Predict(1)],
+          _ => const <Effect>[],
+        };
     if (effects.isEmpty) return;
     final targets = _chooseTargets(effects, t.controller, t.source, t.loc, optional: true, restrictBf: _hPlayRestriction(t));
     if (_mandatoryTargetsMissing(effects, targets)) {
@@ -504,7 +514,7 @@ extension GamePlay on Game {
       }
       _pay(t.controller, 0, deflect);
     }
-    _pushChain(ChainItem(id: state.nextChainId++, source: t.source, card: t.card, ability: t.ability, controller: t.controller, targets: targets, loc: t.loc, fromTrigger: true, event: t.event));
+    _pushChain(ChainItem(id: state.nextChainId++, source: t.source, card: t.card, ability: t.ability, controller: t.controller, targets: targets, loc: t.loc, fromTrigger: true, event: t.event, via: t.via));
   }
 
   void _pushChain(ChainItem item) {
@@ -525,19 +535,20 @@ extension GamePlay on Game {
     if (item.isSpell) {
       effects = [for (final a in RiftboundParser.parse(c).abilities) if (a is SpellBody) ...a.effects];
     } else {
-      final a = RiftboundParser.parse(c).abilities[item.ability];
-      effects = switch (a) {
-        Triggered() => a.effects,
-        Activated() => a.effects,
-        KeywordAb(kw: Kw.vision) => const <Effect>[Predict(1)],
-        _ => const <Effect>[],
-      };
+      final a = _eqAbilityAt(c, item.ability);
+      effects = _eqEffectsOf(a) ??
+          switch (a) {
+            Triggered() => a.effects,
+            Activated() => a.effects,
+            KeywordAb(kw: Kw.vision) => const <Effect>[Predict(1)],
+            _ => const <Effect>[],
+          };
     }
     if (item.isSpell) _xBeforeSpell(item);
     // Each execution of a Repeat has its own choices (CR 820.2).
     final per = item.repeats > 0 ? _xSlotCount(effects) : 0;
     for (var r = 0; r <= item.repeats; r++) {
-      final ctx = _Ctx(controller: item.controller, source: item.source, loc: item.loc, targets: per == 0 ? item.targets : _xSlice(item.targets, r, per), event: item.event, paid: item.paid, costRef: item.costRef, ability: item.ability);
+      final ctx = _Ctx(controller: item.controller, source: item.source, loc: item.loc, targets: per == 0 ? item.targets : _xSlice(item.targets, r, per), event: item.event, paid: item.paid, costRef: item.costRef, ability: item.ability, via: item.via);
       _genBeforeResolve(item, ctx);
       _resolveEffects(effects, ctx, rep: r);
     }
@@ -629,9 +640,9 @@ extension GamePlay on Game {
   void _kill(ObjId id) {
     final o = state.obj(id);
     if (o.zone != Zone.board) return;
-    if (_hSaved(id) || _savedFromDeath(id) || _genReplaceDeath(id)) return;
+    if (_eqDieInstead(id) || _hSaved(id) || _savedFromDeath(id) || _genReplaceDeath(id)) return;
     _xOnKill(o);
-    final abs = parsed(id).abilities;
+    final abs = _eqInactive(id) ? const <Ability>[] : parsed(id).abilities;
     for (var i = 0; i < abs.length; i++) {
       final a = abs[i];
       if (a is Triggered && a.on.on == On.die) {
@@ -640,6 +651,7 @@ extension GamePlay on Game {
         }
       }
     }
+    _eqQueueAppended(id, (t) => t.on.on == On.die);
     _hOnDeath(id);
     _unitDies(id);
     _leaveBoard(id, toHand: false);
@@ -649,6 +661,7 @@ extension GamePlay on Game {
   void _leaveBoard(ObjId id, {required bool toHand}) {
     final o = state.obj(id);
     final c = card(id);
+    _eqLeaving(id);
     if (o.zone == Zone.board) _genLeaving(id);
     _gen.forget(id);
     o.reset();

@@ -5,17 +5,22 @@ library;
 import '../cards/card.dart';
 import '../ir.dart';
 
+part 'equip.dart';
 part 'general.dart';
 part 'costs.dart';
 part 'power.dart';
 part 'hidden.dart';
 
 /// Bumped whenever parsing or the engine changes what a saved game would replay to.
-const riftboundEngineVersion = 5;
+const riftboundEngineVersion = 6;
 
 class ParsedCard {
-  ParsedCard(this.abilities, this.unsupported);
+  ParsedCard(this.abilities, this.unsupported, [this.extra = const []]);
   final List<Ability> abilities;
+
+  /// Abilities this card gives other objects (an Equipment's Effect Text, granted abilities),
+  /// put on the chain by index (parser/equip.dart).
+  final List<Ability> extra;
 
   /// Lines (or reasons) the engine can't play yet.
   final List<String> unsupported;
@@ -55,14 +60,7 @@ class RiftboundParser {
       if (line.trim().isEmpty) continue;
       // The family grammars and the core first; the general grammar (parser/general.dart) only
       // for lines they can't read.
-      final slot = slots[0];
-      final traced = trace?.length ?? 0;
-      var a = _Line(c, slots, general: false).parse(line.trim());
-      if (a == null) {
-        slots[0] = slot;
-        trace?.removeRange(traced, trace!.length);
-        a = _Line(c, slots).parse(line.trim());
-      }
+      final a = _eqParseLine(c, slots, line.trim());
       if (a == null) {
         unsupported.add(line.trim());
       } else {
@@ -73,7 +71,7 @@ class RiftboundParser {
     if (c.type == CardType.spell && !abilities.any((a) => a is SpellBody)) {
       if (unsupported.isEmpty) unsupported.add('(a spell with no instructions)');
     }
-    return ParsedCard(abilities, unsupported);
+    return ParsedCard(abilities, unsupported, _eqExtra(c, abilities, unsupported));
   }
 }
 

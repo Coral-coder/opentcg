@@ -39,7 +39,7 @@ extension GameQuery on Game {
   /// A keyword's value on an object: printed plus given this turn (CR 801.3); Assault, Shield and
   /// Deflect sum (CR 807.2, 809.2, 814.2).
   int _kw(ObjId id, Kw k) {
-    var n = parsed(id).kw(k) + (state.obj(id).kwMod[k.index] ?? 0);
+    var n = (_eqInactive(id) ? 0 : parsed(id).kw(k)) + (state.obj(id).kwMod[k.index] ?? 0) + _eqKw(id, k);
     if (state.obj(id).zone == Zone.board) {
       for (final (src, passive) in _passives()) {
         if (passive is KwAnthem && passive.kw == k && matches(passive.filter, id, controller: state.obj(src).controller, source: src, here: state.obj(src).loc)) n += passive.n;
@@ -55,10 +55,12 @@ extension GameQuery on Game {
   Iterable<(ObjId, Passive)> _passives() sync* {
     for (final o in state.objects.values) {
       if (o.zone != Zone.board && o.zone != Zone.legend && o.zone != Zone.battlefield) continue;
+      if (_eqInactive(o.id)) continue;
       for (final a in parsed(o.id).abilities) {
         if (a is Static && _gateOk(o.id, a.gate)) yield (o.id, a.passive);
       }
     }
+    yield* _eqPassives();
   }
 
   bool hasKw(ObjId id, Kw k) => _kw(id, k) > 0;
@@ -82,6 +84,7 @@ extension GameQuery on Game {
             break;
         }
       }
+      m += _eqMight(id);
       m += _powerMight(id);
       m += _hMight(id);
       m += _xMight(id);
@@ -131,7 +134,7 @@ extension GameQuery on Game {
     if (f.buffed != null && o.buffed != f.buffed) return false;
     if (f.attacking && !isAttacking(id)) return false;
     if (f.defending && !isDefending(id)) return false;
-    if (f.tag != null && !c.hasTag(f.tag!)) return false;
+    if (f.tag != null && !c.hasTag(f.tag!) && !_eqHasTag(id, f.tag!)) return false;
     if (f.notTag != null && c.hasTag(f.notTag!)) return false;
     if (f.mightMax != null && mightUsed(id) > f.mightMax!) return false;
     if (f.mightMin != null && mightUsed(id) < f.mightMin!) return false;
@@ -185,6 +188,7 @@ extension GameQuery on Game {
         }
       }
     }
+    out.addAll(_eqCandidates(seat));
     out.addAll(_hCandidates(seat));
     if (state.chain.isNotEmpty || state.showdown != null) out.add(PassMove(seat));
     if (_neutralMain(seat)) out.add(EndTurnMove(seat));

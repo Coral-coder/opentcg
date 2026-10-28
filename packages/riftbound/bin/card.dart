@@ -37,6 +37,12 @@ void main(List<String> args) {
       for (final a in p.abilities) {
         stdout.writeln('  = ${describeAbility(a)}');
       }
+      for (final l in c.effect.split('\n')) {
+        if (l.isNotEmpty) stdout.writeln('    Effect: $l');
+      }
+      for (final a in p.extra) {
+        stdout.writeln('  + ${describeAbility(a)}');
+      }
     }
     return;
   }
@@ -73,6 +79,14 @@ void main(List<String> args) {
     }
     for (final a in p.abilities) {
       stdout.writeln('  = ${describeAbility(a)}');
+    }
+    // An Equipment's Effect Text and Might Bonus (CR 136–137), and abilities given to others.
+    if (c.mightBonus != null) stdout.writeln('  Might Bonus: +${c.mightBonus}');
+    for (final l in c.effect.split('\n')) {
+      if (l.isNotEmpty) stdout.writeln('  Effect: $l');
+    }
+    for (final a in p.extra) {
+      stdout.writeln('  + ${describeAbility(a)}');
     }
     stdout.writeln(p.supported ? '  SUPPORTED' : '  UNSUPPORTED: ${p.unsupported.join(' | ')}');
   }

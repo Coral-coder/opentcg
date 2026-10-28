@@ -1,0 +1,178 @@
+{
+ "source": "https://riftbound.leagueoflegends.com/en-us/card-gallery/",
+ "about": "Effect Text (CR 136) and Might Bonus (CR 137) of every Equipment, from Riot's official card gallery; card data and text are Riot Games'. Written by tool/riftbound_gallery.py, read by packages/riftbound/bin/build_db.dart.",
+ "cards": {
+  "B.F. Sword": {
+   "effect": "",
+   "mightBonus": 3
+  },
+  "Blade of the Exile": {
+   "effect": "<p>[Ganking] (I can move from battlefield to battlefield.)</p>",
+   "mightBonus": 3
+  },
+  "Blade of the Ruined King": {
+   "effect": "",
+   "mightBonus": 4
+  },
+  "Blighted Battleaxe": {
+   "effect": "<p>At the end of your turn, if I didn't conquer this turn, unattach this and deal 4 to me.</p>",
+   "mightBonus": 4
+  },
+  "Boneshiver": {
+   "effect": "<p>When I conquer, channel 1 rune exhausted.</p>",
+   "mightBonus": 2
+  },
+  "Boots of Swiftness": {
+   "effect": "<p>[Ganking] (I can move from battlefield to battlefield.)</p>",
+   "mightBonus": 2
+  },
+  "Brutalizer": {
+   "effect": "<p>If this was attached to me this turn, I have an additional +2 :rb_might:.</p>",
+   "mightBonus": 1
+  },
+  "Cloth Armor": {
+   "effect": "<p>[Shield 2] (+2 :rb_might: while I'm a defender.)</p>",
+   "mightBonus": 0
+  },
+  "Cull": {
+   "effect": "<p>When I conquer, play a Gold gear token exhausted.</p>",
+   "mightBonus": 1
+  },
+  "Doran's Blade": {
+   "effect": "",
+   "mightBonus": 2
+  },
+  "Doran's Ring": {
+   "effect": "<p>When I conquer, discard 1, then draw 1.</p>",
+   "mightBonus": 1
+  },
+  "Doran's Shield": {
+   "effect": "<p>[Tank] (I must be assigned combat damage first.)</p>",
+   "mightBonus": 1
+  },
+  "Edge of Night": {
+   "effect": "",
+   "mightBonus": 2
+  },
+  "Experimental Hexplate": {
+   "effect": "<p>I am a Mech.</p>",
+   "mightBonus": 1
+  },
+  "Eye of the Herald": {
+   "effect": "<p>When I move, play a 1 :rb_might: Recruit unit token here.</p>",
+   "mightBonus": 0
+  },
+  "Forgefire Cape": {
+   "effect": "<p>When I attack or defend, deal 2 to all enemy units here.</p>",
+   "mightBonus": 3
+  },
+  "Guardian Angel": {
+   "effect": "<p>If I would die, kill Guardian Angel instead. Heal me, exhaust me, and recall me.</p>",
+   "mightBonus": 1
+  },
+  "Hand Hammer": {
+   "effect": "<p>I have +2 :rb_might: while I'm at a battlefield with exactly one other unit you control.</p>",
+   "mightBonus": 1
+  },
+  "Hexdrinker": {
+   "effect": "<p>[Deflect] (Opponents must pay :rb_rune_rainbow: to choose me with a spell or ability.)</p>",
+   "mightBonus": 1
+  },
+  "Hextech Gauntlets": {
+   "effect": "<p>When I conquer, if you assigned 3 or more excess damage, draw 1.</p>",
+   "mightBonus": 3
+  },
+  "Hunter's Machete": {
+   "effect": "<p>[Hunt] (When I conquer or hold, gain 1 XP.)</p>",
+   "mightBonus": 2
+  },
+  "Jagged Cutlass": {
+   "effect": "<p>I can't be moved by enemy spells and abilities.</p>",
+   "mightBonus": 2
+  },
+  "Last Rites": {
+   "effect": "<p>When I conquer or hold, you may play a unit from your trash. (You still pay its costs.)</p>",
+   "mightBonus": 2
+  },
+  "Long Sword": {
+   "effect": "",
+   "mightBonus": 2
+  },
+  "Nazuman Ntofo": {
+   "effect": "<p>[Shield 2] (+2 :rb_might: while I'm a defender.)</p>",
+   "mightBonus": 0
+  },
+  "Pendulum Blade": {
+   "effect": "<p>When I move to a battlefield, give me +2 :rb_might: this turn.</p>",
+   "mightBonus": 1
+  },
+  "Protector's Shield": {
+   "effect": "<p>[Tank] (I must be assigned combat damage first.)</p>",
+   "mightBonus": 1
+  },
+  "Rabadon's Deathcrown": {
+   "effect": "<p>Your spells and abilities deal 3 Bonus Damage (while this is attached).</p>",
+   "mightBonus": 3
+  },
+  "Recurve Bow": {
+   "effect": "<p>When I attack or defend, deal 2 to an enemy unit here.</p>",
+   "mightBonus": 0
+  },
+  "Sacred Shears": {
+   "effect": "<p>[Deathknell] — Draw 1. (When I die, get the effect.)</p>",
+   "mightBonus": 1
+  },
+  "Serrated Dirk": {
+   "effect": "<p>[Assault 2] (+2 :rb_might: while I'm an attacker.)</p>",
+   "mightBonus": 0
+  },
+  "Shady Spectacles": {
+   "effect": "<p>(I am a copy of the chosen unit.)</p>",
+   "mightBonus": 0
+  },
+  "Shepherd's Heirloom": {
+   "effect": "",
+   "mightBonus": 2
+  },
+  "Shurelya's Requiem": {
+   "effect": "<p>Your units here have [Ganking]. (We can move from battlefield to battlefield.)</p>",
+   "mightBonus": 2
+  },
+  "Skyfall of Areion": {
+   "effect": "<p>My hold effects are also conquer effects, and vice versa.</p>",
+   "mightBonus": 2
+  },
+  "Soul Sword": {
+   "effect": "<p>[Level 3][&gt;] I have an additional +1 :rb_might:. (While you have 3+ XP, get the effect.)</p>",
+   "mightBonus": 1
+  },
+  "Spinning Axe": {
+   "effect": "",
+   "mightBonus": 3
+  },
+  "Sterak's Gage": {
+   "effect": "",
+   "mightBonus": 3
+  },
+  "Svellsongur": {
+   "effect": "",
+   "mightBonus": 0
+  },
+  "The Zero Drive": {
+   "effect": "<p>[Deathknell] — Banish me. (When I die, get the effect.)</p>",
+   "mightBonus": 2
+  },
+  "Trinity Force": {
+   "effect": "<p>When I hold, score 1 point.</p>",
+   "mightBonus": 2
+  },
+  "Warmog's Armor": {
+   "effect": "<p>When I conquer, buff me. (If I don't have a buff, I get a +1 :rb_might: buff.)</p>",
+   "mightBonus": 1
+  },
+  "World Atlas": {
+   "effect": "<p>When I hold, play two Gold gear tokens exhausted.</p>",
+   "mightBonus": 2
+  }
+ }
+}

@@ -8,6 +8,7 @@ import 'describe.dart';
 
 part 'ir_general.dart';
 
+part 'ir_equip.dart';
 part 'ir_costs.dart';
 part 'ir_power.dart';
 part 'ir_hidden.dart';
@@ -540,6 +541,9 @@ enum On {
   /// Events of game/costs.dart, told apart by [XWhen.kind] (playing cards with a given cost,
   /// becoming ready, …).
   costsExt,
+
+  /// Equipment events, told apart by [EqWhen.event] (ir_equip.dart).
+  eq,
 }
 
 class When extends Trigger {
