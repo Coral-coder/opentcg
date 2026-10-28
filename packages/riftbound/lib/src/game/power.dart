@@ -497,6 +497,7 @@ extension GamePowerRules on Game {
 
   /// Unit [id] can't be dealt damage now ("unless I'm in combat").
   bool _noDamage(ObjId id) {
+    if (_ws2NoDamage(id)) return true;
     for (final a in parsed(id).abilities) {
       if (a is Static && a.passive is NoDamageOutsideCombat && _gateOk(id, a.gate)) {
         final sd = state.showdown;
@@ -1004,10 +1005,11 @@ extension GamePowerRules on Game {
           final to = dests[ask(Decision(kind: DecisionKind.option, player: p, prompt: 'Move ${nameOf(id)} where?', labels: [for (final d in dests) locName(d, state.obj(id).controller)], source: ctx.source)).first];
           _moveUnits([id], to, p);
         }
-      case StareDown(:final slot):
+      case StareDown(:final slot, :final bfSlot):
         final mine = _chosen(slot, ctx);
-        if (mine == null || state.bfs.isEmpty) return;
-        final bf = ask(Decision(kind: DecisionKind.option, player: p, prompt: '${nameOf(ctx.source)}: choose a battlefield', labels: [for (final b in state.bfs) nameOf(b.obj)], source: ctx.source)).first;
+        final bfObj = bfSlot < ctx.targets.length ? ctx.targets[bfSlot] : -1;
+        final bf = state.bfs.indexWhere((b) => b.obj == bfObj);
+        if (mine == null || bf < 0) return;
         final m = mightUsed(mine);
         final weaker = [for (final u in unitsAt(bf, player: state.other(p))) if (mightUsed(u) < m) u];
         if (weaker.isNotEmpty) _moveUnits(weaker, base, p);
@@ -1015,9 +1017,15 @@ extension GamePowerRules on Game {
         final from = _chosen(slot, ctx);
         if (from == null) return;
         final enemies = [for (final u in units(player: state.other(p))) if (state.obj(u).loc != base && !_noDamage(u)) u];
-        // The engine splits the damage for the player, killing as many units as it can (as in
-        // combat, CR 467.2.c).
-        final split = _assign(mightUsed(from), enemies);
+        // The player divides the damage as they like (CR 355.14), one point at a time; the
+        // weakest unit is offered first.
+        final split = <ObjId, int>{};
+        final total = mightUsed(from);
+        final order = List.of(enemies)..sortStable((a, b) => might(a) != might(b) ? might(a) - might(b) : a - b);
+        for (var i = 0; i < total && order.isNotEmpty; i++) {
+          final a = ask(Decision(kind: DecisionKind.cards, player: p, prompt: '${nameOf(ctx.source)}: assign 1 damage (${total - i} left)', options: order, source: ctx.source)).first;
+          split[a] = (split[a] ?? 0) + 1;
+        }
         var kills = 0;
         for (final e in split.entries) {
           if (e.value <= 0) continue;

@@ -37,6 +37,8 @@ part 'equip.dart';
 part 'general.dart';
 part 'power.dart';
 part 'hidden.dart';
+part 'w2s2.dart';
+part 'w2s3.dart';
 part 'w2s1.dart';
 
 class NeedDecision implements Exception {
@@ -56,7 +58,7 @@ class Game implements TcgMatch {
   Game(this.db, {required List<String> players, required int seed}) : state = GameState(seed, players);
   Game._probe(Game g)
       : db = g.db,
-        state = g.state.clone(),
+        state = g.state.clone(probe: true),
         _probe = true;
 
   final RCardDb db;
@@ -66,6 +68,10 @@ class Game implements TcgMatch {
 
   /// Legality probes answer every question with the default answer.
   bool _probe = false;
+
+  /// The passives in effect, scanned once for the duration of a query that doesn't change the
+  /// state (see [_memoPassives]); null outside one.
+  List<(ObjId, Passive)>? _passMemo;
   List<List<int>> _answers = const [];
   int _answerIndex = 0;
 
@@ -247,6 +253,7 @@ class Game implements TcgMatch {
       if (champ != null) {
         rest.remove(champ);
         pl.champion = _newObj(champ, p, Zone.champion);
+        state.marks['champ:$p'] = pl.champion!;
       }
       final bfs = <String>[];
       for (final k in rest) {
@@ -324,7 +331,7 @@ class Game implements TcgMatch {
     }
     // Beginning step (CR 315.2.a): start-of-turn effects; Temporary kills before scoring (CR 816).
     for (final o in _boardOf(p)) {
-      if (_kw(o.id, Kw.temporary) > 0) {
+      if (_kw(o.id, Kw.temporary) > 0 && !_ws2TemporarySuppressed(o.id)) {
         log('${nameOf(o.id)} is Temporary and dies.', player: p, card: o.id, kind: 'die');
         _kill(o.id);
       }
@@ -350,7 +357,7 @@ class Game implements TcgMatch {
         state.step = Step.channel;
         // Channel phase (CR 315.3, 487.7): 2 runes; the second player's first turn 3.
         final first = state.turn == 2 && p != state.firstPlayer;
-        _channel(p, first ? 3 : 2);
+        _channel(p, _w3ChannelCount(first ? 3 : 2));
       case Step.channel:
         state.step = Step.draw;
         if (!_s1SkipDraw(p)) _draw(p, 1);
@@ -388,11 +395,13 @@ class Game implements TcgMatch {
   }
 
   void _emptyPools() {
+    _ws2EmptyPools();
     for (final pl in state.players) {
       pl.energyPool = 0;
       pl.powerPool = [0, 0, 0, 0, 0, 0];
       pl.anyPool = 0;
     }
+    _w3EmptyPools();
   }
 
   void _win(int p) {

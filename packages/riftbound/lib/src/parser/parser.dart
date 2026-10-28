@@ -10,6 +10,8 @@ part 'general.dart';
 part 'costs.dart';
 part 'power.dart';
 part 'hidden.dart';
+part 'w2s2.dart';
+part 'w2s3.dart';
 part 'w2s1.dart';
 
 /// Bumped whenever parsing or the engine changes what a saved game would replay to.
@@ -43,9 +45,24 @@ class ParsedCard {
 class RiftboundParser {
   static final Map<String, ParsedCard> _cache = {};
 
-  static ParsedCard parse(RCard c) => _cache.putIfAbsent(c.key, () => parseUncached(c));
+  /// The same cache, found from the card object itself (an identity lookup, much cheaper than
+  /// hashing its key: the engine asks for parses constantly). [_generation] retires it on
+  /// [clearCache].
+  static final _byCard = Expando<(int, ParsedCard)>();
+  static var _generation = 0;
 
-  static void clearCache() => _cache.clear();
+  static ParsedCard parse(RCard c) {
+    final hit = _byCard[c];
+    if (hit != null && hit.$1 == _generation) return hit.$2;
+    final p = _cache.putIfAbsent(c.key, () => parseUncached(c));
+    _byCard[c] = (_generation, p);
+    return p;
+  }
+
+  static void clearCache() {
+    _cache.clear();
+    _generation++;
+  }
 
   /// When not null, parsing records here each piece of text it couldn't read, most specific
   /// first ("S: sentence", "W: trigger", "T: target", "C: condition", "P: passive", "K: cost").
@@ -142,6 +159,10 @@ class _Line {
       t = t.substring(m.end);
     }
     if (t.isEmpty) return out;
+    final ws2 = _ws2Line(t, line);
+    if (ws2 != null) return [...out, ...ws2];
+    final w3 = _w3Line(t, line);
+    if (w3 != null) return [...out, ...w3];
     final s1 = _s1Line(t, line);
     if (s1 != null) return [...out, ...s1];
     final pw = _powerLine(t, line);
@@ -240,6 +261,8 @@ class _Line {
   }
 
   When? _when(String s) {
+    final ws2 = _ws2When(s);
+    if (ws2 != null) return ws2;
     final hidden = _hWhen(s);
     if (hidden != null) return hidden;
     final me = card.type == CardType.unit;
@@ -376,8 +399,12 @@ class _Line {
   /// other forms (parser/power.dart).
   List<Effect>? _sentence(String s0) {
     final mark = _mark();
+    final w3 = _w3Sentence(s0);
+    if (w3 != null) return w3;
     final early = _powerSentenceEarly(s0);
     if (early != null) return early;
+    final ws2 = _ws2Sentence(s0);
+    if (ws2 != null) return ws2;
     final slot = _slotCounter[0];
     final g = general ? _genSentence(s0) : null;
     if (g != null) return g;
@@ -535,6 +562,8 @@ class _Line {
   }
 
   Cond? _cond(String c) {
+    final ws2 = _ws2Cond(c);
+    if (ws2 != null) return ws2;
     final hidden = _hCond(c);
     if (hidden != null) return hidden;
     if (c == 'you have one or fewer cards in your hand') return const HandAtMost(1);
