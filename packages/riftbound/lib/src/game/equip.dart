@@ -92,9 +92,15 @@ extension GameEquip on Game {
 
   /// Passive abilities units have from attached cards, with the unit as their source.
   Iterable<(ObjId, Passive)> _eqPassives() sync* {
+    // The units something on the board is attached to, found in one pass.
+    final carriers = <ObjId>{
+      for (final g in state.objects.values)
+        if (g.zone == Zone.board && g.eq.attachedTo >= 0) g.eq.attachedTo,
+    };
+    if (carriers.isEmpty) return;
     for (final o in state.objects.values) {
+      if (!carriers.contains(o.id)) continue;
       if (o.zone != Zone.board || o.eq.attachedTo >= 0 || card(o.id).type != CardType.unit) continue;
-      if (!state.objects.values.any((g) => g.zone == Zone.board && g.eq.attachedTo == o.id)) continue;
       for (final (_, _, a, _) in _eqAppended(o.id)) {
         if (a is Static) yield (o.id, a.passive);
       }
