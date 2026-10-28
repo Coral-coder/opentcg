@@ -27,6 +27,64 @@ class RiftboundDeckChoice {
   String label(RiftboundStore store) => '${random ? 'Random' : 'Starter'}: ${legend ?? 'any legend'}';
 }
 
+/// Decks for every seat of [mode]: [mine] in seat 0 and starter decks of random legends for the
+/// rest, never a teammate's legend in 2v2 (CR 491.8.h).
+List<List<String>> riftboundDecksFor(RMode mode, List<String> mine, SeededRng rng) {
+  final store = RiftboundStore.shared;
+  final db = store.db;
+  final decks = <List<String>>[mine];
+  for (var p = 1; p < mode.players; p++) {
+    final taken = {if (mode == RMode.teams && p >= 2) deckLegend(db, decks[p - 2])?.name};
+    final legends = [for (final n in store.legendNames) if (!taken.contains(n)) db[n]!];
+    decks.add(buildDeck(db, legends[rng.nextInt(legends.length)]));
+  }
+  return decks;
+}
+
+/// The Mode of Play: Duel, Skirmish, War or Magma Chamber (CR 486–491).
+class RiftboundModePicker extends StatelessWidget {
+  const RiftboundModePicker({super.key, required this.value, required this.onChanged});
+  final RMode value;
+  final void Function(RMode) onChanged;
+  @override
+  Widget build(BuildContext context) {
+    final t = GameTheme.of(context);
+    String blurb(RMode m) => switch (m) {
+      RMode.duel => '1 v 1 · first to 8',
+      RMode.ffa3 => '3 players · first to 8',
+      RMode.ffa4 => '4 players · first to 8',
+      RMode.teams => '2 v 2 · teams share points · first to 11',
+    };
+    return HexPanel(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Mode', style: t.display(17, color: t.accent)),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final m in RMode.values)
+                ChoiceChip(
+                  label: Text(m.label),
+                  selected: value == m,
+                  showCheckmark: false,
+                  selectedColor: const Color(0x55C8AA6E),
+                  side: BorderSide(color: value == m ? t.accent : const Color(0x33C8AA6E)),
+                  onSelected: (_) => onChanged(m),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(blurb(value), style: t.style(12, color: t.muted)),
+        ],
+      ),
+    );
+  }
+}
+
 /// Picks a [RiftboundDeckChoice]: a legend, and its starter deck or random picks.
 class RiftboundDeckChooser extends StatelessWidget {
   const RiftboundDeckChooser({super.key, required this.label, required this.value, required this.onChanged});

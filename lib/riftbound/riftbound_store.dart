@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tcg_app/tcg_app.dart';
 
 import 'riftbound_links.dart';
+import 'riftbound_room.dart';
 import 'riftbound_session.dart';
 
 /// Riftbound's card database (bundled with the app), the saved local game and the current
@@ -50,8 +51,17 @@ class RiftboundStore with RiftboundLinks {
     return s == null ? null : jsonDecode(s) as Map<String, dynamic>;
   }
 
-  RiftboundSession newGame({required List<String> names, required List<List<String>> decks, required int seed, required bool hotseat}) {
-    final s = RiftboundSession.local(ruleset: RiftboundRuleset(db), mode: hotseat ? SessionMode.hotseat : SessionMode.solo, playerNames: names, seed: seed, decks: decks);
+  /// A game on this device: [names.length] players, the others computers unless [hotseat]. A
+  /// [mode] other than the Duel needs its number of players (CR 489–491).
+  RiftboundSession newGame({required List<String> names, required List<List<String>> decks, required int seed, required bool hotseat, RMode mode = RMode.duel}) {
+    final s = RiftboundSession.local(
+      ruleset: RiftboundRuleset(db),
+      mode: hotseat ? SessionMode.hotseat : SessionMode.solo,
+      playerNames: names,
+      seed: seed,
+      decks: decks,
+      options: mode == RMode.duel ? null : {'mode': mode.id},
+    );
     _attach(s);
     s.start();
     return s;
@@ -67,6 +77,7 @@ class RiftboundStore with RiftboundLinks {
         playerNames: (saved['names'] as List).cast<String>(),
         seed: saved['seed'] as int,
         decks: [for (final d in saved['decks'] as List) (d as List).cast<String>()],
+        options: (saved['rules'] as Map?)?.cast<String, dynamic>(),
       );
       _attach(s);
       s.replay([for (final a in saved['actions'] as List) RMove.fromJson((a as Map).cast<String, dynamic>())]);
@@ -92,10 +103,19 @@ class RiftboundStore with RiftboundLinks {
     return s;
   }
 
+  /// An online table of 2–4 seats becomes the session.
+  RiftboundSession startRoomGame(RiftboundRoom room) {
+    final s = RiftboundSession.room(room: room);
+    session?.dispose();
+    session = s;
+    return s;
+  }
+
   void endSession() {
     final s = session;
     session = null;
     s?.dispose();
     s?.link?.dispose();
+    s?.room?.dispose();
   }
 }
