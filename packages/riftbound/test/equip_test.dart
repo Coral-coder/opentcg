@@ -37,12 +37,40 @@ void main() {
       expect(RiftboundParser.parse(db['Trinity Force']!).extra, hasLength(1));
     });
 
-    test('every Equipment card is supported but Edge of Night (it needs [Hidden])', () {
+    test('every Equipment card is supported', () {
       final missing = [
         for (final c in db.cards)
           if (c.type == CardType.gear && c.hasTag('Equipment') && !RiftboundParser.parse(c).supported) c.name,
       ];
-      expect(missing, ['Edge of Night']);
+      expect(missing, isEmpty);
+    });
+
+    test('811.1.d Edge of Night: played from face down, it attaches to a unit you control at its battlefield', () {
+      final g = emptyGame();
+      g.stackDeck(0, 'Shipyard Skulker', 6);
+      g.stackDeck(1, 'Shipyard Skulker', 6);
+      g.setControl(0, 0);
+      final there = g.addCard('Vanguard Sergeant', 0, zone: Zone.board, loc: 0);
+      final home = g.addCard('Vanguard Sergeant', 0, zone: Zone.board);
+      g.addRunes(0, Domain.chaos, 1);
+      final edge = g.addCard('Edge of Night', 0); // [Hidden]; Equip {P}; +2 Might
+      g.apply(HideMove(0, edge));
+      expect(g.state.obj(edge).zone, Zone.facedown);
+      for (final p in [0, 1]) {
+        g.apply(EndTurnMove(p));
+        if (g.pending != null) answer(g, Game.defaultAnswer(g.pending!.decision));
+      }
+      passAll(g);
+      g.apply(PlayMove(0, edge));
+      // "Here" is battlefield 0 (CR 811.1.d.3): the unit in base isn't a choice.
+      if (g.pending != null) {
+        expect(g.pending!.decision.options, isNot(contains(home)));
+        answer(g, [there]);
+      }
+      passAll(g);
+      expect(g.attachedUnit(edge), there);
+      expect(g.attachedTo(there), [edge]);
+      expect(g.might(there), g.card(there).might! + db['Edge of Night']!.mightBonus!);
     });
   });
 
@@ -132,9 +160,9 @@ void main() {
       final u = g.addCard('Daring Poro', 0, zone: Zone.board);
       g.apply(PlayMove(0, h));
       passAll(g);
-      expect(g.state.player(0).xp, 1);
+      expect(g.state.player(0).pw.xp, 1);
       equip(g, h, u);
-      expect(g.state.player(0).xp, 0);
+      expect(g.state.player(0).pw.xp, 0);
       expect(g.attachedUnit(h), u);
     });
 
@@ -680,10 +708,10 @@ void main() {
       equip(g, g.addCard('Hunter\'s Machete', 0, zone: Zone.board), u); // +2, [Hunt]
       equip(g, g.addCard('Soul Sword', 0, zone: Zone.board), u); // +1, [Level 3] +1
       expect(g.might(u), 6 + 2 + 1);
-      g.state.player(0).xp = 2;
+      g.state.player(0).pw.xp = 2;
       g.apply(MoveUnitsMove(0, [u], 0));
       passAll(g);
-      expect(g.state.player(0).xp, 3);
+      expect(g.state.player(0).pw.xp, 3);
       expect(g.might(u), 6 + 2 + 1 + 1);
     });
 
@@ -826,8 +854,8 @@ void main() {
 
   group('Decks', () {
     test('[Unique]: a deck may have only one card with that name', () {
-      expect(maxCopies(db['Forgefire Cape']!), 1);
-      expect(maxCopies(db['B.F. Sword']!), 3);
+      expect(copyLimit(db['Forgefire Cape']!), 1);
+      expect(copyLimit(db['B.F. Sword']!), 3);
       final ornn = db.cards.firstWhere((c) => c.type == CardType.legend && c.hasTag('Ornn'), orElse: () => db['Jax, Grandmaster At Arms']!);
       final deck = buildDeck(db, db['Jax, Grandmaster At Arms']!);
       expect(validateDeck(db, deck), isEmpty);

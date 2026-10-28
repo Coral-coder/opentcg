@@ -32,7 +32,6 @@ class EqObj {
   List<String> grants = [];
 
   /// The optional additional cost was paid as it was played (Akshan, Mischievous).
-  bool paidExtra = false;
 
   EqObj clone() => EqObj()
     ..attachedTo = attachedTo
@@ -44,10 +43,9 @@ class EqObj {
     ..copyOf = copyOf
     ..copyVia = copyVia
     ..textOf = textOf
-    ..grants = List.of(grants)
-    ..paidExtra = paidExtra;
+    ..grants = List.of(grants);
 
-  String digest() => '$attachedTo/$attachedTurn/$controlUntil/${banishedWith.join(',')}/$conquerTurn/$conquests/${copyOf.length}:$copyOf/$copyVia/${textOf.length}:$textOf/${grants.join(';')}/$paidExtra';
+  String digest() => '$attachedTo/$attachedTurn/$controlUntil/${banishedWith.join(',')}/$conquerTurn/$conquests/${copyOf.length}:$copyOf/$copyVia/${textOf.length}:$textOf/${grants.join(';')}';
 }
 
 /// Game-wide Equipment bookkeeping.

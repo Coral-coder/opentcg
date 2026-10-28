@@ -1,6 +1,7 @@
 /// Short descriptions of parsed abilities, for tools, tests and the app's card details.
 library;
 
+import 'describe_power.dart';
 import 'ir.dart';
 
 String describeTarget(Target t) => switch (t) {
@@ -10,6 +11,7 @@ String describeTarget(Target t) => switch (t) {
       Each(:final filter) => 'each ${filter.describe()}',
       EventUnit() => 'that unit',
       EqTarget() => t.describe(),
+      HTarget() => t.describe(),
     };
 
 String describeEffect(Effect e) => switch (e) {
@@ -34,25 +36,31 @@ String describeEffect(Effect e) => switch (e) {
       AddRes(:final energy, :final anyPower, :final spellsOnly) => 'add ${energy > 0 ? '{$energy}' : ''}${'{A}' * anyPower}${spellsOnly ? ' (spells only)' : ''}',
       ReadyRunes(:final n) => 'ready $n runes',
       ToOrFromBase(:final target) => 'move ${describeTarget(target)} to or from base',
-      If(:final cond, :final effects) => 'if ${switch (cond) {
-          HandAtMost(:final n) => 'hand ≤ $n',
-          UnitsThere(:final n) => '$n+ units there',
-          EqCond() => cond.describe(),
-        }}: ${effects.map(describeEffect).join(', ')}',
+      If(:final cond, :final effects) => 'if ${describeCond(cond)}: ${effects.map(describeEffect).join(', ')}',
       May(:final effects) => 'you may ${effects.map(describeEffect).join(', then ')}',
       Modes(:final modes) => 'choose one: ${modes.map((m) => m.map(describeEffect).join(', ')).join(' / ')}',
+      PowerEffect() => describePower(e),
+      HEffect() => e.describe(describeEffect, describeTarget),
       EqModesOnce(:final modes) => 'choose one not chosen this turn: ${modes.map((m) => m.map(describeEffect).join(', ')).join(' / ')}',
       EqMayPay(:final cost, :final effects) => 'you may pay ${cost.describe()} to ${effects.map(describeEffect).join(', ')}',
       EqEffect() => e.describe(),
     };
 
+String describeCond(Cond c) => switch (c) {
+      HandAtMost(:final n) => 'hand ≤ $n',
+      UnitsThere(:final n) => '$n+ units there',
+      PowerCond() => describePowerCond(c),
+      HCond() => c.describe(),
+      EqCond() => c.describe(),
+    };
+
 String describeAbility(Ability a) => switch (a) {
       KeywordAb(:final kw, :final n) => 'KW ${kw.name}${n > 1 ? ' $n' : ''}',
-      Triggered(:final on, :final effects, :final legion) => 'TRIG ${legion ? 'legion ' : ''}${on is EqWhen ? on.event.name : on.on.name}${on.moveToBattlefield ? '(bf)' : ''} → ${effects.map(describeEffect).join('; ')}',
-      Activated(:final cost, :final effects, :final timing, :final oncePerTurn, :final legion) =>
-        'ACT [${cost.describe()}]${timing == Timing.normal ? '' : ' ${timing.name}'}${legion ? ' legion' : ''}${oncePerTurn ? ' once/turn' : ''} → ${effects.map(describeEffect).join('; ')}',
+      Triggered(:final on, :final effects, :final legion, :final gate) => 'TRIG ${gate == null ? '' : '[${describeGate(gate)}] '}${legion ? 'legion ' : ''}${on is EqWhen ? on.event.name : on.on.name}${on.moveToBattlefield ? '(bf)' : ''} → ${effects.map(describeEffect).join('; ')}',
+      Activated(:final cost, :final effects, :final timing, :final oncePerTurn, :final legion, :final gate) =>
+        'ACT ${gate == null ? '' : '[${describeGate(gate)}] '}[${cost.describe()}]${timing == Timing.normal ? '' : ' ${timing.name}'}${legion ? ' legion' : ''}${oncePerTurn ? ' once/turn' : ''} → ${effects.map(describeEffect).join('; ')}',
       SpellBody(:final effects) => 'SPELL → ${effects.map(describeEffect).join('; ')}',
-      Static(:final passive) => 'STATIC ${switch (passive) {
+      Static(:final passive, :final gate) => 'STATIC ${gate == null ? '' : '[${describeGate(gate)}] '}${switch (passive) {
           Anthem(:final n, :final filter) => '${filter.describe()} +$n Might',
           EntersReady() => 'enters ready',
           NoCombatDamage() => 'no combat damage',
@@ -61,6 +69,8 @@ String describeAbility(Ability a) => switch (a) {
           EntersExhausted() => 'enters exhausted',
           CostLess(:final n, :final legion) => '${legion ? 'legion: ' : ''}costs {$n} less',
           EqPassive() => passive.describe(),
+          PowerPassive() => describePowerPassive(passive),
+          HPassive() => passive.describe(),
         }}',
       RepeatCost(:final cost) => 'REPEAT ${cost.describe()}',
     };

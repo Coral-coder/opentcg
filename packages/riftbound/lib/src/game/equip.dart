@@ -150,7 +150,7 @@ extension GameEquip on Game {
     return switch (c) {
       EqWithOneOther() => o.loc != base && unitsAt(o.loc, player: o.controller).length == 2,
       EqAttachedThisTurn() => state.objOrNull(via)?.eq.attachedTurn == state.turn && attachedUnit(via) == unit,
-      EqLevel(:final n) => state.player(o.controller).xp >= n,
+      EqLevel(:final n) => state.player(o.controller).pw.xp >= n,
       EqDidntConquer() => o.eq.conquerTurn != state.turn,
       _ => false,
     };
@@ -337,32 +337,21 @@ extension GameEquip on Game {
     return (c, energy, power);
   }
 
-  /// Can [p] pay the parts of [c] beyond runes for [src]?
+  /// Can [p] pay the parts of [c] beyond runes for [src]? (Power's cost parts, CR 202.)
   String? _eqExtraCostProblem(int p, ObjId src, EqCost c) {
-    final pl = state.player(p);
-    if (c.spendXp > pl.xp) return 'Needs ${c.spendXp} XP';
-    if (c.recycleTrash > pl.trash.length) return 'Needs ${c.recycleTrash} cards in your trash';
-    if (c.killFriendly && units(player: p).isEmpty) return 'Needs a friendly unit to kill';
-    return null;
+    if (c.recycleTrash > state.player(p).trash.length) return 'Needs ${c.recycleTrash} cards in your trash';
+    return c.extra.isEmpty ? null : _powerActivateProblem(p, src, -1, Activated('', c, const []));
   }
 
   /// Pays the parts of [c] beyond runes (CR 202).
   void _eqPayExtraCost(int p, ObjId src, EqCost c) {
     final pl = state.player(p);
-    if (c.spendXp > 0) {
-      pl.xp -= c.spendXp;
-      log('${pl.name} spends ${c.spendXp} XP.', player: p, kind: 'info');
-    }
     if (c.recycleTrash > 0) {
       final pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Cost: recycle ${c.recycleTrash} cards from your trash', options: List.of(pl.trash), min: c.recycleTrash, max: c.recycleTrash, source: src));
       _recycleCards(p, pick);
       log('${pl.name} recycles ${pick.length} cards from the trash.', player: p, kind: 'info');
     }
-    if (c.killFriendly) {
-      final pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Cost: choose a friendly unit to kill', options: units(player: p), source: src)).first;
-      log('${pl.name} kills ${nameOf(pick)} to pay.', player: p, card: pick, kind: 'die');
-      _kill(pick);
-    }
+    if (c.extra.isNotEmpty) _powerPayExtra(p, src, Activated('', c, const []));
   }
 
   /// Weaponmaster resolves (CR 821.1.c): [p] may choose an Equipment they control and pay its
@@ -402,7 +391,7 @@ extension GameEquip on Game {
     if (a is EqActivated && a.onlyIfPlayedEquipment && state.eq.equipmentPlayed[p] != state.turn) throw RiftboundError('Use only if you’ve played an Equipment this turn');
     if (a.oncePerTurn && o.usedThisTurn.contains(index)) throw RiftboundError('Only once per turn');
     if (a.cost.exhaust && o.exhausted) throw RiftboundError('${nameOf(src)} is exhausted');
-    final c = a.cost is EqCost ? a.cost as EqCost : EqCost(energy: a.cost.energy, power: a.cost.power, exhaust: a.cost.exhaust);
+    final c = a.cost is EqCost ? a.cost as EqCost : EqCost(energy: a.cost.energy, power: a.cost.power, exhaust: a.cost.exhaust, extra: a.cost.extra);
     final problem = _eqExtraCostProblem(p, src, c);
     if (problem != null) throw RiftboundError(problem);
     // Choices first (CR 355), then costs (CR 357).
@@ -482,6 +471,7 @@ extension GameEquip on Game {
 
   /// The ability an [ActivateMove] would use (for the app's labels and the bot).
   Ability? abilityOfMove(ActivateMove m) {
+    if (m.index < 0) return null;
     if (m.index >= 1000) {
       final list = _eqGrantedActivated(m.source);
       final k = m.index - 1000;
@@ -515,25 +505,10 @@ extension GameEquip on Game {
     return null;
   }
 
-  /// "You may pay … as an additional cost to play me" (CR 356.3): asks, adds the Power to
-  /// [extraP], returns the extra Energy (null if not paid).
-  int? _eqOptionalCost(int p, RCard c, ObjId id, int extraE, List<Domain?> extraP) {
-    for (final a in RiftboundParser.parse(c).abilities) {
-      if (a is! Static || a.passive is! EqOptionalCost) continue;
-      final cost = (a.passive as EqOptionalCost).cost;
-      if (!_canPayCard(p, c, extraEnergy: extraE + cost.energy, extraPower: [...extraP, ...cost.power])) return null;
-      if (!askYesNo(p, 'Pay ${cost.describe()} as an additional cost for ${c.name}?', source: id)) return null;
-      extraP.addAll(cost.power);
-      return cost.energy;
-    }
-    return null;
-  }
-
-  /// After [id] is played: Equipment played this turn, granted Quick-Draw, the optional cost.
-  void _eqAfterPlay(int p, ObjId id, {(String, int)? quickDraw, bool paidExtra = false}) {
+  /// After [id] is played: Equipment played this turn, granted Quick-Draw.
+  void _eqAfterPlay(int p, ObjId id, {(String, int)? quickDraw}) {
     if (isEquipmentObj(id)) state.eq.equipmentPlayed[p] = state.turn;
     if (quickDraw != null) _queue(id, quickDraw.$2, p, card: quickDraw.$1);
-    if (paidExtra) state.obj(id).eq.paidExtra = true;
   }
 
   /// A token was played: "Your Sand Soldiers have [Weaponmaster]".
@@ -712,7 +687,6 @@ extension GameEquip on Game {
       };
 
   bool _eqCond(EqCond c, _Ctx ctx) => switch (c) {
-        EqPaidExtra() => state.objOrNull(ctx.source)?.eq.paidExtra ?? false,
         EqExcessAtLeast(:final n) => state.eq.excessTurn == state.turn && state.eq.excessBf == ctx.loc && state.eq.excess[ctx.controller] >= n,
         EqIsEquipment(:final slot) => slot < ctx.targets.length && ctx.targets[slot] >= 0 && state.objOrNull(ctx.targets[slot])?.zone == Zone.board && isEquipmentObj(ctx.targets[slot]),
         _ => state.objOrNull(ctx.source) != null && _eqHolds(c, ctx.source, ctx.via),
@@ -827,9 +801,6 @@ extension GameEquip on Game {
         for (final x in effects) {
           _resolve(x, ctx);
         }
-      case EqGainXp(:final n):
-        state.player(p).xp += n;
-        log('${playerName(p)} gains $n XP (${state.player(p).xp}).', player: p, kind: 'xp', amount: n);
       case EqPlayFromTrash():
         final options = [
           for (final id in state.player(p).trash)

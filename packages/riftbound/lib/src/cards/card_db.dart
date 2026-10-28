@@ -36,6 +36,7 @@ class RCardDb {
     const RCard(name: 'Bird', type: CardType.unit, token: true, might: 1, tags: ['Bird'], text: '[Deflect]'),
     const RCard(name: 'Tentacle', type: CardType.unit, token: true, might: 1, tags: ['Bilgewater']),
     const RCard(name: 'Gold', type: CardType.gear, token: true, text: '[Reaction] Kill this, {E}: [Add] {A}.'),
+    const RCard(name: 'Shadow Clone', type: CardType.unit, token: true, might: 0, text: 'When I attack, you may banish a unit from your trash. If you do, give me [Assault 4] this turn.'),
   ];
 
   /// From Riftcodex card objects (https://api.riftcodex.com/cards, all pages). Alternate-art and

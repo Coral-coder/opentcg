@@ -22,16 +22,10 @@ class EqWhen extends When {
 
 /// A cost with parts beyond Energy, Power and exhausting (CR 202, 818.1.c.3).
 class EqCost extends Cost {
-  const EqCost({super.energy, super.power, super.exhaust, this.killFriendly = false, this.recycleTrash = 0, this.spendXp = 0, this.lessByTargetMight = false, this.banishMe = false});
-
-  /// "Kill a friendly unit".
-  final bool killFriendly;
+  const EqCost({super.energy, super.power, super.exhaust, super.extra, this.recycleTrash = 0, this.lessByTargetMight = false, this.banishMe = false});
 
   /// "Recycle N cards from your trash".
   final int recycleTrash;
-
-  /// "Spend N XP".
-  final int spendXp;
 
   /// "This ability's Energy cost is reduced by the Might of the unit you choose."
   final bool lessByTargetMight;
@@ -40,15 +34,13 @@ class EqCost extends Cost {
   final bool banishMe;
 
   @override
-  bool get isFree => super.isFree && !killFriendly && recycleTrash == 0 && spendXp == 0 && !banishMe;
+  bool get isFree => super.isFree && recycleTrash == 0 && !banishMe;
 
   @override
   String describe() => [
         super.describe(),
         if (lessByTargetMight) '(less by its Might)',
-        if (killFriendly) 'kill a friendly unit',
         if (recycleTrash > 0) 'recycle $recycleTrash from trash',
-        if (spendXp > 0) 'spend $spendXp XP',
         if (banishMe) 'banish this',
       ].where((s) => s.isNotEmpty).join(', ');
 }
@@ -124,13 +116,6 @@ sealed class EqCond extends Cond {
   String describe();
 }
 
-/// "If you paid the additional cost".
-class EqPaidExtra extends EqCond {
-  const EqPaidExtra();
-  @override
-  String describe() => 'paid the additional cost';
-}
-
 /// "If I didn't conquer this turn".
 class EqDidntConquer extends EqCond {
   const EqDidntConquer();
@@ -183,21 +168,6 @@ class EqLevel extends EqCond {
 sealed class EqPassive extends Passive {
   const EqPassive();
   String describe();
-}
-
-/// [Unique]: a deck may have only one card with this name (a deck-building rule).
-class EqUnique extends EqPassive {
-  const EqUnique();
-  @override
-  String describe() => 'unique';
-}
-
-/// "You may pay [cost] as an additional cost to play me." (CR 356.3)
-class EqOptionalCost extends EqPassive {
-  const EqOptionalCost(this.cost);
-  final Cost cost;
-  @override
-  String describe() => 'optional additional cost ${cost.describe()}';
 }
 
 /// "Your Sand Soldiers have [Weaponmaster]."
@@ -470,14 +440,6 @@ class EqMayPay extends EqEffect {
   final List<Effect> effects;
   @override
   String describe() => 'you may pay ${cost.describe()}';
-}
-
-/// "Gain N XP" (CR 730.1).
-class EqGainXp extends EqEffect {
-  const EqGainXp(this.n);
-  final int n;
-  @override
-  String describe() => 'gain $n XP';
 }
 
 /// "Play a unit from your trash" (paying its costs).

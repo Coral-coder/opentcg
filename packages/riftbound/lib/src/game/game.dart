@@ -33,6 +33,8 @@ part 'effects.dart';
 part 'query.dart';
 part 'testing.dart';
 part 'equip.dart';
+part 'power.dart';
+part 'hidden.dart';
 
 class NeedDecision implements Exception {
   NeedDecision(this.decision);
@@ -200,6 +202,8 @@ class Game implements TcgMatch {
         _activate(move.seat, move.source, move.index);
       case MoveUnitsMove():
         _standardMove(move.seat, move.units, move.to);
+      case HideMove():
+        _hide(move.seat, move.card);
       case PassMove():
         _pass(move.seat);
       case EndTurnMove():
@@ -305,7 +309,7 @@ class Game implements TcgMatch {
     pl.scored = [];
     for (final o in state.objects.values) {
       if (o.controller == p && (o.zone == Zone.board || o.zone == Zone.runes || o.zone == Zone.legend)) {
-        o.exhausted = false;
+        if (!_hCantReady(o.id)) o.exhausted = false;
         o.usedThisTurn = [];
       }
     }
@@ -344,7 +348,9 @@ class Game implements TcgMatch {
       case Step.main:
         break;
       case Step.ending:
+        _powerEndOfTurn();
         // Expiration step (CR 317.2): heal, stuns and "this turn" effects end, pools empty.
+        _hEndOfTurn();
         for (final o in state.objects.values) {
           if (o.zone == Zone.board) {
             o.damage = 0;

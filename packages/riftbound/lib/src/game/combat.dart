@@ -18,6 +18,7 @@ extension GameCombat on Game {
       }
     }
     if (_eqCleanup()) changed = true;
+    _powerCleanup();
     // 4. Control is lost of battlefields without your units (open state, no showdown there; CR 323.5).
     if (state.chain.isEmpty) {
       for (var i = 0; i < state.bfs.length; i++) {
@@ -29,6 +30,8 @@ extension GameCombat on Game {
         }
       }
     }
+    // 5a. Facedown cards at battlefields their controller lost (CR 323.6.a).
+    if (_hCleanup()) changed = true;
     // 8. Contested status ends where the contesting player has no units and nothing is going on
     // (CR 190.3.b.1, 323.10).
     for (var i = 0; i < state.bfs.length; i++) {
@@ -119,6 +122,7 @@ extension GameCombat on Game {
       for (final o in state.objects.values) {
         if (o.zone == Zone.board) o.damage = 0;
       }
+      _combatEnded([...attackers, ...defenders]);
       final defLeft = unitsAt(bf, player: def);
       var attLeft = unitsAt(bf, player: att);
       if (defLeft.isNotEmpty && attLeft.isNotEmpty) {
@@ -136,6 +140,7 @@ extension GameCombat on Game {
         log('${playerName(winner)} wins the combat.', player: winner, kind: 'info');
         for (final u in unitsAt(bf, player: winner)) {
           _fireUnit(u, const {On.winCombat});
+          _unitWon(u);
         }
         _fire(On.youWinCombat, player: winner);
         _establish(winner, bf);
@@ -174,9 +179,11 @@ extension GameCombat on Game {
       _draw(p, 1);
     } else {
       pl.points++;
+      _hScored(p);
       log('${pl.name} ${conquer ? 'conquers' : 'holds'} ${nameOf(b.obj)}: ${pl.points} point${pl.points == 1 ? '' : 's'}.', player: p, kind: conquer ? 'conquer' : 'hold', amount: 1);
     }
     // Score triggers (CR 473.2): the battlefield, units there, and "when you conquer / hold".
+    final queuedFrom = state.waiting.length;
     final abs = parsed(b.obj).abilities;
     for (var i = 0; i < abs.length; i++) {
       final a = abs[i];
@@ -187,6 +194,7 @@ extension GameCombat on Game {
       _fireUnit(u, {conquer ? On.conquer : On.hold});
     }
     _fire(conquer ? On.youConquer : On.youHold, player: p, bf: bf);
+    if (conquer) _conquerAgain(p, bf, queuedFrom);
   }
 
   /// Combat damage (CR 467): each side's total Might assigned among the other's units, Tank first
@@ -198,6 +206,7 @@ extension GameCombat on Game {
       for (final u in us) {
         if (state.obj(u).stunned) continue;
         if (parsed(u).abilities.any((a) => a is Static && a.passive is NoCombatDamage)) continue;
+        if (_hNoCombatDamage(u)) continue;
         t += mightUsed(u);
       }
       return t;
@@ -208,8 +217,9 @@ extension GameCombat on Game {
     _eqNoteExcess(attackers, defenders, toDefenders, toAttackers);
     for (final e in [...toDefenders.entries, ...toAttackers.entries]) {
       if (e.value <= 0) continue;
-      state.obj(e.key).damage += e.value;
-      log('${nameOf(e.key)} takes ${e.value} combat damage.', player: state.obj(e.key).controller, card: e.key, kind: 'damage', amount: e.value);
+      final d = _hDamage(e.key, e.value);
+      state.obj(e.key).damage += d;
+      log('${nameOf(e.key)} takes $d combat damage.', player: state.obj(e.key).controller, card: e.key, kind: 'damage', amount: d);
     }
   }
 

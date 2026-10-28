@@ -92,23 +92,21 @@ class _EqLine extends _Line {
         return [EqWeaponmaster(line)];
       case '[Quick-Draw]' when _isEquipment(card):
         return [EqQuickDraw(line)];
-      case '[Unique]' when card.isMainDeck:
-        return [Static(line, const EqUnique())];
     }
     var m = RegExp(r'^\[Equip\](?: -)? (.+?)(\. This ability.s Energy cost is reduced by the Might of the unit you choose\.)?$').firstMatch(t);
     if (m != null) {
       if (!_isEquipment(card)) return null;
       final cost = _cost(m[1]!);
       if (cost == null) return null;
-      final e = cost is EqCost ? cost : EqCost(energy: cost.energy, power: cost.power, exhaust: cost.exhaust);
-      if (e.exhaust || e.banishMe) return null;
-      return [EqEquip(line, m[2] == null ? e : EqCost(energy: e.energy, power: e.power, killFriendly: e.killFriendly, recycleTrash: e.recycleTrash, spendXp: e.spendXp, lessByTargetMight: true))];
+      final e = cost is EqCost ? cost : EqCost(energy: cost.energy, power: cost.power, exhaust: cost.exhaust, extra: cost.extra);
+      if (e.exhaust || e.banishMe || cost.killMe) return null;
+      return [EqEquip(line, m[2] == null ? e : EqCost(energy: e.energy, power: e.power, extra: e.extra, recycleTrash: e.recycleTrash, lessByTargetMight: true))];
     }
     // Hunt (CR 823): "When I conquer or hold, my controller gains N XP".
     m = RegExp(r'^\[Hunt(?: (\d+))?\]$').firstMatch(t);
     if (m != null && effectText) {
       final n = int.tryParse(m[1] ?? '') ?? 1;
-      return [Triggered(line, const When(On.conquer), [EqGainXp(n)]), Triggered(line, const When(On.hold), [EqGainXp(n)])];
+      return [Triggered(line, const When(On.conquer), [GainXp(N(n))]), Triggered(line, const When(On.hold), [GainXp(N(n))])];
     }
     // Level (CR 824): "While you have N or more XP, …".
     m = RegExp(r'^\[Level (\d+)\]\[>\] I have an additional \+(\d+) \{M\}\.$').firstMatch(t);
@@ -178,11 +176,6 @@ class _EqLine extends _Line {
     m = RegExp(r'^I have \+(\d+) \{M\} for each friendly gear\.$').firstMatch(t);
     if (m != null && unit) return Static(line, EqMightPerGear(int.parse(m[1]!)));
     if (t == 'Each Equipment attached to me gives double its base Might bonus.' && unit) return Static(line, const EqDoubleBonus());
-    m = RegExp(r'^You may pay ((?:\{[0-9A-Z]+\})+) as an additional cost to play me\.$').firstMatch(t);
-    if (m != null && unit) {
-      final cost = _cost(m[1]!);
-      return cost == null || cost is EqCost ? null : Static(line, EqOptionalCost(cost));
-    }
     if (_isEquipment(card)) {
       if (t == 'As this is attached to a unit, choose another friendly unit. The equipped unit becomes a copy of that unit for as long as this is attached to it.') return Static(line, const EqCopyAsAttached());
       if (t == "As this is attached to a unit, copy that unit's text to this Equipment's effect text for as long as this is attached to it.") return Static(line, const EqCopyTextAsAttached());
@@ -215,27 +208,27 @@ class _EqLine extends _Line {
   @override
   Cost? _cost(String s) {
     var killFriendly = false, banishMe = false;
-    var recycle = 0, xp = 0;
+    var recycle = 0;
     final rest = <String>[];
     for (final part in s.split(', ')) {
       final r = RegExp(r'^Recycle (\d+) cards? from your trash$').firstMatch(part);
-      final x = RegExp(r'^Spend (\d+) XP$').firstMatch(part);
       if (part == 'Kill a friendly unit') {
         killFriendly = true;
       } else if (part == 'Banish this' && card.isPermanent) {
         banishMe = true;
       } else if (r != null) {
         recycle = int.parse(r[1]!);
-      } else if (x != null) {
-        xp = int.parse(x[1]!);
       } else {
         rest.add(part);
       }
     }
-    if (!killFriendly && !banishMe && recycle == 0 && xp == 0) return super._cost(s);
+    if (!killFriendly && !banishMe && recycle == 0) return super._cost(s);
     final base = rest.isEmpty ? const Cost() : super._cost(rest.join(', '));
-    if (base == null || base.killMe) return null;
-    return EqCost(energy: base.energy, power: base.power, exhaust: base.exhaust, killFriendly: killFriendly, recycleTrash: recycle, spendXp: xp, banishMe: banishMe);
+    if (base == null) return null;
+    final extra = [if (killFriendly) const KillFriendly(), ...base.extra];
+    if (!banishMe && recycle == 0) return Cost(energy: base.energy, power: base.power, exhaust: base.exhaust, killMe: base.killMe, extra: extra);
+    if (base.killMe) return null;
+    return EqCost(energy: base.energy, power: base.power, exhaust: base.exhaust, extra: extra, recycleTrash: recycle, banishMe: banishMe);
   }
 
   @override
@@ -244,7 +237,7 @@ class _EqLine extends _Line {
     if (text == "If you paid the additional cost, move an enemy gear to your base. You control it until I leave the board. If it's an Equipment, attach it to me.") {
       if (card.type != CardType.unit) return null;
       final g = _target('an enemy gear');
-      return g == null ? null : [If(const EqPaidExtra(), [EqTakeGear(g)])];
+      return g == null ? null : [If(const PaidExtra(), [EqTakeGear(g)])];
     }
     // Arise!
     final m = RegExp(r'^Play a (\d+) \{M\} (Sand Soldier|Recruit) unit token for each Equipment you control\. Then ready (two|one|\d+) of them\.?$').firstMatch(text);
@@ -259,22 +252,17 @@ class _EqLine extends _Line {
   @override
   List<Effect>? _sentence(String s0) {
     final s = s0;
-    var m = RegExp(r'^Then (.+)$').firstMatch(s);
-    if (m != null) return _sentence(_Line._cap(m[1]!));
-    m = RegExp(r'^Gain (\d+) XP$').firstMatch(s);
-    if (m != null) return [EqGainXp(int.parse(m[1]!))];
-    if (s == 'Ready your units') return [const Ready(Each(Filter(side: Side.friendly)))];
-    if (s == 'Play a unit from your trash') return [const EqPlayFromTrash()];
+    RegExpMatch? m;
+    // "Here" is the battlefield it was hidden at: played from facedown, its choices are made there
+    // (CR 811.1.d.3).
+    if (s == 'Attach it to a unit you control here' && _isEquipment(card) && card.text.contains('from face down')) {
+      final u = _target('a unit you control');
+      return u == null ? null : [EqAttachMe(u)];
+    }
     m = RegExp(r'^Play an Equipment with Energy cost no more than \{(\d+)\}, ignoring its cost, and attach it to me$').firstMatch(s);
     if (m != null && card.type == CardType.unit) return [EqPlayEquipmentFree(int.parse(m[1]!))];
     if (s == 'Banish me' && effectText) return [const EqBanishMe()];
     if (s == 'Play all units banished with this, ignoring their costs' && _isEquipment(card)) return [const EqPlayBanishedWith()];
-    m = RegExp(r'^You may pay ((?:\{[0-9A-Z]+\})+) to (.+)$').firstMatch(s);
-    if (m != null) {
-      final cost = _cost(m[1]!);
-      final e = cost == null || cost is EqCost ? null : _sentence(_Line._cap(m[2]!));
-      return e == null ? null : [EqMayPay(cost!, e)];
-    }
     m = RegExp(r'^Unattach this and (.+)$').firstMatch(s);
     if (m != null && effectText) {
       final e = _sentence(_Line._cap(m[1]!));
@@ -316,33 +304,21 @@ class _EqLine extends _Line {
       return [EqChooseOnly(Choose(const Filter(), slot: _unitSlot)), EqChooseOnly(EqChoose(const Filter(gear: true, tag: 'Equipment'), slot: _equipSlot, sameControllerAs: _unitSlot))];
     }
     if (s == 'Attach that Equipment to that unit or detach that Equipment from that unit' && _unitSlot >= 0) return [EqAttachOrDetach(Chosen(_unitSlot), Chosen(_equipSlot))];
-    // Relentless Pursuit.
-    m = RegExp(r'^Move (a friendly unit|an enemy unit|a unit)$').firstMatch(s);
-    if (m != null) {
-      final t = _target(m[1]!);
-      if (t is! Choose) return null;
-      _unitSlot = t.slot;
-      return [EqMove(t)];
-    }
     m = RegExp(r'^Attach an Equipment with the same controller to (it|that unit)$').firstMatch(s);
     if (m != null) {
       final u = _target(m[1]!);
       if (u is! Chosen) return null;
+      if (_unitSlot < 0) _unitSlot = u.slot;
       final e = EqChoose(const Filter(gear: true, tag: 'Equipment'), slot: _slotCounter[0]++, upTo: true, sameControllerAs: u.slot);
       return [EqAttachTo(e, u)];
     }
     m = RegExp(r'^This turn, that unit has "(.+?)\.?"$').firstMatch(s);
-    if (m != null && _unitSlot >= 0) {
+    final that = m == null ? null : (_unitSlot >= 0 ? Chosen(_unitSlot) : _target('that unit'));
+    if (m != null && that is Chosen) {
       final asUnit = RCard(name: card.name, type: CardType.unit, domains: card.domains, might: 0, text: m[1]!);
       final a = _EqLine(asUnit, [0]).parse('${m[1]!}.');
       if (a == null || a.length != 1 || a.first is! Triggered) return null;
-      return [EqGrantThisTurn(Chosen(_unitSlot), a.first as Triggered)];
-    }
-    // Azir, Ascendant.
-    m = RegExp(r'^Choose (a unit you control|a friendly unit)$').firstMatch(s);
-    if (m != null) {
-      final t = _target(m[1]!);
-      return t == null ? null : [EqChooseOnly(t)];
+      return [EqGrantThisTurn(that, a.first as Triggered)];
     }
     if (s == 'Move me to its location and it to my original location' && card.type == CardType.unit) {
       final t = _target('it');
@@ -361,18 +337,58 @@ class _EqLine extends _Line {
       final u = Choose(const Filter(side: Side.friendly), slot: _slotCounter[0]++);
       return [EqAttachTo(e, u)];
     }
+    // Then the core and other families' forms, then this file's generic ones.
+    final slot = _slotCounter[0];
+    final core = super._sentence(s);
+    if (core != null) return core;
+    _slotCounter[0] = slot;
+    return _eqSentenceLate(s);
+  }
+
+  /// Forms other families may also read: tried after them.
+  List<Effect>? _eqSentenceLate(String s) {
+    var m = RegExp(r'^Then (.+)$').firstMatch(s);
+    if (m != null) return _sentence(_Line._cap(m[1]!));
+    if (s == 'Ready your units') return [const Ready(Each(Filter(side: Side.friendly)))];
+    if (s == 'Play a unit from your trash') return [const EqPlayFromTrash()];
+    m = RegExp(r'^You may pay ((?:\{[0-9A-Z]+\})+) to (.+)$').firstMatch(s);
+    if (m != null) {
+      final cost = _cost(m[1]!);
+      final e = cost == null || cost is EqCost ? null : _sentence(_Line._cap(m[2]!));
+      return e == null ? null : [EqMayPay(cost!, e)];
+    }
+    // Relentless Pursuit.
+    m = RegExp(r'^Move (a friendly unit|an enemy unit|a unit)$').firstMatch(s);
+    if (m != null) {
+      final t = _target(m[1]!);
+      if (t is! Choose) return null;
+      _unitSlot = t.slot;
+      return [EqMove(t)];
+    }
+    // Azir, Ascendant.
+    m = RegExp(r'^Choose (a unit you control|a friendly unit)$').firstMatch(s);
+    if (m != null) {
+      final t = _target(m[1]!);
+      return t == null ? null : [EqChooseOnly(t)];
+    }
     // Riven: "choose an enemy unit here".
     m = RegExp(r'^Choose (an enemy unit here|an enemy unit|a friendly unit here)$').firstMatch(s);
     if (m != null) {
       final t = _target(m[1]!);
       return t == null ? null : [EqChooseOnly(t)];
     }
-    return super._sentence(s);
+    return null;
+  }
+
+  @override
+  When? _when(String s) {
+    // An Equipment played from [Hidden] (CR 811.1.d); its choices are made at that battlefield.
+    if (s == 'When you play this from face down' && _isEquipment(card)) return const HWhen(On.playedFaceDown);
+    return super._when(s);
   }
 
   @override
   Cond? _cond(String c) {
-    if (c == 'you paid the additional cost') return const EqPaidExtra();
     if (c == "I didn't conquer this turn" && effectText) return const EqDidntConquer();
     final m = RegExp(r'^you assigned (\d+) or more excess damage$').firstMatch(c);
     if (m != null && card.type == CardType.unit) return EqExcessAtLeast(int.parse(m[1]!));

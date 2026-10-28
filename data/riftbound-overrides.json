@@ -1,0 +1,7 @@
+{
+  "_about": "Corrected rules text for cards whose text in data/riftbound-cards.raw.json (Riftcodex) is mangled. Keyed by card name; the text is in the normalised form of RCard.text (one ability per line, reminder text removed, symbols as {N} {M} {E} {A} …). bin/build_db.dart uses it in place of the raw text. Each entry says what was wrong and where the wording was checked.",
+  "Gemhand Hunter": {
+    "text": "[Hunt]\n[Level 6][>] I have +1 {M}.",
+    "why": "Riftcodex's text has a stray 'ambush' after the Level reminder text ('… get the effect.)ambush'). The card's accessibility text in the same record and the printed card (UNL 094) read '[Hunt] [Level 6] I have +1 Might.'"
+  }
+}
