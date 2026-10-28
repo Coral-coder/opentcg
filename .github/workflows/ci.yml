@@ -85,6 +85,9 @@ jobs:
       - run: dart test --reporter expanded
       - name: Chaos harness (300 bot games, each replayed)
         run: dart run bin/chaos.dart --games 300 --seed ${{ github.run_number }}
+      - name: Chaos harness in the multiplayer modes (Skirmish, War, 2v2)
+        run: |
+          for m in ffa3 ffa4 2v2; do dart run bin/chaos.dart --games 60 --mode $m --seed ${{ github.run_number }}; done
       - name: Same games on the Dart VM and in JavaScript
         run: tool/xplat_check.sh
       - name: Card coverage (must not shrink)
