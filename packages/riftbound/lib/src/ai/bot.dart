@@ -113,7 +113,9 @@ class RiftboundBot implements TcgBot {
     int? best;
     var bestScore = -1000000;
     for (var i = 0; i < s.bfs.length; i++) {
-      final enemy = g.unitsAt(i, player: s.other(seat)).fold<int>(0, (t, u) => t + g.mightUsed(u));
+      // With more players, only battlefields it may move to (CR 449.2).
+      if (s.multi && !g.moveDestinations(ready.first).contains(i)) continue;
+      final enemy = g.enemyUnits(seat, bf: i).fold<int>(0, (t, u) => t + g.mightUsed(u));
       final controlled = s.bfs[i].controller == seat;
       if (controlled && enemy == 0) continue;
       if (total <= enemy) continue;
@@ -124,10 +126,11 @@ class RiftboundBot implements TcgBot {
       }
     }
     if (best == null) return null;
-    final enemy = g.unitsAt(best, player: s.other(seat)).fold<int>(0, (t, u) => t + g.mightUsed(u));
+    final enemy = g.enemyUnits(seat, bf: best).fold<int>(0, (t, u) => t + g.mightUsed(u));
     final group = <ObjId>[];
     var sum = 0;
     for (final u in ready) {
+      if (s.multi && !g.moveDestinations(u).contains(best)) continue;
       group.add(u);
       sum += g.mightUsed(u);
       if (sum > enemy + 1) break;
@@ -183,7 +186,7 @@ class RiftboundBot implements TcgBot {
         }
         // Kill more units only if they're the opponent's; pay a kill cost with the weakest.
         if (p.startsWith('kill another')) {
-          final theirs = [for (final id in d.options) if (s.objOrNull(id)?.controller != seat) id];
+          final theirs = [for (final id in d.options) if (s.objOrNull(id) == null || !s.allied(s.obj(id).controller, seat)) id];
           return theirs.take(d.max).toList();
         }
         if (p.startsWith('kill a')) {
@@ -192,8 +195,10 @@ class RiftboundBot implements TcgBot {
         }
         // Buffs, readying, healing and "+N Might" or a keyword go on its own units; the rest at the opponent's.
         final friendlyWanted = p.contains('to buff') || p.contains('to ready') || p.contains('to heal') || p.contains('give +') || RegExp(r'to give [A-Z]').hasMatch(d.prompt);
-        final mine = [for (final id in d.options) if (s.objOrNull(id)?.controller == seat) id];
-        final theirs = [for (final id in d.options) if (s.objOrNull(id)?.controller != seat) id];
+        // Teammates' units count as its own (CR 491.8.e).
+        bool friend(ObjId id) => s.objOrNull(id) != null && s.allied(s.obj(id).controller, seat);
+        final mine = [for (final id in d.options) if (friend(id)) id];
+        final theirs = [for (final id in d.options) if (!friend(id)) id];
         final pool = friendlyWanted ? (mine.isNotEmpty ? mine : theirs) : (theirs.isNotEmpty ? theirs : mine);
         final n = d.min > 0 ? d.min : (d.max > 0 ? 1 : 0);
         final ranked = List.of(pool)..sortStable((a, b) => _value(g, b) - _value(g, a));

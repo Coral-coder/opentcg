@@ -300,7 +300,7 @@ extension GameEffects on Game {
         for (final id in _resolveTarget(target, ctx)) {
           if (!isUnit(id) || state.obj(id).stunned || _harmReplaced(id, target, p)) continue;
           state.obj(id).stunned = true;
-          if (state.obj(id).controller != p) enemy = true;
+          if (!state.allied(state.obj(id).controller, p)) enemy = true;
           log('${nameOf(id)} is stunned.', player: p, card: id, kind: 'stun');
           _genEvent(GEv.stunned, player: p, obj: id);
         }

@@ -36,7 +36,7 @@ extension GameS1 on Game {
           final a = one([for (final u in units(player: p)) if (u != not && ok(u)) u], k.other >= 0 ? 'choose another friendly unit' : 'choose a friendly unit');
           set(k.slot, a.isEmpty ? -1 : a.first);
         case S1PickKind.enemyUnitAtBfWithBf:
-          final a = one([for (final u in units(player: state.other(p))) if (state.obj(u).loc != base && ok(u)) u], 'choose an enemy unit at a battlefield');
+          final a = one([for (final u in enemyUnits(p)) if (state.obj(u).loc != base && ok(u)) u], 'choose an enemy unit at a battlefield');
           set(k.slot, a.isEmpty ? -1 : a.first);
           set(k.slot + 1, a.isEmpty ? -1 : state.obj(a.first).loc);
         case S1PickKind.furyThreatened:
@@ -50,7 +50,7 @@ extension GameS1 on Game {
           final a = one(options, 'choose a unit at a battlefield or a gear');
           set(k.slot, a.isEmpty ? -1 : a.first);
         case S1PickKind.enemyPerLocation:
-          final enemy = units(player: state.other(p));
+          final enemy = enemyUnits(p);
           var i = 0;
           for (final at in [base, for (var b = 0; b < state.bfs.length; b++) b]) {
             if (i >= k.n) break;
@@ -75,9 +75,9 @@ extension GameS1 on Game {
   bool _s1FuryThreatened(ObjId u, int p) {
     final o = state.obj(u);
     final sd = state.showdown;
-    if (sd != null && sd.combat && sd.bf == o.loc && unitsAt(o.loc, player: state.other(p)).any((e) => card(e).domains.contains(Domain.fury))) return true;
+    if (sd != null && sd.combat && sd.bf == o.loc && enemyUnits(p, bf: o.loc).any((e) => card(e).domains.contains(Domain.fury))) return true;
     for (final it in state.chain) {
-      if (it.isSpell && it.controller != p && db[it.card]!.domains.contains(Domain.fury) && it.targets.contains(u)) return true;
+      if (it.isSpell && !state.allied(it.controller, p) && db[it.card]!.domains.contains(Domain.fury) && it.targets.contains(u)) return true;
     }
     return false;
   }
@@ -93,7 +93,7 @@ extension GameS1 on Game {
     for (final id in chosen.toSet()) {
       if (id <= 0 || id >= _chainRef) continue;
       final o = state.objOrNull(id);
-      if (o == null || o.zone != Zone.board || o.controller == p) continue;
+      if (o == null || o.zone != Zone.board || state.allied(o.controller, p)) continue;
       final ct = card(id).type;
       if (ct == CardType.unit || ct == CardType.gear) {
         _gen.add('p$p:s1choseEnemy');
@@ -143,7 +143,7 @@ extension GameS1 on Game {
         }
         log('${pl.name} puts a card on the ${top ? 'top' : 'bottom'} of their Main Deck.', player: p, kind: 'info');
       case S1BanishUntilHold():
-        final q = state.other(p);
+        final q = state.multi ? chooseOpponent(p, '${nameOf(ctx.source)}: which opponent reveals their hand?') : state.other(p);
         final hand = state.player(q).hand;
         log('${playerName(q)} reveals their hand${hand.isEmpty ? ' (empty)' : ': ${hand.map(nameOf).join(', ')}'}.', player: q, kind: 'info');
         if (hand.isEmpty) return;
@@ -180,17 +180,19 @@ extension GameS1 on Game {
         final bf = _genSlotLoc(destSlot, ctx.targets);
         if (bf == null || bf < 0 || bf >= state.bfs.length) return;
         final bfObj = state.bfs[bf].obj;
-        final q = state.other(p);
+        final q = state.multi ? chooseOpponent(p, '${nameOf(ctx.source)}: which opponent moves a unit there?') : state.other(p);
         final options = [for (final u in units(player: q)) if (state.obj(u).loc != bf && !_eqUnmovable(u, q)) u];
         if (options.isEmpty) return;
         final u = ask(Decision(kind: DecisionKind.cards, player: q, prompt: 'Move one of your units to ${nameOf(bfObj)}', options: options, min: 1, max: 1, source: ctx.source)).first;
         _moveUnits([u], bf, q);
       case S1GoldForAll():
         if (askYesNo(p, '${nameOf(ctx.source)}: play a Gold gear token exhausted?', source: ctx.source)) _genTokens(p, 'Gold', 1, base);
-        final q = state.other(p);
-        if (askYesNo(q, '${nameOf(ctx.source)}: play a Gold gear token exhausted? (${playerName(p)} then plays another)', source: ctx.source)) {
-          _genTokens(q, 'Gold', 1, base);
-          _genTokens(p, 'Gold', 1, base);
+        // Each other player, in turn order.
+        for (final q in [for (var i = 1; i < state.players.length; i++) if (state.inGame((p + i) % state.players.length)) (p + i) % state.players.length]) {
+          if (askYesNo(q, '${nameOf(ctx.source)}: play a Gold gear token exhausted? (${playerName(p)} then plays another)', source: ctx.source)) {
+            _genTokens(q, 'Gold', 1, base);
+            _genTokens(p, 'Gold', 1, base);
+          }
         }
       case S1ChannelElseDraw(:final n, :final draw):
         final before = pl.runes.length;
@@ -207,8 +209,8 @@ extension GameS1 on Game {
       case S1StrikeThere(:final pick, :final n, :final others):
         final u = _s1Slot(ctx, pick.slot), bf = _s1Slot(ctx, pick.slot + 1);
         if (bf < 0 || bf >= state.bfs.length) return;
-        if (_s1OnBoard(u) && isUnit(u) && state.obj(u).controller != p && state.obj(u).loc == bf) _hDeal(u, n, ctx);
-        for (final x in unitsAt(bf, player: state.other(p))) {
+        if (_s1OnBoard(u) && isUnit(u) && !state.allied(state.obj(u).controller, p) && state.obj(u).loc == bf) _hDeal(u, n, ctx);
+        for (final x in enemyUnits(p, bf: bf)) {
           if (x != u) _hDeal(x, others, ctx);
         }
       case S1Grenade(:final pick, :final n):
@@ -283,7 +285,7 @@ extension GameS1 on Game {
         if (i >= 0) _gen.turn['o$u:s1grant:${1000 + i}:$key'] = 1;
         log('${nameOf(u)}’s Might is doubled and it has “${ability.text}” this turn.', player: p, card: u, kind: 'buff');
       case S1OpponentScores(:final n):
-        _genGainPoints(state.other(p), n);
+        _genGainPoints(state.multi ? chooseOpponent(p, '${nameOf(ctx.source)}: which opponent scores?') : state.other(p), n);
       case S1RecycleMeTo(:final effects):
         final o = state.objOrNull(ctx.source);
         if (o == null || o.zone != Zone.trash || !state.player(o.owner).trash.contains(o.id)) return;
@@ -298,7 +300,7 @@ extension GameS1 on Game {
       case S1DealPerLocation(:final pick, :final n):
         for (var i = 0; i < pick.n; i++) {
           final u = _s1Slot(ctx, pick.slot + i);
-          if (_s1OnBoard(u) && isUnit(u) && state.obj(u).controller != p) _hDeal(u, n, ctx);
+          if (_s1OnBoard(u) && isUnit(u) && !state.allied(state.obj(u).controller, p)) _hDeal(u, n, ctx);
         }
       case S1PayReturnForToken(:final energy, :final token):
         final bf = ctx.loc;
@@ -326,9 +328,11 @@ extension GameS1 on Game {
         if (names.isEmpty) return;
         // Spells the opponent has shown first (their trash, newest first), then all by name.
         final shown = <int>[];
-        for (final id in state.player(state.other(p)).trash.reversed) {
-          final k = names.indexOf(card(id).name);
-          if (k >= 0 && !shown.contains(k)) shown.add(k);
+        for (final q in state.opponents(p)) {
+          for (final id in state.player(q).trash.reversed) {
+            final k = names.indexOf(card(id).name);
+            if (k >= 0 && !shown.contains(k)) shown.add(k);
+          }
         }
         final order = [...shown, for (var k = 0; k < names.length; k++) if (!shown.contains(k)) k];
         final a = ask(Decision(kind: DecisionKind.option, player: p, prompt: '${nameOf(ctx.source)}: name a spell', labels: [for (final k in order) names[k]], source: ctx.source)).first;
@@ -401,7 +405,7 @@ extension GameS1 on Game {
         final src = ctx.source;
         if (!_s1OnBoard(src) || !isUnit(src)) return false;
         final o = state.obj(src);
-        return o.loc != base && unitsAt(o.loc, player: o.controller).length == 1 && unitsAt(o.loc, player: state.other(o.controller)).length == 1;
+        return o.loc != base && unitsAt(o.loc, player: o.controller).length == 1 && enemyUnits(o.controller, bf: o.loc).length == 1;
     }
     return false;
   }

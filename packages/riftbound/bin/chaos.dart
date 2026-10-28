@@ -1,7 +1,7 @@
 /// Chaos harness: plays many bot games from random seeds and random decks of supported cards,
 /// then replays each from its moves (and from their JSON) and checks the fingerprints match.
 ///
-///     dart run bin/chaos.dart [--db ../../data/riftbound-cards.json] [--games 200] [--seed 1] [--verbose] [--only N]
+///     dart run bin/chaos.dart [--db ../../data/riftbound-cards.json] [--games 200] [--seed 1] [--mode duel|ffa3|ffa4|2v2] [--verbose] [--only N]
 library;
 
 import 'dart:convert';
@@ -14,6 +14,7 @@ void main(List<String> args) {
   var dbPath = '../../data/riftbound-cards.json';
   var games = 200, seed = 1;
   var verbose = false;
+  var mode = RMode.duel;
   int? only;
   for (var i = 0; i < args.length; i++) {
     switch (args[i]) {
@@ -23,6 +24,8 @@ void main(List<String> args) {
         games = int.parse(args[++i]);
       case '--seed':
         seed = int.parse(args[++i]);
+      case '--mode':
+        mode = RMode.fromId(args[++i]);
       case '--verbose':
         verbose = true;
       case '--only':
@@ -32,21 +35,22 @@ void main(List<String> args) {
   final db = RCardDb.fromJson(jsonDecode(File(dbPath).readAsStringSync()) as Map<String, dynamic>);
   final rng = SeededRng(seed);
   var finished = 0, failures = 0, turns = 0, moves = 0;
-  final wins = [0, 0, 0];
+  final n0 = mode.players;
+  final wins = List.filled(n0 + 1, 0);
   final sw = Stopwatch()..start();
   for (var n = 0; n < games; n++) {
     final gameSeed = rng.nextInt(1 << 30);
-    final decks = [randomDeck(db, rng), randomDeck(db, rng)];
+    final decks = randomDecksFor(db, rng, mode);
     if (only != null && n != only) continue;
-    final names = ['P0 ${deckLegend(db, decks[0])!.name}', 'P1 ${deckLegend(db, decks[1])!.name}'];
+    final names = [for (var p = 0; p < n0; p++) 'P$p ${deckLegend(db, decks[p])!.name}'];
     final g = Game(db, players: names, seed: gameSeed);
     try {
       for (final d in decks) {
         final bad = validateDeck(db, d);
         if (bad.isNotEmpty) throw StateError('Illegal random deck: ${bad.join('; ')}');
       }
-      g.apply(StartMove(decks));
-      final done = runBots(g, [RiftboundBot(0, seed: gameSeed), RiftboundBot(1, seed: gameSeed + 1)], maxMoves: 4000);
+      g.apply(StartMove(decks, mode: mode));
+      final done = runBots(g, [for (var p = 0; p < n0; p++) RiftboundBot(p, seed: gameSeed + p)], maxMoves: 4000 * n0 ~/ 2);
       final fp = g.fingerprint;
       final r = Game(db, players: names, seed: gameSeed);
       for (final m in g.actions) {
@@ -60,7 +64,7 @@ void main(List<String> args) {
       if (r2.fingerprint != fp) throw StateError('JSON replay fingerprint differs');
       if (done) {
         finished++;
-        wins[g.state.winner ?? 2]++;
+        wins[g.state.winner ?? n0]++;
       } else if (verbose) {
         stdout.writeln('  unfinished: toAct ${g.toAct} pending ${g.pending?.decision.prompt}');
       }
@@ -81,7 +85,7 @@ void main(List<String> args) {
   }
   final played = only == null ? games : 1;
   stdout.writeln(
-    '$played games: $finished finished (P0 ${wins[0]}, P1 ${wins[1]}, draws ${wins[2]}), $failures failed, avg ${(turns / played).toStringAsFixed(1)} turns, ${(moves / played).toStringAsFixed(0)} moves, ${sw.elapsedMilliseconds} ms',
+    '${mode == RMode.duel ? '' : '${mode.id}: '}$played games: $finished finished (${[for (var p = 0; p < n0; p++) 'P$p ${wins[p]}'].join(', ')}, draws ${wins[n0]}), $failures failed, avg ${(turns / played).toStringAsFixed(1)} turns, ${(moves / played).toStringAsFixed(0)} moves, ${sw.elapsedMilliseconds} ms',
   );
   if (failures > 0 || finished < played) exitCode = 1;
 }

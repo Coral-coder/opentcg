@@ -4,6 +4,8 @@ library;
 
 import 'package:tcg_core/tcg_core.dart';
 
+import 'state.dart' show RMode;
+
 sealed class RMove extends TcgMove {
   const RMove(this.seat);
   @override
@@ -12,7 +14,7 @@ sealed class RMove extends TcgMove {
   static RMove fromJson(Map<String, dynamic> j) {
     final p = j['p'] as int? ?? -1;
     return switch (j['t'] as String) {
-      'start' => StartMove([for (final d in j['decks'] as List) (d as List).cast<String>()], firstPlayer: j['first'] as int?),
+      'start' => StartMove([for (final d in j['decks'] as List) (d as List).cast<String>()], firstPlayer: j['first'] as int?, mode: RMode.fromId(j['mode'] as String?)),
       'answer' => AnswerMove(p, (j['a'] as List).cast<int>()),
       'play' => PlayMove(p, j['c'] as int),
       'activate' => ActivateMove(p, j['c'] as int, j['i'] as int),
@@ -34,11 +36,14 @@ sealed class RMove extends TcgMove {
 /// champion unit matching the legend's tag is the Chosen Champion). [firstPlayer] fixes who
 /// goes first; otherwise the seed decides (CR 115).
 class StartMove extends RMove {
-  const StartMove(this.decks, {this.firstPlayer}) : super(-1);
+  const StartMove(this.decks, {this.firstPlayer, this.mode = RMode.duel}) : super(-1);
   final List<List<String>> decks;
   final int? firstPlayer;
+
+  /// The Mode of Play (CR 485); a Duel leaves it out of the JSON.
+  final RMode mode;
   @override
-  Map<String, dynamic> toJson() => {'t': 'start', 'decks': decks, if (firstPlayer != null) 'first': firstPlayer};
+  Map<String, dynamic> toJson() => {'t': 'start', 'decks': decks, if (firstPlayer != null) 'first': firstPlayer, if (mode != RMode.duel) 'mode': mode.id};
 }
 
 class AnswerMove extends RMove {

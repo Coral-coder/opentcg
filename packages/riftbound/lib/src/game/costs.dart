@@ -211,10 +211,9 @@ extension GameCosts on Game {
 
   /// Conditions checked as a cost is determined, for [p] playing or controlling [source].
   bool _xCondNow(int p, Cond c, {ObjId? source}) {
-    final o = state.other(p);
     return switch (c) {
       ControlBfWithUnits(:final n) => [for (var i = 0; i < state.bfs.length; i++) i].any((i) => state.bfs[i].controller == p && unitsAt(i).length == n),
-      OpponentStunned() => units(player: o).any((u) => state.obj(u).stunned),
+      OpponentStunned() => enemyUnits(p).any((u) => state.obj(u).stunned),
       EnemyDiedThisTurn() => (_turn(state.player(p))['enemyDied'] ?? 0) > 0,
       SpentOnSpell(:final n) => (_turn(state.player(p))['spellSpent'] ?? 0) >= n,
       AllTags(:final tags) => _xTagKinds(p, tags) == tags.length,
@@ -464,7 +463,7 @@ extension GameCosts on Game {
   /// more Power.
   List<Domain?> _xDeflect(int p, ObjId source, List<int> targets) => [
         for (final tg in targets)
-          if (tg >= 0 && state.objOrNull(tg)?.zone == Zone.board && state.obj(tg).controller != p && !_xIgnoreDeflect(source, tg))
+          if (tg >= 0 && state.objOrNull(tg)?.zone == Zone.board && !state.allied(state.obj(tg).controller, p) && !_xIgnoreDeflect(source, tg))
             for (var i = 0; i < _kw(tg, Kw.deflect); i++) null,
       ];
 
@@ -1227,9 +1226,9 @@ extension GameCosts on Game {
           _resolve(x, ctx);
         }
       case DefenderKills():
-        final def = state.other(p);
         final here = ctx.loc;
         if (here < 0) return;
+        final def = state.multi ? _defenderAt(here, p) : state.other(p);
         final theirs = unitsAt(here, player: def);
         if (theirs.isEmpty) return;
         final id = ask(Decision(kind: DecisionKind.cards, player: def, prompt: 'Kill one of your units here (${nameOf(ctx.source)})', options: theirs, source: ctx.source)).first;
@@ -1299,7 +1298,7 @@ extension GameCosts on Game {
         }
         _recycleCards(p, rest);
       case PlayOpponentsTop():
-        final q = state.other(p);
+        final q = state.multi ? chooseOpponent(p, '${nameOf(ctx.source)}: play the top card of which opponent’s deck?') : state.other(p);
         final deck = state.player(q).deck;
         if (deck.isEmpty) return;
         final id = deck.first;

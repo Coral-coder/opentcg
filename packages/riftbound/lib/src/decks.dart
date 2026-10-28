@@ -5,6 +5,7 @@ import 'package:tcg_core/tcg_core.dart';
 
 import 'cards/card.dart';
 import 'cards/card_db.dart';
+import 'game/state.dart' show RMode;
 import 'ir.dart';
 import 'parser/parser.dart';
 
@@ -159,8 +160,20 @@ List<String> buildDeck(RCardDb db, RCard legend, {SeededRng? rng}) {
 Map<String, List<String>> starterDecks(RCardDb db) => {for (final l in playableLegends(db)) l.key: buildDeck(db, l)};
 
 /// A random supported deck: a random playable legend and random picks.
-List<String> randomDeck(RCardDb db, SeededRng rng) {
-  final legends = playableLegends(db);
+List<String> randomDeck(RCardDb db, SeededRng rng, {Set<String> avoidLegends = const {}}) {
+  final all = playableLegends(db);
+  final legends = [for (final l in all) if (!avoidLegends.contains(l.name)) l];
   if (legends.isEmpty) throw StateError('No playable legend');
   return buildDeck(db, legends[rng.nextInt(legends.length)], rng: rng);
+}
+
+/// A random deck for every seat of [mode]. In 2v2 teammates get different legends (CR 491.8.h);
+/// a Duel draws exactly as two [randomDeck] calls do.
+List<List<String>> randomDecksFor(RCardDb db, SeededRng rng, RMode mode) {
+  final decks = <List<String>>[];
+  for (var p = 0; p < mode.players; p++) {
+    final avoid = mode == RMode.teams && p >= 2 ? {deckLegend(db, decks[p - 2])!.name} : const <String>{};
+    decks.add(randomDeck(db, rng, avoidLegends: avoid));
+  }
+  return decks;
 }

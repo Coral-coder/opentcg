@@ -15,7 +15,7 @@ part 'w2s3.dart';
 part 'w2s1.dart';
 
 /// Bumped whenever parsing or the engine changes what a saved game would replay to.
-const riftboundEngineVersion = 7;
+const riftboundEngineVersion = 8;
 
 class ParsedCard {
   ParsedCard(this.abilities, this.unsupported, [this.extra = const []]);

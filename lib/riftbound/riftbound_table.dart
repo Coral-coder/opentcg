@@ -20,8 +20,30 @@ class RiftboundTable extends StatefulWidget {
   State<RiftboundTable> createState() => _RiftboundTableState();
 }
 
+/// A player's colour on the table: yours cyan; in 2v2 your teammate green and the other team red;
+/// in free-for-all each opponent their own.
+Color seatColor(GameTheme t, GameState st, int p, int me) {
+  if (p == me) return t.accent2;
+  if (!st.multi) return t.danger;
+  if (st.mode == RMode.teams) return st.allied(p, me) ? const Color(0xFF4FD1A5) : t.danger;
+  const others = [Color(0xFFE5484D), Color(0xFFF2A93B), Color(0xFFB98CFF)];
+  return others[((p - me - 1) % st.players.length + st.players.length) % st.players.length % others.length];
+}
+
 class _RiftboundTableState extends State<RiftboundTable> {
   bool _dialogOpen = false;
+
+  /// With more players: whose base is shown above the battlefields (tap an opponent to switch).
+  int? _viewed;
+
+  int _viewedSeat(RiftboundSession s) {
+    final st = s.state;
+    final me = s.localSeat;
+    final v = _viewed;
+    if (v != null && v != me && v < st.players.length && st.inGame(v)) return v;
+    if (st.active != me && st.inGame(st.active)) return st.active;
+    return st.nextSeat(me);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,8 +72,13 @@ class _RiftboundTableState extends State<RiftboundTable> {
                     child: Column(
                       children: [
                         _TopBar(session: s),
-                        _PlayerStrip(session: s, player: opp, acts: acts, onCard: onCard),
-                        _BaseRow(session: s, player: opp, acts: acts, width: cw, onCard: onCard),
+                        if (g.state.multi) ...[
+                          _Opponents(session: s, viewed: _viewedSeat(s), onPick: (p) => setState(() => _viewed = p)),
+                          _BaseRow(session: s, player: _viewedSeat(s), acts: acts, width: cw, onCard: onCard),
+                        ] else ...[
+                          _PlayerStrip(session: s, player: opp, acts: acts, onCard: onCard),
+                          _BaseRow(session: s, player: opp, acts: acts, width: cw, onCard: onCard),
+                        ],
                         Expanded(child: _Battlefields(session: s, acts: acts, width: cw, onCard: onCard)),
                         _BaseRow(session: s, player: me, acts: acts, width: cw, onCard: onCard),
                         _PlayerStrip(session: s, player: me, acts: acts, onCard: onCard),
@@ -298,9 +325,20 @@ class _TopBar extends StatelessWidget {
     final g = session.match;
     final st = g.state;
     final me = session.localSeat, opp = session.opponentSeat;
+    final thinker = g.toAct ?? opp;
     final title = g.over
         ? 'Game over'
-        : (st.phase == Phase.setup || st.turn == 0 ? 'Setting up' : (session.thinking ? '${session.playerNames[opp]} is thinking…' : 'Turn ${st.turn} · ${st.player(st.active).name}'));
+        : (st.phase == Phase.setup || st.turn == 0 ? 'Setting up' : (session.thinking ? '${st.player(thinker).name} is thinking…' : 'Turn ${st.turn} · ${st.player(st.active).name}'));
+    // The score line: you and your opponent, everyone with more players, or the two teams.
+    final String score;
+    if (!st.multi) {
+      score = 'First to ${st.victoryScore} · you ${st.player(me).points} — ${st.player(opp).points} ${st.player(opp).name}';
+    } else if (st.mode == RMode.teams) {
+      final them = st.opponents(me);
+      score = 'First team to ${st.victoryScore} · your team ${st.player(me).points} — ${them.isEmpty ? 0 : st.player(them.first).points}';
+    } else {
+      score = 'First to ${st.victoryScore} · ${[for (var i = 0; i < st.players.length; i++) '${i == me ? 'you' : st.player(i).name} ${st.player(i).points}'].join(' · ')}';
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 2, 4, 2),
       child: Row(
@@ -315,11 +353,11 @@ class _TopBar extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.display(18, color: t.accent)),
-                Text('First to ${st.victoryScore} · you ${st.player(me).points} — ${st.player(opp).points} ${st.player(opp).name}', style: t.style(11, color: t.muted)),
+                Text(score, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.style(11, color: t.muted)),
               ],
             ),
           ),
-          IconButton(tooltip: 'Game log', icon: Icon(Icons.receipt_long, color: t.accent), onPressed: () => _showLog(context, g)),
+          IconButton(tooltip: 'Game log', icon: Icon(Icons.receipt_long, color: t.accent), onPressed: () => _showLog(context, session)),
           PopupMenuButton<String>(
             icon: Icon(Icons.more_vert, color: t.accent),
             onSelected: (v) {
@@ -332,7 +370,11 @@ class _TopBar extends StatelessWidget {
     );
   }
 
-  static void _showLog(BuildContext context, Game g) {
+  static void _showLog(BuildContext context, RiftboundSession session) {
+    final g = session.match;
+    // Online with others: how far the game has got and a short check of the position, the same
+    // on every device in step.
+    final sync = session.room == null ? null : 'Online · move ${g.actions.length} · check ${g.fingerprint.substring(0, 8)}';
     showModalBottomSheet(
       context: context,
       backgroundColor: riftboundTheme.surface,
@@ -344,7 +386,9 @@ class _TopBar extends StatelessWidget {
             return SafeArea(
               child: ListView(
                 padding: const EdgeInsets.all(12),
-                children: [for (final e in log) Text(e.text, style: t.style(13, weight: e.kind == 'turn' ? FontWeight.w800 : FontWeight.w500))],
+                children: [
+                  if (sync != null) Text(sync, style: t.style(12, weight: FontWeight.w700, color: t.muted)),
+                  for (final e in log) Text(e.text, style: t.style(13, weight: e.kind == 'turn' ? FontWeight.w800 : FontWeight.w500))],
               ),
             );
           },
@@ -461,6 +505,105 @@ class _PlayerStrip extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// With more players: everyone else in turn order after you, one compact panel each (name and
+/// team colour, points, ready runes, cards in hand); the one whose turn it is glows. Tap one to
+/// show their base and legend.
+class _Opponents extends StatelessWidget {
+  const _Opponents({required this.session, required this.viewed, required this.onPick});
+  final RiftboundSession session;
+  final int viewed;
+  final void Function(int) onPick;
+  @override
+  Widget build(BuildContext context) {
+    final t = GameTheme.of(context);
+    final g = session.match;
+    final st = g.state;
+    final me = session.localSeat;
+    final n = st.players.length;
+    final others = [for (var i = 1; i < n; i++) (me + i) % n];
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      child: Row(
+        children: [
+          for (final p in others)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: _OpponentPanel(session: session, player: p, selected: p == viewed, color: seatColor(t, st, p, me), onTap: () => onPick(p)),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OpponentPanel extends StatelessWidget {
+  const _OpponentPanel({required this.session, required this.player, required this.selected, required this.color, required this.onTap});
+  final RiftboundSession session;
+  final int player;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) {
+    final t = GameTheme.of(context);
+    final g = session.match;
+    final st = g.state;
+    final pl = st.player(player);
+    final active = st.active == player && !g.over;
+    final ready = pl.runes.where((r) => !st.obj(r).exhausted).length;
+    final mate = st.mode == RMode.teams && st.allied(player, session.localSeat);
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: '${pl.name}${mate ? ', your teammate' : ''}${pl.lost ? ', out of the game' : ''}, ${pl.points} of ${st.victoryScore} points${active ? ', their turn' : ''}',
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Opacity(
+          opacity: pl.lost ? 0.4 : 1,
+          child: HexPanel(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            glow: active ? color : (selected ? color.withValues(alpha: 0.5) : null),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+                    const SizedBox(width: 4),
+                    Expanded(child: Text(pl.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.style(12, weight: FontWeight.w800, color: active ? color : t.text))),
+                    if (mate) Icon(Icons.handshake, size: 13, color: color),
+                  ],
+                ),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('${pl.points}/${st.victoryScore}', style: t.style(13, weight: FontWeight.w900, color: t.accent)),
+                      const SizedBox(width: 6),
+                      Icon(Icons.diamond_outlined, size: 13, color: t.accent2),
+                      Text('$ready/${pl.runes.length}', style: t.style(12, weight: FontWeight.w700, color: t.accent2)),
+                      const SizedBox(width: 6),
+                      Icon(Icons.style, size: 13, color: t.muted),
+                      Text('${pl.hand.length}', style: t.style(12, weight: FontWeight.w700)),
+                    ],
+                  ),
+                ),
+                if (selected) Container(margin: const EdgeInsets.only(top: 2), height: 2, color: color),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -585,7 +728,19 @@ class _BaseRow extends StatelessWidget {
         children: [
           SizedBox(
             width: 34,
-            child: RotatedBox(quarterTurns: 3, child: Center(child: Text(player == session.localSeat ? 'YOUR BASE' : 'THEIR BASE', style: t.style(9, weight: FontWeight.w800, color: t.muted)))),
+            child: RotatedBox(
+              quarterTurns: 3,
+              child: Center(
+                child: Text(
+                  player == session.localSeat
+                      ? 'YOUR BASE'
+                      : (g.state.multi ? g.state.player(player).name.toUpperCase() : 'THEIR BASE'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: t.style(9, weight: FontWeight.w800, color: g.state.multi ? seatColor(t, g.state, player, session.localSeat) : t.muted),
+                ),
+              ),
+            ),
           ),
           Expanded(
             child: ids.isEmpty
@@ -828,19 +983,19 @@ class _Battlefield extends StatelessWidget {
     final sd = st.showdown;
     final here = sd != null && sd.bf == index;
     final owner = b.controller;
-    final color = owner == null ? const Color(0x66C8AA6E) : (owner == me ? t.accent2 : t.danger);
+    final color = owner == null ? const Color(0x66C8AA6E) : seatColor(t, st, owner, me);
     final status = here
-        ? (sd.combat ? 'COMBAT' : 'SHOWDOWN')
+        ? (sd.combat ? (st.multi ? 'COMBAT: ${st.player(sd.attacker).name} attacks' : 'COMBAT') : 'SHOWDOWN')
         : (b.contestedBy != null ? 'CONTESTED' : (owner == null ? 'Uncontrolled' : (owner == me ? 'You control it' : '${st.player(owner).name} controls it')));
     // A card hidden here (CR 107.3) sits with its controller's units: face up for its owner,
     // a card back for the opponent.
     // Usually one; Bandle Tree holds a second.
     final hidden = [for (final o in st.objects.values) if (o.zone == Zone.facedown && o.loc == index) o.id];
-    Widget units(int p) {
+    Widget units(int p, {bool tagged = false}) {
       final ids = g.unitsAt(index, player: p);
       final fds = [for (final h in hidden) if (st.obj(h).controller == p) h];
       if (ids.isEmpty && fds.isEmpty) return SizedBox(height: width * 0.5);
-      return Wrap(
+      final wrap = Wrap(
         alignment: WrapAlignment.center,
         spacing: 2,
         runSpacing: 4,
@@ -849,6 +1004,32 @@ class _Battlefield extends StatelessWidget {
           for (final fd in fds) _Facedown(session: session, id: fd, acts: acts, width: width * 0.8, onCard: onCard),
         ],
       );
+      if (!tagged) return wrap;
+      // With more players, each group of units says whose it is, in that player's colour.
+      final c = seatColor(t, st, p, me);
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(st.player(p).name, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.style(10, weight: FontWeight.w800, color: c)),
+          DecoratedBox(
+            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: c, width: 2))),
+            child: wrap,
+          ),
+        ],
+      );
+    }
+
+    // The other players' units here: one opponent in a Duel, everyone else (in turn order) with
+    // more players (at most one opponent can be here at a time anyway, CR 464).
+    Widget theirs() {
+      if (!st.multi) return units(opp);
+      final n = st.players.length;
+      final present = [
+        for (var i = 1; i < n; i++)
+          if (g.unitsAt(index, player: (me + i) % n).isNotEmpty || hidden.any((h) => st.obj(h).controller == (me + i) % n)) (me + i) % n,
+      ];
+      if (present.isEmpty) return SizedBox(height: width * 0.5);
+      return Column(mainAxisSize: MainAxisSize.min, children: [for (final p in present) units(p, tagged: true)]);
     }
 
     return HexPanel(
@@ -876,7 +1057,7 @@ class _Battlefield extends StatelessWidget {
                 card(math.min(math.min(220.0, c.maxWidth * 0.4), (c.maxHeight - 8) / 0.716)),
                 const SizedBox(width: 6),
                 Expanded(
-                  child: SingleChildScrollView(child: Column(children: [units(opp), label, units(me)])),
+                  child: SingleChildScrollView(child: Column(children: [theirs(), label, units(me)])),
                 ),
               ],
             );
@@ -884,7 +1065,7 @@ class _Battlefield extends StatelessWidget {
           return SingleChildScrollView(
             child: Column(
               children: [
-                units(opp),
+                theirs(),
                 const SizedBox(height: 4),
                 card(math.max(60.0, math.min(math.min(c.maxWidth, 220.0), fit))),
                 label,
@@ -997,7 +1178,8 @@ class _ActionBar extends StatelessWidget {
         buttons.add(_Pulse(on: nothingLeft, child: ThemedButton('End turn', icon: Icons.skip_next, expand: false, color: nothingLeft ? t.accent : t.accent2, onPressed: () => session.perform(EndTurnMove(me)))));
       }
     } else {
-      line = session.thinking ? '${st.player(session.opponentSeat).name} is thinking…' : 'Waiting for ${st.player(session.opponentSeat).name}…';
+      final who = st.player(g.toAct ?? session.opponentSeat).name;
+      line = session.thinking ? '$who is thinking…' : 'Waiting for $who…';
     }
     final recent = [for (final e in session.recent) if (e.player != me || e.kind == 'conquer' || e.kind == 'hold' || e.kind == 'die') e].reversed.take(3).toList().reversed.toList();
     return Container(
@@ -1224,7 +1406,8 @@ class _GameOver extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = GameTheme.of(context);
     final st = session.state;
-    final won = st.winner == session.localSeat;
+    // Teammates win together (CR 491.6.a).
+    final won = st.winner != null && st.allied(st.winner!, session.localSeat);
     return Positioned.fill(
       child: ColoredBox(
         color: Colors.black54,
@@ -1242,6 +1425,15 @@ class _GameOver extends StatelessWidget {
                   const SizedBox(height: 8),
                   Text([for (final p in st.players) '${p.name}: ${p.points} points'].join('\n'), textAlign: TextAlign.center, style: t.style(15)),
                   const SizedBox(height: 14),
+                  if (st.multi && st.winner != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        st.mode == RMode.teams ? 'Winners: ${[for (var p = 0; p < st.players.length; p++) if (st.allied(p, st.winner!)) st.player(p).name].join(' & ')}' : 'Winner: ${st.player(st.winner!).name}',
+                        textAlign: TextAlign.center,
+                        style: t.style(14, weight: FontWeight.w800, color: t.accent),
+                      ),
+                    ),
                   if (!session.isLinked) ...[
                     ThemedButton(
                       'Rematch',
@@ -1254,6 +1446,7 @@ class _GameOver extends StatelessWidget {
                           decks: [for (final d in session.decks) List.of(d)],
                           seed: math.Random().nextInt(1 << 30),
                           hotseat: session.mode == SessionMode.hotseat,
+                          mode: st.mode,
                         );
                         onRematch();
                       },

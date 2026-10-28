@@ -117,7 +117,7 @@ extension GameW2s3 on Game {
       case W3AddCombatants(:final energy):
         final sd = state.showdown;
         if (sd == null || !sd.combat) return;
-        for (final q in [sd.attacker, state.other(sd.attacker)]) {
+        for (final q in [sd.attacker, _defenderAt(sd.bf, sd.attacker)]) {
           state.player(q).energyPool += energy;
           log('${playerName(q)} adds {$energy}.', player: q, kind: 'info');
         }
@@ -227,7 +227,7 @@ extension GameW2s3 on Game {
     switch (d) {
       case Domain.fury:
         // "Deal 2 to an enemy unit here and 1 to all other enemy units here."
-        final enemies = [for (final u in unitsAt(here)) if (state.obj(u).controller != p) u];
+        final enemies = enemyUnits(p, bf: here);
         final options = _genTargetable(enemies, p, ctx.source);
         if (options.isEmpty) return;
         final pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: '${nameOf(ctx.source)}: choose an enemy unit here to deal 2 to', options: options, source: ctx.source)).first;
@@ -239,7 +239,7 @@ extension GameW2s3 on Game {
       case Domain.mind:
         _draw(p, 1);
       case Domain.order:
-        final options = _genTargetable([for (final u in units()) if (state.obj(u).controller != p) u], p, ctx.source);
+        final options = _genTargetable(enemyUnits(p), p, ctx.source);
         if (options.isEmpty) return;
         final pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: '${nameOf(ctx.source)}: choose an enemy unit to stun', options: options, source: ctx.source)).first;
         _resolve(const Stun(Chosen(0)), _Ctx(controller: p, source: ctx.source, loc: ctx.loc, targets: [pick], ability: ctx.ability));

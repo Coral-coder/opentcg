@@ -131,8 +131,9 @@ extension GameQuery on Game {
     } else if (!f.cardTypes.contains(c.type)) {
       return false;
     }
-    if (f.side == Side.friendly && o.controller != controller) return false;
-    if (f.side == Side.enemy && o.controller == controller) return false;
+    // Friendly includes teammates' objects in 2v2 (CR 491.8.e).
+    if (f.side == Side.friendly && !state.allied(o.controller, controller)) return false;
+    if (f.side == Side.enemy && state.allied(o.controller, controller)) return false;
     if (f.other && id == source) return false;
     switch (f.where) {
       case Where.anywhere:
@@ -218,8 +219,11 @@ extension GameQuery on Game {
   /// Where unit [u] may go with its Standard Move (CR 144.4).
   List<int> moveDestinations(ObjId u) {
     final o = state.obj(u);
-    if (o.loc == base) return _genMoveDests(u, [for (var i = 0; i < state.bfs.length; i++) i]);
-    return _genMoveDests(u, _s1MoveDests(u, [base, if (hasKw(u, Kw.ganking)) for (var i = 0; i < state.bfs.length; i++) if (i != o.loc) i]));
+    final out = o.loc == base
+        ? _genMoveDests(u, [for (var i = 0; i < state.bfs.length; i++) i])
+        : _genMoveDests(u, _s1MoveDests(u, [base, if (hasKw(u, Kw.ganking)) for (var i = 0; i < state.bfs.length; i++) if (i != o.loc) i]));
+    // Invalid destinations with more players (CR 449.2.a–b).
+    return state.multi ? [for (final to in out) if (_multiCanEnter(o.controller, to)) to] : out;
   }
 
   /// The reason [m] isn't legal now, or null if it is (tried on a copy of the game).

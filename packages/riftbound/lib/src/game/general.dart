@@ -37,11 +37,11 @@ extension GameGeneral on Game {
 
   bool _genUntargetable(ObjId id, int p) {
     final o = state.objOrNull(id);
-    if (o == null || o.zone != Zone.board || o.controller == p) return false;
+    if (o == null || o.zone != Zone.board || state.allied(o.controller, p)) return false;
     for (final (src, pa) in _passives()) {
       if (pa is! UntargetableOthers || src == id) continue;
       final so = state.obj(src);
-      if (so.zone != Zone.board || so.controller == p) continue;
+      if (so.zone != Zone.board || state.allied(so.controller, p)) continue;
       if (matches(pa.filter, id, controller: so.controller, source: src, here: so.loc)) return true;
     }
     return false;
@@ -123,7 +123,7 @@ extension GameGeneral on Game {
       case ChooseLegend(:final slot, :final side):
         final options = [
           for (var q = 0; q < state.players.length; q++)
-            if (state.player(q).legend != null && (side == Side.any || (side == Side.friendly) == (q == p))) state.player(q).legend!,
+            if (state.player(q).legend != null && state.inGame(q) && (side == Side.any || (side == Side.friendly) == state.allied(q, p))) state.player(q).legend!,
         ];
         if (options.isEmpty) {
           if (optional) return set(slot, -1);
@@ -138,7 +138,7 @@ extension GameGeneral on Game {
         if (options.isEmpty) return set(slot, -1);
         set(slot, ask(Decision(kind: DecisionKind.cards, player: p, prompt: '${nameOf(source)}: choose something exhausted to ready', options: options, min: 0, source: source)).firstOrNull ?? -1);
       case ChoosePlayer(:final slot, :final opponent):
-        if (opponent) return set(slot, state.other(p));
+        if (opponent) return set(slot, state.multi ? chooseOpponent(p, '${nameOf(source)}: choose an opponent') : state.other(p));
         final a = ask(
           Decision(
             kind: DecisionKind.option,
@@ -175,9 +175,9 @@ extension GameGeneral on Game {
 
   bool _genSpellMatches(ChooseSpell t, ChainItem it, int p, List<int> out) {
     if (!it.isSpell && !t.abilities) return false;
-    if (t.enemy && it.controller == p) return false;
+    if (t.enemy && state.allied(it.controller, p)) return false;
     if (t.choosingFriendly) {
-      final hit = it.targets.any((id) => id > 0 && id < _chainRef && state.objOrNull(id)?.zone == Zone.board && state.obj(id).controller == p);
+      final hit = it.targets.any((id) => id > 0 && id < _chainRef && state.objOrNull(id)?.zone == Zone.board && state.allied(state.obj(id).controller, p));
       if (!hit) return false;
     }
     final cs = t.choosingSlot;
@@ -185,7 +185,7 @@ extension GameGeneral on Game {
       if (cs >= out.length || out[cs] < 0) return false;
       final u = out[cs];
       if (!it.targets.contains(u)) return false;
-      if (it.targets.any((id) => id > 0 && id != u && id < _chainRef && state.objOrNull(id)?.zone == Zone.board && state.obj(id).controller == p && isUnit(id))) return false;
+      if (it.targets.any((id) => id > 0 && id != u && id < _chainRef && state.objOrNull(id)?.zone == Zone.board && state.allied(state.obj(id).controller, p) && isUnit(id))) return false;
     }
     return true;
   }
@@ -386,9 +386,12 @@ extension GameGeneral on Game {
       case PYou():
         return [ctx.controller];
       case POpponent():
-        return [state.other(ctx.controller)];
+        return [state.multi ? chooseOpponent(ctx.controller, '${nameOf(ctx.source)}: choose an opponent') : state.other(ctx.controller)];
       case PEach():
-        return [for (var i = 0; i < state.players.length; i++) (ctx.controller + i) % state.players.length];
+        return [
+          for (var i = 0; i < state.players.length; i++)
+            if (state.inGame((ctx.controller + i) % state.players.length)) (ctx.controller + i) % state.players.length,
+        ];
       case PChosen(:final slot):
         return slot < ctx.targets.length && ctx.targets[slot] >= 0 ? [ctx.targets[slot]] : const [];
       case PControllerOf(:final target, :final owner):
@@ -490,7 +493,7 @@ extension GameGeneral on Game {
       case PStat.unitsAtBattlefields:
         return units(player: q).where((u) => state.obj(u).loc != base).length;
       case PStat.fewerRunesThanOpp:
-        return pl.runes.length < state.player(state.other(q)).runes.length ? 1 : 0;
+        return anyOpponent(q, (o) => pl.runes.length < state.player(o).runes.length) ? 1 : 0;
       case PStat.spentThisTurn:
         return _gen.get('p$q:spent');
       case PStat.maxSpellSpend:
@@ -500,17 +503,17 @@ extension GameGeneral on Game {
       case PStat.cardsPlayedThisTurn:
         return pl.playedThisTurn;
       case PStat.spellsPlayedByOppThisTurn:
-        return _gen.get('p${state.other(q)}:spells');
+        return state.opponents(q).fold<int>(0, (t, o) => t + _gen.get('p$o:spells'));
       case PStat.turnNumber:
         return _gen.getL('p$q:turns');
       case PStat.controlsBattlefield:
         return state.bfs.where((b) => b.controller == q).length;
       case PStat.oppControlsBattlefield:
-        return state.bfs.where((b) => b.controller == state.other(q)).length;
+        return state.bfs.where((b) => b.controller != null && !state.allied(b.controller!, q)).length;
       case PStat.powerSpentThisTurn:
         return _gen.get('p$q:spentPower');
       case PStat.oppSpellsCast:
-        return _gen.get('p${state.other(q)}:cast');
+        return state.opponents(q).fold<int>(0, (t, o) => t + _gen.get('p$o:cast'));
       case PStat.choseEnemy:
         return _gen.get('p$q:choseEnemy');
     }
@@ -762,7 +765,7 @@ extension GameGeneral on Game {
       // "Spells and abilities can't ready enemy units and gear" (enemy to the restriction's controller).
     }
     for (final (src, pa) in _passives()) {
-      if (pa is Restrict && pa.kind == RKind.noReadyEnemies && _genPassiveCond(const SelfCond(SelfKind.atBattlefield), src) && o.zone == Zone.board && o.controller != state.obj(src).controller) {
+      if (pa is Restrict && pa.kind == RKind.noReadyEnemies && _genPassiveCond(const SelfCond(SelfKind.atBattlefield), src) && o.zone == Zone.board && !state.allied(o.controller, state.obj(src).controller)) {
         return false;
       }
     }
@@ -828,7 +831,7 @@ extension GameGeneral on Game {
       for (final d in _gen.delayed) {
         if (d.kind == DelayKind.preventSpellDamage.index && d.turn == state.turn) return 0;
       }
-      if (o.controller != p) {
+      if (!state.allied(o.controller, p)) {
         for (final a in parsed(id).abilities) {
           if (a is Static && a.passive is PreventEnemySpellDamage) {
             final c = (a.passive as PreventEnemySpellDamage).cond;
@@ -1175,7 +1178,7 @@ extension GameGeneral on Game {
           _resolve(x, ctx);
         }
       case HandPick(:final filter, :final recycle):
-        final q = state.other(p);
+        final q = state.multi ? chooseOpponent(p, '${nameOf(ctx.source)}: which opponent reveals their hand?') : state.other(p);
         final hand = state.player(q).hand;
         if (hand.isEmpty) return;
         log('${playerName(q)} reveals their hand: ${hand.map(nameOf).join(', ')}.', player: q, kind: 'info');
@@ -1303,7 +1306,7 @@ extension GameGeneral on Game {
   void _genGainPoints(int q, int n) {
     if (n <= 0) return;
     if (_genCantScore(q, -1)) return;
-    state.player(q).points += n;
+    _addPoints(q, n);
     log('${playerName(q)} gains $n point${n == 1 ? '' : 's'}.', player: q, kind: 'point', amount: n);
     _hScored(q);
   }
@@ -1314,7 +1317,7 @@ extension GameGeneral on Game {
     for (final (src, pa) in _passives()) {
       if (pa is! Restrict) continue;
       final so = state.obj(src);
-      if (pa.kind == RKind.oppCantScore && so.controller != q && so.zone == Zone.board && so.loc != base) return true;
+      if (pa.kind == RKind.oppCantScore && !state.allied(so.controller, q) && so.zone == Zone.board && so.loc != base) return true;
       if (pa.kind == RKind.noScoreBeforeTurn3 && bf >= 0 && _genHereOf(src) == bf && _gen.getL('p$q:turns') < 3) return true;
     }
     return false;
@@ -1741,7 +1744,7 @@ extension GameGeneral on Game {
       _gen.setL('p$p:extraTurns', n - 1);
       return p;
     }
-    return state.other(p);
+    return state.nextSeat(p);
   }
 
   /// A permanent entered the board: whether it's Mighty is noted silently (entering isn't
@@ -1819,7 +1822,7 @@ extension GameGeneral on Game {
   /// Combat begins at battlefield [bf]: attacker [att] with [mine] against [theirs].
   void _genCombatStart(int bf, int att, List<ObjId> mine, List<ObjId> theirs) {
     _ws2CombatStart();
-    final def = state.other(att);
+    final def = theirs.isNotEmpty ? state.obj(theirs.first).controller : state.other(att);
     _gen.turn.removeWhere((k, _) => k.startsWith('att:'));
     _gen.turn['combat'] = bf + 1;
     _gen.turn.remove('p$att:excess');
@@ -1878,7 +1881,10 @@ extension GameGeneral on Game {
 
   /// Combat damage to [id] (CR 467), through prevention (CR 438.5).
   int _genCombatHit(ObjId id, int n) {
-    final ctx = _Ctx(controller: state.other(state.obj(id).controller), source: id, loc: state.obj(id).loc, targets: const []);
+    final o = state.obj(id);
+    // The damage comes from the other side of this combat.
+    final from = state.multi ? (state.showdown?.attacker == o.controller ? _defenderAt(o.loc, o.controller) : (state.showdown?.attacker ?? state.other(o.controller))) : state.other(o.controller);
+    final ctx = _Ctx(controller: from, source: id, loc: o.loc, targets: const []);
     return _genDeal(id, n, ctx, byUnit: 0);
   }
 
@@ -2127,7 +2133,7 @@ extension GameGeneral on Game {
         if (d.obj == p && card(id).type == CardType.spell) return 'You can’t play spells this turn';
         continue;
       }
-      if (d.controller == p) continue;
+      if (state.allied(d.controller, p)) continue;
       if (d.kind == DelayKind.noCards.index) return 'Opponents can’t play cards this turn';
       if (d.kind == DelayKind.noSpells.index && card(id).type == CardType.spell) return 'You can’t play spells this turn';
     }
@@ -2145,10 +2151,12 @@ extension GameGeneral on Game {
     final out = <int>[];
     for (final l in options) {
       if (l != base && _genRestricted(RKind.noPlayHere, test: (src, _) => _genHereOf(src) == l)) continue;
+      // Not into a combat between other players, nor next to a teammate (CR 464.2, 449.2.b).
+      if (!_multiCanEnter(p, l)) continue;
       if (l != base) {
         var blocked = false;
         for (final (src, pa) in _passives()) {
-          if (pa is Restrict && pa.kind == RKind.oppUnitsOnlyToBase && state.obj(src).controller != p && state.obj(src).zone == Zone.board && state.obj(src).loc != base) blocked = true;
+          if (pa is Restrict && pa.kind == RKind.oppUnitsOnlyToBase && !state.allied(state.obj(src).controller, p) && state.obj(src).zone == Zone.board && state.obj(src).loc != base) blocked = true;
         }
         if (blocked) continue;
       }
@@ -2215,7 +2223,7 @@ extension GameGeneral on Game {
     for (final id in chosen.toSet()) {
       if (id <= 0 || id >= _chainRef || state.objOrNull(id)?.zone != Zone.board) continue;
       _gen.add('p$p:chose');
-      if (state.obj(id).controller != p) _gen.add('p$p:choseEnemy');
+      if (!state.allied(state.obj(id).controller, p)) _gen.add('p$p:choseEnemy');
       _genEvent(GEv.chosen, player: p, obj: id, extra: spell ? 'spell' : '');
     }
   }

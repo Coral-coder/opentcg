@@ -61,6 +61,20 @@ extension GameTesting on Game {
 
   void setControl(int bf, int? player) => state.bfs[bf].controller = player;
 
+  /// Plays a hand-built position under [mode] (its Victory Score too).
+  void setMode(RMode mode) {
+    state.mode = mode;
+    state.victoryScore = mode.victoryScore;
+  }
+
+  /// Ends the turn of the player before [p] and starts [p]'s (for tests of what happens at the
+  /// start of a turn).
+  void startTurnForTest(int p) {
+    state.step = Step.ending;
+    state.active = (p + state.players.length - 1) % state.players.length;
+    _settle();
+  }
+
   /// Runs the engine's settling (after building a position by hand).
   void settleForTest() => _settle();
 }
