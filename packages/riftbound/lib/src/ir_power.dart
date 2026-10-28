@@ -433,8 +433,11 @@ class MoveAny extends PowerEffect {
 /// "Move all enemy units at that battlefield with less Might than the chosen unit to their base"
 /// (Stare Down: [slot] is the friendly unit chosen).
 class StareDown extends PowerEffect {
-  const StareDown(this.slot);
+  const StareDown(this.slot, {required this.bfSlot});
   final int slot;
+
+  /// The battlefield, chosen as the spell is played (CR 355.4).
+  final int bfSlot;
 }
 
 /// "It deals damage equal to its Might split among enemy units at battlefields. Then for each

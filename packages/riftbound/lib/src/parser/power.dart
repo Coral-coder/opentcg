@@ -8,6 +8,10 @@ part of 'parser.dart';
 /// Experience); set while such a line is parsed.
 int? _powerItSlot;
 
+/// Stare Down's battlefield, chosen as the spell is played (CR 355.4) on the line before the
+/// move; read (and cleared) by that line.
+int? _powerStareBf;
+
 extension _PowerLine on _Line {
   bool get _isLegend => card.type == CardType.legend;
   bool get _isGear => card.type == CardType.gear;
@@ -516,11 +520,22 @@ extension _PowerLine on _Line {
     m = RegExp(r'^Choose a friendly unit and a battlefield$').firstMatch(s);
     if (m != null) {
       final t = _target('a friendly unit');
-      return t == null ? null : [PickIt(t)];
+      if (t == null) return null;
+      final unit = _slotCounter[0] - 1;
+      final bf = _slotCounter[0]++;
+      _powerStareBf = bf;
+      _powerItSlot = unit;
+      try {
+        return [PickIt(t), ChooseOnly([ChooseBf(bf)])];
+      } finally {
+        _powerItSlot = null;
+      }
     }
     if (s == 'Move all enemy units at that battlefield with less Might than the chosen unit to their base') {
-      final it = _itSlot;
-      return it == null ? null : [StareDown(it)];
+      final bf = _powerStareBf;
+      _powerStareBf = null;
+      if (bf == null) return null;
+      return [StareDown(bf - 1, bfSlot: bf)];
     }
     m = RegExp(r'^Its base Might becomes (\d+) this turn$').firstMatch(s);
     if (m != null) {

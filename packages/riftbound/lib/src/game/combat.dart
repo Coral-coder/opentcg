@@ -208,7 +208,8 @@ extension GameCombat on Game {
 
   /// Combat damage (CR 467): each side's total Might assigned among the other's units, Tank first
   /// and Backline last (CR 815, 826), lethal damage in full before the next unit (CR 467.2.c.3),
-  /// then dealt at once. The engine assigns for the players, killing as many units as it can.
+  /// then dealt at once. Each player chooses which unit takes lethal damage next when that choice
+  /// matters (CR 467.2.c); the attacker assigns first.
   void _combatDamage(List<ObjId> attackers, List<ObjId> defenders) {
     int total(List<ObjId> us) {
       var t = 0;
@@ -224,8 +225,8 @@ extension GameCombat on Game {
 
     final bf = state.obj(attackers.first).loc;
     final att = state.obj(attackers.first).controller;
-    final toDefenders = _assign(total(attackers), defenders, ignoreTank: _genIgnoresTank(att, bf));
-    final toAttackers = _assign(total(defenders), attackers, ignoreTank: _genIgnoresTank(state.other(att), bf));
+    final toDefenders = _assign(total(attackers), defenders, ignoreTank: _genIgnoresTank(att, bf), chooser: att);
+    final toAttackers = _assign(total(defenders), attackers, ignoreTank: _genIgnoresTank(state.other(att), bf), chooser: state.other(att));
     _genNoteExcess(att, total(attackers), defenders);
     _genNoteExcess(state.other(att), total(defenders), attackers);
     for (final e in [...toDefenders.entries, ...toAttackers.entries]) {
@@ -235,7 +236,11 @@ extension GameCombat on Game {
     }
   }
 
-  Map<ObjId, int> _assign(int amount, List<ObjId> targets, {bool ignoreTank = false}) {
+  /// [amount] of damage among [targets]: Tank first and Backline last (CR 815, 826), each unit
+  /// lethal damage in full before the next (CR 467.2.c.3), the excess on the last (467.2.c.4).
+  /// Among units of the same rank [chooser] picks which is next whenever the damage can't kill
+  /// them all; the weakest is offered first (and is what a player with no opinion picks).
+  Map<ObjId, int> _assign(int amount, List<ObjId> targets, {bool ignoreTank = false, required int chooser}) {
     final out = <ObjId, int>{};
     if (amount <= 0 || targets.isEmpty) return out;
     int rank(ObjId u) => hasKw(u, Kw.tank) && !ignoreTank ? 0 : (hasKw(u, Kw.backline) ? 2 : 1);
@@ -246,17 +251,26 @@ extension GameCombat on Game {
       return n < 1 ? 1 : n;
     }
 
-    final order = List.of(targets)..sortStable((a, b) => rank(a) != rank(b) ? rank(a) - rank(b) : (need(a) != need(b) ? need(a) - need(b) : a - b));
+    final remaining = List.of(targets)..sortStable((a, b) => rank(a) != rank(b) ? rank(a) - rank(b) : (need(a) != need(b) ? need(a) - need(b) : a - b));
     var left = amount;
-    for (final u in order) {
-      if (left <= 0) break;
-      final n = need(u);
+    ObjId? last;
+    while (left > 0 && remaining.isNotEmpty) {
+      final r = rank(remaining.first);
+      final group = [for (final u in remaining) if (rank(u) == r) u];
+      var next = group.first;
+      final needAll = group.fold<int>(0, (t, u) => t + need(u));
+      if (group.length > 1 && left < needAll) {
+        next = ask(Decision(kind: DecisionKind.cards, player: chooser, prompt: 'Combat damage ($left left): which unit gets lethal damage next?', options: group)).first;
+      }
+      final n = need(next);
       final give = left < n ? left : n;
-      out[u] = give;
+      out[next] = give;
       left -= give;
+      remaining.remove(next);
+      last = next;
     }
     // Excess goes on the last unit assigned (CR 467.2.c.4).
-    if (left > 0) out[order.last] = (out[order.last] ?? 0) + left;
+    if (left > 0 && last != null) out[last] = (out[last] ?? 0) + left;
     return out;
   }
 }

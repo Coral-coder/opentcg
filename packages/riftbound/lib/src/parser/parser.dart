@@ -12,7 +12,7 @@ part 'power.dart';
 part 'hidden.dart';
 
 /// Bumped whenever parsing or the engine changes what a saved game would replay to.
-const riftboundEngineVersion = 6;
+const riftboundEngineVersion = 7;
 
 class ParsedCard {
   ParsedCard(this.abilities, this.unsupported, [this.extra = const []]);

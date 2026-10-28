@@ -148,6 +148,8 @@ class RiftboundBot implements TcgBot {
         // Where to play a unit: a battlefield it controls if there is one (it helps hold).
         if (d.prompt.contains('where?')) return [d.labels.length - 1];
         if (d.prompt.endsWith('choose a mode')) return [costsMode(g, seat, d.labels)];
+        // "Pay any amount of {A}": as much as it can.
+        if (d.prompt.endsWith('pay how many {A}?')) return [d.labels.length - 1];
         return const [0];
       case DecisionKind.cards:
         final p = d.prompt.toLowerCase();
@@ -166,6 +168,8 @@ class RiftboundBot implements TcgBot {
           return byCost.take(d.min).toList();
         }
         if (p.contains('counter')) return [d.options.first];
+        // Combat damage: lethal to the weakest first (offered first), killing as many as it can.
+        if (p.startsWith('combat damage')) return [d.options.first];
         // Costs paid with its own units: the least valuable.
         if (p.contains('to sacrifice')) {
           final byValue = List.of(d.options)..sortStable((a, b) => _value(g, a) - _value(g, b));
