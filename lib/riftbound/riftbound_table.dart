@@ -357,7 +357,7 @@ class _TopBar extends StatelessWidget {
               ],
             ),
           ),
-          IconButton(tooltip: 'Game log', icon: Icon(Icons.receipt_long, color: t.accent), onPressed: () => _showLog(context, g)),
+          IconButton(tooltip: 'Game log', icon: Icon(Icons.receipt_long, color: t.accent), onPressed: () => _showLog(context, session)),
           PopupMenuButton<String>(
             icon: Icon(Icons.more_vert, color: t.accent),
             onSelected: (v) {
@@ -370,7 +370,11 @@ class _TopBar extends StatelessWidget {
     );
   }
 
-  static void _showLog(BuildContext context, Game g) {
+  static void _showLog(BuildContext context, RiftboundSession session) {
+    final g = session.match;
+    // Online with others: how far the game has got and a short check of the position, the same
+    // on every device in step.
+    final sync = session.room == null ? null : 'Online · move ${g.actions.length} · check ${g.fingerprint.substring(0, 8)}';
     showModalBottomSheet(
       context: context,
       backgroundColor: riftboundTheme.surface,
@@ -382,7 +386,9 @@ class _TopBar extends StatelessWidget {
             return SafeArea(
               child: ListView(
                 padding: const EdgeInsets.all(12),
-                children: [for (final e in log) Text(e.text, style: t.style(13, weight: e.kind == 'turn' ? FontWeight.w800 : FontWeight.w500))],
+                children: [
+                  if (sync != null) Text(sync, style: t.style(12, weight: FontWeight.w700, color: t.muted)),
+                  for (final e in log) Text(e.text, style: t.style(13, weight: e.kind == 'turn' ? FontWeight.w800 : FontWeight.w500))],
               ),
             );
           },
