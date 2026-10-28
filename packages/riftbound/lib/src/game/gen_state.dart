@@ -11,7 +11,7 @@ class GenState {
   Map<String, int> lasting = {};
 
   /// Delayed abilities, oldest first.
-  List<Delayed> delayed = [];
+  List<GenDelayed> delayed = [];
 
   int get(String k) => turn[k] ?? 0;
   void add(String k, [int n = 1]) => turn[k] = (turn[k] ?? 0) + n;
@@ -49,8 +49,8 @@ class GenState {
 /// A delayed ability (CR 390): what it is ([kind] is a [DelayKind] index), who controls it, the
 /// card and ability it came from (to find its effects: [path] indexes nested effect lists), and
 /// the objects it's about.
-class Delayed {
-  const Delayed({
+class GenDelayed {
+  const GenDelayed({
     required this.kind,
     required this.controller,
     required this.source,
@@ -77,7 +77,7 @@ class Delayed {
   final int turn;
   final int loc;
 
-  Delayed withN(int v) => Delayed(kind: kind, controller: controller, source: source, card: card, ability: ability, path: path, targets: targets, obj: obj, n: v, turn: turn, loc: loc);
+  GenDelayed withN(int v) => GenDelayed(kind: kind, controller: controller, source: source, card: card, ability: ability, path: path, targets: targets, obj: obj, n: v, turn: turn, loc: loc);
 
   String digest() => '$kind|$controller|$source|${card.length}:$card|$ability|${path.join('.')}|${targets.join(',')}|$obj|$n|$turn|$loc';
 }

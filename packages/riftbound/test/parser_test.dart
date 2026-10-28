@@ -34,11 +34,11 @@ void main() {
   });
 
   test('a card is supported only if every line is understood', () {
-    // Hidden (CR 811) isn't implemented yet: cards with it stay unsupported.
-    final hidden = db.cards.firstWhere((c) => c.text.split('\n').contains('[Hidden]'));
-    final p = RiftboundParser.parse(hidden);
+    // An unknown keyword makes the whole card unsupported.
+    final odd = RCard(name: 'Test Unit', type: CardType.unit, might: 2, energy: 2, text: '[Moonwalk]\nWhen you play me, draw 1.');
+    final p = RiftboundParser.parseUncached(odd);
     expect(p.supported, isFalse);
-    expect(p.unsupported, contains('[Hidden]'));
+    expect(p.unsupported, contains('[Moonwalk]'));
     final made = RCard(name: 'Test Spell', type: CardType.spell, text: 'Deal 2 to a unit. Juggle the moon.');
     expect(RiftboundParser.parseUncached(made).supported, isFalse);
   });

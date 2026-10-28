@@ -8,25 +8,14 @@ part of 'ir.dart';
 // Costs
 // ---------------------------------------------------------------------------------------------
 
-/// A cost other than Energy, Power, exhausting or killing the source.
-abstract class CostPart {
-  const CostPart();
+/// Costs beyond those of ir_power.dart, read by the general grammar (paid by game/general.dart).
+abstract class GenCostPart extends CostPart {
+  const GenCostPart();
   String describe();
 }
 
-/// "Discard N" / "Discard a gear" (CR 423.3: it must be possible to pay).
-class DiscardCost extends CostPart {
-  const DiscardCost(this.n, {this.filter});
-  final int n;
-
-  /// Only cards matching this (a gear).
-  final Filter? filter;
-  @override
-  String describe() => 'discard $n${filter == null ? '' : ' ${filter!.describe()}'}';
-}
-
 /// "Recycle N from your trash" / "Recycle a unit from your trash" (CR 417.3).
-class RecycleTrashCost extends CostPart {
+class RecycleTrashCost extends GenCostPart {
   const RecycleTrashCost(this.n, {this.filter});
   final int n;
   final Filter? filter;
@@ -35,7 +24,7 @@ class RecycleTrashCost extends CostPart {
 }
 
 /// "Kill a friendly unit or gear" as a cost.
-class KillCost extends CostPart {
+class KillCost extends GenCostPart {
   const KillCost(this.filter);
   final Filter filter;
   @override
@@ -43,18 +32,11 @@ class KillCost extends CostPart {
 }
 
 /// "Exhaust a unit you control" as a cost.
-class ExhaustCost extends CostPart {
+class ExhaustCost extends GenCostPart {
   const ExhaustCost(this.filter);
   final Filter filter;
   @override
   String describe() => 'exhaust ${filter.describe()}';
-}
-
-/// "Spend my buff" (CR 703: remove my buff counter).
-class SpendMyBuffCost extends CostPart {
-  const SpendMyBuffCost();
-  @override
-  String describe() => 'spend my buff';
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -157,15 +139,6 @@ class ChooseAnything extends GenTarget {
   String describe() => 'something${notMe ? ' else' : ''}${exhausted == true ? ' exhausted' : ''}';
 }
 
-/// A battlefield chosen as it's played (its board object is stored in [slot]).
-class ChooseBf extends GenTarget {
-  const ChooseBf(this.slot, {this.withYourUnits = false, this.youControl = false});
-  final int slot;
-  final bool withYourUnits, youControl;
-  @override
-  String describe() => 'a battlefield${withYourUnits ? ' with your units' : ''}${youControl ? ' you control' : ''}';
-}
-
 /// The unit that died, was played … in a trigger, when [EventUnit] doesn't fit (gear too).
 class EventObj extends GenTarget {
   const EventObj();
@@ -255,14 +228,7 @@ class ThatMuch extends GenAmount {
   String describe() => 'that much';
 }
 
-String describeTargetGen(Target t) => switch (t) {
-  Me() => 'me',
-  Choose(:final filter) => 'a ${filter.describe()}',
-  Chosen() => 'it',
-  Each(:final filter) => 'each ${filter.describe()}',
-  EventUnit() => 'that unit',
-  GenTarget() => t.describe(),
-};
+String describeTargetGen(Target t) => describeTarget(t);
 
 // ---------------------------------------------------------------------------------------------
 // Effects
@@ -369,15 +335,6 @@ class Move extends GenEffect {
 }
 
 /// "Banish …" (CR 428) from the board.
-class Banish extends GenEffect {
-  const Banish(this.target);
-  final Target target;
-  @override
-  List<Target> get targets => [target];
-  @override
-  String describe() => 'banish ${describeTargetGen(target)}';
-}
-
 /// Cards from a zone to their owner's hand ("return a unit from your trash to your hand").
 class CardToHand extends GenEffect {
   const CardToHand(this.target);
@@ -546,8 +503,8 @@ class PlayFrom extends GenEffect {
 }
 
 /// "Banish a friendly unit, then its owner plays it [to …], ignoring its cost."
-class Blink extends GenEffect {
-  const Blink(this.target, {this.to = Dest.base});
+class BlinkTo extends GenEffect {
+  const BlinkTo(this.target, {this.to = Dest.base});
   final Target target;
   final Dest to;
   @override
@@ -557,8 +514,8 @@ class Blink extends GenEffect {
 }
 
 /// "Take control of it and recall it."
-class TakeControl extends GenEffect {
-  const TakeControl(this.target);
+class TakeControlRecall extends GenEffect {
+  const TakeControlRecall(this.target);
   final Target target;
   @override
   List<Target> get targets => [target];
@@ -813,11 +770,7 @@ abstract class GenCond extends Cond {
   String describe();
 }
 
-String describeCondGen(Cond c) => switch (c) {
-  HandAtMost(:final n) => 'hand ≤ $n',
-  UnitsThere(:final n) => '$n+ units there',
-  GenCond() => c.describe(),
-};
+String describeCondGen(Cond c) => describeCond(c);
 
 enum CmpOp { ge, le, eq, gt, lt }
 
@@ -951,9 +904,6 @@ enum GEv {
   /// A spell is played (finished, CR 420.4).
   spellPlayed,
 
-  /// You buff a unit ([GenWhen.filter]).
-  buffed,
-
   /// A unit becomes ready.
   readied,
 
@@ -991,14 +941,8 @@ enum GEv {
   /// You recycle cards (or a rune).
   recycled,
 
-  /// An opponent scores.
-  oppScores,
-
   /// This leaves the board.
   leaves,
-
-  /// You spend a buff.
-  spentBuff,
 
   /// You use an activated ability of a gear.
   gearAbility,
@@ -1150,8 +1094,6 @@ class Restrict extends GenPassive {
 }
 
 enum RKind {
-  /// "I can't be chosen by enemy spells and abilities" ([Restrict.cond]: unless).
-  untargetable,
 
   /// "I can't move to base."
   cantMoveToBase,
@@ -1159,9 +1101,6 @@ enum RKind {
   /// "Units can't move to base." / "Units can't move from here to base."
   noneMoveToBase,
   noneMoveFromHereToBase,
-
-  /// "I can't be readied."
-  cantBeReadied,
 
   /// "Units can't be played here."
   noPlayHere,
@@ -1193,9 +1132,6 @@ enum RKind {
   /// "I can be played to a battlefield you're attacking."
   playToAttacked,
 
-  /// "I can have any number of buffs."
-  manyBuffs,
-
   /// "Use my abilities only while I'm at a battlefield."
   abilitiesOnlyAtBf,
 
@@ -1204,9 +1140,6 @@ enum RKind {
 
   /// "Your [Deathknell] effects trigger an additional time."
   deathknellTwice,
-
-  /// "Your conquer/hold effects for conquering/holding here trigger an additional time."
-  conquerTwiceHere,
   holdTwiceHere,
 
   /// "While I'm at a battlefield, opponents can only play units to their base."

@@ -23,6 +23,7 @@ class RiftboundPlayable {
         PlayMove(:final card) => card,
         ActivateMove(:final source) => source,
         MoveUnitsMove(:final units) => units.first,
+        HideMove(:final card) => card,
         _ => null,
       };
       if (id != null) m.putIfAbsent(id, () => []).add(x);
@@ -44,6 +45,7 @@ class RiftboundPlayable {
   int get playableCards => all.whereType<PlayMove>().length;
   int get movableUnits => {for (final m in all.whereType<MoveUnitsMove>()) m.units.first}.length;
   int get usableAbilities => all.whereType<ActivateMove>().length;
+  int get hideableCards => all.whereType<HideMove>().length;
 
   /// Ready units of [seat] at [unit]'s location that can also make the same move (for "move
   /// together", CR 144.3).
@@ -64,5 +66,6 @@ String playableSummary(Game g, int seat, RiftboundPlayable p) {
   if (p.playableCards > 0) parts.add('${p.playableCards} card${p.playableCards == 1 ? '' : 's'} to play');
   if (p.movableUnits > 0) parts.add('${p.movableUnits} unit${p.movableUnits == 1 ? '' : 's'} can move');
   if (p.usableAbilities > 0) parts.add('${p.usableAbilities} abilit${p.usableAbilities == 1 ? 'y' : 'ies'}');
+  if (p.hideableCards > 0) parts.add('${p.hideableCards} to hide');
   return parts.join(' · ');
 }

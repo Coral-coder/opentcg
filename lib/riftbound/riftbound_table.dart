@@ -162,6 +162,7 @@ class _RiftboundTableState extends State<RiftboundTable> {
         PlayMove() => Icons.play_arrow,
         ActivateMove() => Icons.bolt,
         MoveUnitsMove() => Icons.directions_run,
+        HideMove() => Icons.visibility_off,
         _ => Icons.check,
       },
       onPressed: () {
@@ -177,6 +178,10 @@ class _RiftboundTableState extends State<RiftboundTable> {
     if (!s.isLocalTurn) return 'Not your move right now.';
     final o = g.state.obj(id);
     if (o.controller != s.localSeat && o.owner != s.localSeat) return 'Your opponent’s card.';
+    if (o.zone == Zone.facedown) {
+      if (o.enteredTurn >= g.state.turn) return 'Hidden this turn: from your next turn on you can play it for free, even in reply to your opponent.';
+      return 'You can play it when you could play a Reaction.';
+    }
     final c = g.card(id);
     if (!RiftboundParser.parse(c).supported) return 'This card isn’t supported yet.';
     if (o.zone == Zone.hand || o.zone == Zone.champion) {
@@ -191,7 +196,9 @@ class _RiftboundTableState extends State<RiftboundTable> {
 
 /// What a move button says.
 String moveLabel(Game g, RMove m, int seat) => switch (m) {
-  PlayMove(:final card) => 'Play ${g.nameOf(card)} (${_cost(g, card, seat)})',
+  PlayMove(:final card) when g.state.obj(card).zone == Zone.facedown => 'Play ${g.nameOf(card)} from facedown (free)',
+  PlayMove(:final card) => 'Play ${g.nameOf(card)}${g.state.obj(card).zone == Zone.trash ? ' from the trash with Flow, then banish it' : ''} (${_cost(g, card, seat)})',
+  HideMove(:final card) => 'Hide ${g.nameOf(card)} facedown at your battlefield (1 Power; play it free from next turn)',
   ActivateMove(:final source, :final index) => _abilityLabel(g, source, index),
   MoveUnitsMove(:final units, :final to) => 'Move ${units.length == 1 ? g.nameOf(units.first) : '${units.length} units'} to ${to == base ? 'your base' : g.locName(to, seat)}',
   PassMove() => 'Pass',
@@ -200,13 +207,13 @@ String moveLabel(Game g, RMove m, int seat) => switch (m) {
 };
 
 String _cost(Game g, int card, int seat) {
-  final c = g.card(card);
-  final e = g.energyCost(seat, c);
-  final p = c.power > 0 ? ' + ${c.power} ${c.domains.isEmpty ? 'any' : c.domains.first.label} Power' : '';
-  return '$e Energy$p';
+  final c = g.playCost(seat, card);
+  final p = c.power.isEmpty ? '' : ' + ${c.power.length} ${c.power.first?.label ?? 'any'} Power';
+  return '${c.energy} Energy$p';
 }
 
 String _abilityLabel(Game g, int source, int index) {
+  if (index == grantedXpAbility) return 'Use ${g.nameOf(source)} [{E}]: gain 1 XP';
   final a = g.parsed(source).abilities[index];
   if (a is! Activated) return 'Use ${g.nameOf(source)}';
   final cost = a.cost.describe();
@@ -245,11 +252,19 @@ class RiftboundCardText extends StatelessWidget {
           const SizedBox(height: 6),
           Text('Not supported yet: ${p.unsupported.join(' / ')}', style: t.style(12, color: t.danger)),
         ],
+        if ((o.zone == Zone.board || o.zone == Zone.legend) && !g.isUnit(id) && o.pw.empowered > 0) ...[
+          const Divider(height: 20),
+          Text('Empowered${o.pw.empowered > 1 ? ' ×${o.pw.empowered}' : ''}', style: t.style(14, weight: FontWeight.w800, color: const Color(0xFFB98CFF))),
+        ],
+        if (o.zone == Zone.trash && c.type == CardType.spell && g.state.player(o.owner).trash.contains(id)) ...[
+          const Divider(height: 20),
+          Text('In the trash. With Flow it can be played from here (then it is banished).', style: t.style(12, color: t.muted)),
+        ],
         if (o.zone == Zone.board && g.isUnit(id)) ...[
           const Divider(height: 20),
           Text('Might now: ${g.might(id)}${o.damage > 0 ? ' · ${o.damage} damage' : ''}', style: t.style(14, weight: FontWeight.w800)),
           Text(
-            [if (o.exhausted) 'Exhausted' else 'Ready', if (o.buffed) 'Buffed (+1)', if (o.stunned) 'Stunned', if (o.mightMod != 0) '${o.mightMod > 0 ? '+' : ''}${o.mightMod} Might this turn', 'at ${o.loc == base ? 'base' : g.locName(o.loc, o.controller)}'].join(' · '),
+            [if (o.exhausted) 'Exhausted' else 'Ready', if (o.buffed) 'Buffed (+${1 + o.pw.extraBuffs})', if (o.pw.empowered > 0) 'Empowered${o.pw.empowered > 1 ? ' ×${o.pw.empowered}' : ''}', if (o.stunned) 'Stunned', if (o.mightMod != 0) '${o.mightMod > 0 ? '+' : ''}${o.mightMod} Might this turn', 'at ${o.loc == base ? 'base' : g.locName(o.loc, o.controller)}'].join(' · '),
             style: t.style(12, color: t.muted),
           ),
         ],
@@ -353,11 +368,17 @@ class _PlayerStrip extends StatelessWidget {
       ),
     );
     Widget mini(int id, String tip) => Tooltip(
-      message: tip,
+      message: st.obj(id).pw.empowered > 0 ? '$tip (Empowered)' : tip,
       child: GestureDetector(
         onTap: () => onCard(id),
         onLongPress: () => onCard(id),
-        child: _Glow(on: mine && acts.hasAny(id), child: RiftboundCardView(card: g.card(id), width: 28)),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            _Glow(on: mine && acts.hasAny(id), child: RiftboundCardView(card: g.card(id), width: 28)),
+            if (st.obj(id).pw.empowered > 0) const Positioned(right: -5, top: -5, child: _EmpoweredMark(size: 13)),
+          ],
+        ),
       ),
     );
     return Padding(
@@ -399,6 +420,16 @@ class _PlayerStrip extends StatelessWidget {
                         ],
                       ),
                     ),
+                    Tooltip(
+                      message: 'XP: ${pl.pw.xp}. Gained by Hunt and other effects, spent on abilities; [Level N] abilities are active with N XP.',
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          const Icon(Icons.auto_awesome, size: 15, color: Color(0xFF6FD3FF)),
+                          Text(' ${pl.pw.xp} XP', style: t.style(13, weight: FontWeight.w800, color: const Color(0xFF6FD3FF))),
+                        ]),
+                      ),
+                    ),
                     chip(Icons.style, '${pl.hand.length}', 'Cards in hand'),
                     chip(Icons.layers, '${pl.deck.length}', 'Main Deck'),
                     chip(Icons.delete_outline, '${pl.trash.length}', 'Trash'),
@@ -408,6 +439,29 @@ class _PlayerStrip extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// The mark of an Empowered card (CR 442): a violet bolt, with a count when Empowered several
+/// times.
+class _EmpoweredMark extends StatelessWidget {
+  const _EmpoweredMark({required this.size, this.times = 1});
+  final double size;
+  final int times;
+  @override
+  Widget build(BuildContext context) {
+    final t = GameTheme.of(context);
+    return Tooltip(
+      message: times > 1 ? 'Empowered ×$times' : 'Empowered',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        decoration: BoxDecoration(color: const Color(0xFF3A2A6E), borderRadius: BorderRadius.circular(size), border: Border.all(color: const Color(0xFFB98CFF))),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.bolt, size: size, color: const Color(0xFFE2CCFF)),
+          if (times > 1) Text('$times', style: t.style(size * 0.7, weight: FontWeight.w900, color: const Color(0xFFE2CCFF))),
+        ]),
       ),
     );
   }
@@ -527,10 +581,62 @@ class _Unit extends StatelessWidget {
                     ),
                   if (o.damage > 0) Positioned(left: -2, bottom: -2, child: _Badge(text: '-${o.damage}', color: t.danger, border: Colors.white)),
                   if (o.buffed) const Positioned(left: -2, top: -2, child: Icon(Icons.arrow_circle_up, size: 16, color: Color(0xFF3FC380))),
+                  if (o.pw.extraBuffs > 0) Positioned(left: 13, top: -3, child: Text('×${1 + o.pw.extraBuffs}', style: t.style(10, weight: FontWeight.w900, color: const Color(0xFF3FC380)))),
+                  if (o.pw.empowered > 0) Positioned(left: width / 2 - 8, top: -6, child: _EmpoweredMark(size: 16, times: o.pw.empowered)),
                   if (o.stunned) const Positioned(right: -2, top: -2, child: Icon(Icons.flash_off, size: 16, color: Color(0xFFE5C14A))),
                   if (o.exhausted) Positioned.fill(child: Center(child: Icon(Icons.rotate_90_degrees_ccw, size: width * 0.34, color: Colors.white70))),
                 ],
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A facedown card at a battlefield: its owner sees it (dimmed, with an eye-off badge) and can
+/// tap it to play it; the opponent sees a card back.
+class _Facedown extends StatelessWidget {
+  const _Facedown({required this.session, required this.id, required this.acts, required this.width, required this.onCard});
+  final RiftboundSession session;
+  final int id;
+  final RiftboundPlayable acts;
+  final double width;
+  final void Function(int) onCard;
+  @override
+  Widget build(BuildContext context) {
+    final t = GameTheme.of(context);
+    final g = session.match;
+    final mine = g.state.obj(id).controller == session.localSeat;
+    final can = acts.hasAny(id);
+    final back = Container(
+      width: width,
+      height: width * 1.396,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(width * 0.06),
+        gradient: const LinearGradient(colors: [Color(0xFF0B2A3C), Color(0xFF081420)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+        border: Border.all(color: t.accent, width: 1.5),
+      ),
+      child: Center(child: Icon(Icons.help_outline, color: t.accent, size: width * 0.4)),
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: Semantics(
+        button: mine,
+        label: mine ? 'Facedown ${g.nameOf(id)}${can ? ', can play' : ''}' : 'A facedown card',
+        excludeSemantics: true,
+        child: GestureDetector(
+          onTap: mine ? () => onCard(id) : null,
+          onLongPress: mine ? () => onCard(id) : null,
+          child: _Glow(
+            on: can,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                if (mine) Opacity(opacity: 0.6, child: RiftboundCardView(card: g.card(id), width: width)) else back,
+                Positioned(right: -2, top: -2, child: Icon(Icons.visibility_off, size: 16, color: t.accent)),
+              ],
             ),
           ),
         ),
@@ -619,14 +725,21 @@ class _Battlefield extends StatelessWidget {
     final status = here
         ? (sd.combat ? 'COMBAT' : 'SHOWDOWN')
         : (b.contestedBy != null ? 'CONTESTED' : (owner == null ? 'Uncontrolled' : (owner == me ? 'You control it' : '${st.player(owner).name} controls it')));
+    // A card hidden here (CR 107.3) sits with its controller's units: face up for its owner,
+    // a card back for the opponent.
+    final hidden = g.facedownAt(index);
     Widget units(int p) {
       final ids = g.unitsAt(index, player: p);
-      if (ids.isEmpty) return SizedBox(height: width * 0.5);
+      final fd = hidden != null && st.obj(hidden).controller == p ? hidden : null;
+      if (ids.isEmpty && fd == null) return SizedBox(height: width * 0.5);
       return Wrap(
         alignment: WrapAlignment.center,
         spacing: 2,
         runSpacing: 4,
-        children: [for (final id in ids) _Unit(session: session, id: id, acts: acts, width: width, onCard: onCard)],
+        children: [
+          for (final id in ids) _Unit(session: session, id: id, acts: acts, width: width, onCard: onCard),
+          if (fd != null) _Facedown(session: session, id: fd, acts: acts, width: width * 0.8, onCard: onCard),
+        ],
       );
     }
 
@@ -688,7 +801,10 @@ class _Hand extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = GameTheme.of(context);
     final g = session.match;
-    final ids = g.state.player(session.localSeat).hand;
+    final hand = g.state.player(session.localSeat).hand;
+    // Spells that can be played from the trash now (Flow) sit after the hand, marked.
+    final fromTrash = [for (final id in g.state.player(session.localSeat).trash) if (acts.canPlay(id)) id];
+    final ids = [...hand, ...fromTrash];
     final h = width * 1.396 + 14;
     return SizedBox(
       height: h,
@@ -699,18 +815,31 @@ class _Hand extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 8),
               children: [
                 for (final id in ids)
+                  // Playable or hideable cards rise and glow.
                   Padding(
-                    padding: EdgeInsets.only(right: 4, top: acts.canPlay(id) ? 0 : 8, bottom: acts.canPlay(id) ? 8 : 0),
+                    padding: EdgeInsets.only(right: 4, top: acts.hasAny(id) ? 0 : 8, bottom: acts.hasAny(id) ? 8 : 0),
                     child: Semantics(
                       button: true,
-                      label: '${g.nameOf(id)}${acts.canPlay(id) ? ', playable' : ''}',
+                      label: '${g.nameOf(id)}${acts.canPlay(id) ? ', playable' : (acts.hasAny(id) ? ', can be hidden' : '')}${fromTrash.contains(id) ? ' from the trash (Flow)' : ''}',
                       excludeSemantics: true,
                       child: GestureDetector(
                         onTap: () => onCard(id),
                         onLongPress: () => onCard(id),
                         child: Opacity(
-                          opacity: acts.canPlay(id) || acts.all.isEmpty ? 1 : 0.5,
-                          child: _Glow(on: acts.canPlay(id), child: RiftboundCardView(card: g.card(id), width: width)),
+                          opacity: acts.hasAny(id) || acts.all.isEmpty ? 1 : 0.5,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              _Glow(on: acts.hasAny(id), child: RiftboundCardView(card: g.card(id), width: width)),
+                              if (fromTrash.contains(id))
+                                Positioned(
+                                  left: 0,
+                                  right: 0,
+                                  bottom: -2,
+                                  child: Center(child: _Badge(text: 'FLOW · trash', color: const Color(0xFF3A2A6E), border: const Color(0xFFB98CFF))),
+                                ),
+                            ],
+                          ),
                         ),
                       ),
                     ),

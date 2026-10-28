@@ -45,6 +45,8 @@ extension GameQuery on Game {
         if (passive is KwAnthem && passive.kw == k && matches(passive.filter, id, controller: state.obj(src).controller, source: src, here: state.obj(src).loc)) n += passive.n;
       }
       n += _genKw(id, k);
+      n += _powerKw(id, k, n);
+      n += _hKw(id, k);
     }
     return n;
   }
@@ -54,7 +56,7 @@ extension GameQuery on Game {
     for (final o in state.objects.values) {
       if (o.zone != Zone.board && o.zone != Zone.legend && o.zone != Zone.battlefield) continue;
       for (final a in parsed(o.id).abilities) {
-        if (a is Static) yield (o.id, a.passive);
+        if (a is Static && _gateOk(o.id, a.gate)) yield (o.id, a.passive);
       }
     }
   }
@@ -80,6 +82,8 @@ extension GameQuery on Game {
             break;
         }
       }
+      m += _powerMight(id);
+      m += _hMight(id);
       if (isAttacking(id)) m += _kw(id, Kw.assault);
       if (isDefending(id)) m += _kw(id, Kw.shield);
       m += _genMight(id, m);
@@ -94,11 +98,16 @@ extension GameQuery on Game {
   /// the source's location.
   bool matches(Filter f, ObjId id, {required int controller, ObjId? source, int here = base, List<int>? slots}) {
     final o = state.objOrNull(id);
+    final pw = f.pw;
     if (o == null) return false;
     if (f.zone != FZone.board) return _genMatchesCard(f, id, controller: controller, source: source);
-    if (o.zone != Zone.board) return false;
+    if (o.zone != Zone.board && !(o.zone == Zone.legend && (pw?.legends ?? false))) return false;
     final c = card(id);
-    if (!f.cardTypes.contains(c.type)) return false;
+    if (pw != null && pw.anyType) {
+      if (!(c.type == CardType.unit || c.type == CardType.gear || (pw.legends && c.type == CardType.legend))) return false;
+    } else if (!f.cardTypes.contains(c.type)) {
+      return false;
+    }
     if (f.side == Side.friendly && o.controller != controller) return false;
     if (f.side == Side.enemy && o.controller == controller) return false;
     if (f.other && id == source) return false;
@@ -113,14 +122,19 @@ extension GameQuery on Game {
         if (o.loc == base) return false;
       case Where.base:
         if (o.loc != base) return false;
+      case Where.elsewhere:
+        // Two bases are different locations (CR 197).
+        if (o.loc == here && (here != base || o.controller == (source == null ? controller : state.obj(source).controller))) return false;
     }
     if (f.exhausted != null && o.exhausted != f.exhausted) return false;
     if (f.buffed != null && o.buffed != f.buffed) return false;
     if (f.attacking && !isAttacking(id)) return false;
     if (f.defending && !isDefending(id)) return false;
     if (f.tag != null && !c.hasTag(f.tag!)) return false;
+    if (f.notTag != null && c.hasTag(f.notTag!)) return false;
     if (f.mightMax != null && mightUsed(id) > f.mightMax!) return false;
     if (f.mightMin != null && mightUsed(id) < f.mightMin!) return false;
+    if (pw != null && !_powerMatches(pw, id, controller: controller, source: source, here: here)) return false;
     return _genMatches(f, id, o, c, controller: controller, source: source, here: here, slots: slots);
   }
 
@@ -129,7 +143,7 @@ extension GameQuery on Game {
       ? _genMatching(f, controller: controller, source: source)
       : [
         for (final o in state.objects.values)
-          if (o.zone == Zone.board && matches(f, o.id, controller: controller, source: source, here: here, slots: slots)) o.id,
+          if ((o.zone == Zone.board || (o.zone == Zone.legend && (f.pw?.legends ?? false))) && matches(f, o.id, controller: controller, source: source, here: here, slots: slots)) o.id,
       ];
 
   // -------------------------------------------------------------------------------------------
@@ -160,6 +174,7 @@ extension GameQuery on Game {
         if (abs[i] is Activated) out.add(ActivateMove(seat, src, i));
       }
     }
+    out.addAll(_powerCandidates(seat));
     if (_neutralMain(seat)) {
       for (final u in units(player: seat)) {
         final o = state.obj(u);
@@ -169,6 +184,7 @@ extension GameQuery on Game {
         }
       }
     }
+    out.addAll(_hCandidates(seat));
     if (state.chain.isNotEmpty || state.showdown != null) out.add(PassMove(seat));
     if (_neutralMain(seat)) out.add(EndTurnMove(seat));
     return out;

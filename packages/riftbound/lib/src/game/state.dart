@@ -6,13 +6,33 @@ import 'package:tcg_core/tcg_core.dart';
 
 import '../cards/card.dart';
 import '../ir.dart';
+import 'state_power.dart';
+
+export 'state_power.dart';
 
 part 'gen_state.dart';
 
 typedef ObjId = int;
 
 /// Zones (CR 105–108). Board objects are in [Zone.board] at a location ([Obj.loc]).
-enum Zone { mainDeck, hand, trash, banish, board, champion, legend, runeDeck, runes, battlefield, chain, gone }
+enum Zone {
+  mainDeck,
+  hand,
+  trash,
+  banish,
+  board,
+  champion,
+  legend,
+  runeDeck,
+  runes,
+  battlefield,
+  chain,
+  gone,
+
+  /// A battlefield's Facedown Zone (CR 107.3): [Obj.loc] is the battlefield, [Obj.enteredTurn]
+  /// the turn it was hidden.
+  facedown,
+}
 
 /// [Obj.loc] of a permanent in its controller's base (CR 107.1).
 const base = -1;
@@ -42,6 +62,9 @@ class Obj {
   /// Activated abilities used this turn (for "Use only once per turn"), by index.
   List<int> usedThisTurn = [];
 
+  /// Empowered, extra buffs, Flow (state_power.dart).
+  ObjPower pw = ObjPower();
+
   Obj clone() => Obj(id: id, card: card, owner: owner, zone: zone)
     ..controller = controller
     ..loc = loc
@@ -52,7 +75,8 @@ class Obj {
     ..mightMod = mightMod
     ..kwMod = Map.of(kwMod)
     ..enteredTurn = enteredTurn
-    ..usedThisTurn = List.of(usedThisTurn);
+    ..usedThisTurn = List.of(usedThisTurn)
+    ..pw = pw.clone();
 
   /// Leaving the board (or entering it) makes a new object for rules purposes (CR 124.1).
   void reset() {
@@ -63,13 +87,14 @@ class Obj {
     mightMod = 0;
     kwMod = {};
     usedThisTurn = [];
+    pw = ObjPower();
     loc = base;
     controller = owner;
   }
 
   String digest() {
     final kws = kwMod.keys.toList()..sortStable((a, b) => a - b);
-    return '$id|${card.length}:$card|$owner|$controller|${zone.index}|$loc|$exhausted|$damage|$buffed|$stunned|$mightMod|${kws.map((k) => '$k=${kwMod[k]}').join(',')}|$enteredTurn|${usedThisTurn.join(',')}';
+    return '$id|${card.length}:$card|$owner|$controller|${zone.index}|$loc|$exhausted|$damage|$buffed|$stunned|$mightMod|${kws.map((k) => '$k=${kwMod[k]}').join(',')}|$enteredTurn|${usedThisTurn.join(',')}|${pw.digest()}';
   }
 }
 
@@ -104,6 +129,9 @@ class Player {
   List<int> scored = [];
   bool lost = false;
 
+  /// XP (state_power.dart).
+  PlayerPower pw = PlayerPower();
+
   Player clone() => Player(name)
     ..deck = List.of(deck)
     ..hand = List.of(hand)
@@ -119,10 +147,11 @@ class Player {
     ..anyPool = anyPool
     ..playedThisTurn = playedThisTurn
     ..scored = List.of(scored)
-    ..lost = lost;
+    ..lost = lost
+    ..pw = pw.clone();
 
   String digest() =>
-      '${name.length}:$name|${deck.join(',')}|${hand.join(',')}|${trash.join(',')}|${banish.join(',')}|${runeDeck.join(',')}|${runes.join(',')}|${legend ?? ''}|${champion ?? ''}|$points|$energyPool|${powerPool.join(',')}|$anyPool|$playedThisTurn|${scored.join(',')}|$lost';
+      '${name.length}:$name|${deck.join(',')}|${hand.join(',')}|${trash.join(',')}|${banish.join(',')}|${runeDeck.join(',')}|${runes.join(',')}|${legend ?? ''}|${champion ?? ''}|$points|$energyPool|${powerPool.join(',')}|$anyPool|$playedThisTurn|${scored.join(',')}|$lost|${pw.digest()}';
 }
 
 /// A battlefield in play (CR 169, 188–190).
@@ -260,10 +289,16 @@ class GameState {
 
   /// Triggered abilities waiting to be put on the chain (CR 382), in order.
   List<ChainItem> waiting = [];
+
+  /// Small facts effects leave behind, by name ("readyEnter:0" = player 0's units enter ready
+  /// this turn). Looked up by key; the digest lists them sorted.
+  Map<String, int> marks = {};
   final List<LogEntry> log = [];
 
   /// The general effects' bookkeeping (gen_state.dart).
   GenState gen = GenState();
+  /// Delayed effects of Empower/XP/buff cards (state_power.dart).
+  GamePower pw = GamePower();
 
   bool get over => phase == Phase.over;
   Player player(int i) => players[i];
@@ -292,6 +327,8 @@ class GameState {
       ..passes = passes
       ..showdown = showdown?.clone()
       ..waiting = List.of(waiting)
+      ..pw = pw.clone()
+      ..marks = Map.of(marks)
       ..gen = gen.clone();
     s.log.addAll(log);
     return s;
@@ -302,7 +339,8 @@ class GameState {
       ..write('rb1|$seed|${rng.state}|$nextId|$turn|$active|$firstPlayer|${phase.index}|${step.index}|${winner ?? ''}|$victoryScore|')
       ..write('${bfs.map((x) => x.digest()).join(';')}|')
       ..write('${chain.map((c) => c.digest()).join(';')}|$nextChainId|$priority|$passes|${showdown?.digest() ?? ''}|')
-      ..write('${waiting.map((c) => c.digest()).join(';')}|${gen.digest()}|');
+      ..write('${waiting.map((c) => c.digest()).join(';')}|${pw.digest()}|${gen.digest()}|')
+      ..write('${(marks.keys.toList()..sortStable((a, b) => a.compareTo(b))).map((k) => '$k=${marks[k]}').join(',')}|');
     for (final p in players) {
       b.write('${p.digest()}#');
     }

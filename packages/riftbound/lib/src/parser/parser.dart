@@ -6,9 +6,11 @@ import '../cards/card.dart';
 import '../ir.dart';
 
 part 'general.dart';
+part 'power.dart';
+part 'hidden.dart';
 
 /// Bumped whenever parsing or the engine changes what a saved game would replay to.
-const riftboundEngineVersion = 1;
+const riftboundEngineVersion = 4;
 
 class ParsedCard {
   ParsedCard(this.abilities, this.unsupported);
@@ -50,13 +52,23 @@ class RiftboundParser {
     final slots = [0];
     for (final line in c.text.split('\n')) {
       if (line.trim().isEmpty) continue;
-      final a = _Line(c, slots).parse(line.trim());
+      // The family grammars and the core first; the general grammar (parser/general.dart) only
+      // for lines they can't read.
+      final slot = slots[0];
+      final traced = trace?.length ?? 0;
+      var a = _Line(c, slots, general: false).parse(line.trim());
+      if (a == null) {
+        slots[0] = slot;
+        trace?.removeRange(traced, trace!.length);
+        a = _Line(c, slots).parse(line.trim());
+      }
       if (a == null) {
         unsupported.add(line.trim());
       } else {
         abilities.addAll(a);
       }
     }
+    _powerPost(c, abilities);
     if (c.type == CardType.spell && !abilities.any((a) => a is SpellBody)) {
       if (unsupported.isEmpty) unsupported.add('(a spell with no instructions)');
     }
@@ -76,6 +88,9 @@ final _kwNames = {
   'temporary': Kw.temporary,
   'vision': Kw.vision,
   'backline': Kw.backline,
+  'hidden': Kw.hidden,
+  'ambush': Kw.ambush,
+  'unique': Kw.unique,
 };
 
 const _numbers = {'a': 1, 'an': 1, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5};
@@ -84,8 +99,11 @@ int? _num(String s) => int.tryParse(s) ?? _numbers[s.toLowerCase()];
 
 /// Parses one line (one ability) of a card.
 class _Line {
-  _Line(this.card, this._slotCounter) : _first = _slotCounter[0];
+  _Line(this.card, this._slotCounter, {this.general = true}) : _first = _slotCounter[0];
   final RCard card;
+
+  /// Whether the general grammar (parser/general.dart) may read this line.
+  final bool general;
 
   /// The card's slot counter, and the first slot this line used ("it" refers within the line).
   final List<int> _slotCounter;
@@ -124,6 +142,8 @@ class _Line {
       t = t.substring(m.end);
     }
     if (t.isEmpty) return out;
+    final pw = _powerLine(t, line);
+    if (pw != null) return [...out, ...pw];
     // "[Repeat] {2}{R}".
     final rep = RegExp(r'^\[Repeat\]\s*((?:\{[0-9A-Z]+\})+)$').firstMatch(t);
     if (rep != null) {
@@ -131,6 +151,8 @@ class _Line {
       if (cost == null || !_isSpell) return null;
       return [...out, RepeatCost(line, cost)];
     }
+    final h = _hLine(t, line);
+    if (h != null) return [...out, ...h];
     final a = _ability(t, line);
     if (a == null) return null;
     return [...out, a];
@@ -139,14 +161,20 @@ class _Line {
   static String _cap(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
 
   bool _validKeyword(Kw kw) => switch (kw) {
-        Kw.action || Kw.reaction => _isSpell,
+        Kw.action => _isSpell,
+        // Reaction is on cards of any type (CR 813.1.a); playing a unit with it keeps a unit's
+        // places (CR 813.3.a).
+        Kw.reaction => _isSpell || card.isPermanent,
+        Kw.hidden => card.isMainDeck,
+        Kw.ambush => card.type == CardType.unit,
+        Kw.unique => card.isMainDeck,
         Kw.accelerate || Kw.assault || Kw.shield || Kw.tank || Kw.ganking || Kw.backline => card.type == CardType.unit,
         Kw.deflect || Kw.temporary || Kw.vision => card.isPermanent,
       };
 
   Ability? _ability(String t, String line) {
     if (t == 'I must be assigned combat damage last.' && card.type == CardType.unit) return KeywordAb(line, Kw.backline);
-    final g = _genAbility(t, line);
+    final g = general ? _genAbility(t, line) : null;
     if (g != null) return g;
     if (_isSpell) {
       final e = _effects(t);
@@ -168,12 +196,12 @@ class _Line {
     m = RegExp(r'^(When|At) ([^,]+), (.+)$').firstMatch(t);
     if (m != null) {
       final mark = _mark();
-      final on = _when('${m[1]} ${m[2]}');
+      final on = _when('${m[1]} ${m[2]}') ?? _powerWhen('${m[1]} ${m[2]}');
       if (on == null) return _miss(mark, 'W', '${m[1]} ${m[2]}');
-      _eventUnit = on.on == On.enemyAttacksYourBf;
+      _eventUnit = on.on == On.enemyAttacksYourBf || _PowerLine.eventUnitTrigger(on.on);
       _eventBf = const {On.youConquer, On.youHold, On.conquerHere, On.holdHere}.contains(on.on);
       final e = _effects(_cap(m[3]!));
-      return e == null ? null : Triggered(line, on, e);
+      return e == null ? null : Triggered(line, on, _genTrigIf(m[3]!, e));
     }
     // Activated abilities: "{1}, {E}: [Action] - Draw 1." / "[Reaction][>] Kill this, {E}: [Add] {A}."
     m = RegExp(r'^(?:\[(Action|Reaction)\]\[>\] )?([^:]+?): (?:\[(Action|Reaction)\](, \[Legion\])? - )?(.+)$').firstMatch(t);
@@ -208,6 +236,8 @@ class _Line {
   }
 
   When? _when(String s) {
+    final hidden = _hWhen(s);
+    if (hidden != null) return hidden;
     final me = card.type == CardType.unit;
     final perm = card.isPermanent;
     return switch (s) {
@@ -233,13 +263,15 @@ class _Line {
       'When you stun one or more enemy units' when perm || card.type == CardType.legend => const When(On.youStunEnemy),
       'When an enemy unit attacks a battlefield you control' when perm || card.type == CardType.legend => const When(On.enemyAttacksYourBf),
       'At start of your Beginning Phase' when perm || card.type == CardType.legend => const When(On.startOfTurn),
-      _ => _genWhen(s),
+      _ => _powerWhen(s) ?? (general ? _genWhen(s) : null),
     };
   }
 
   Passive? _passive(String t) {
+    final hidden = _hPassive(t);
+    if (hidden != null) return hidden;
     final mark = _mark();
-    final g = _genPassive(t);
+    final g = general ? _genPassive(t) : null;
     if (g != null) return g;
     if (card.type == CardType.gear && t == 'This enters exhausted.') return const EntersExhausted();
     var lm = RegExp(r'^While a friendly unit defends alone, it gets \+(\d+) \{M\}\.$').firstMatch(t);
@@ -271,6 +303,11 @@ class _Line {
     var exhaust = false, killMe = false;
     final extra = <CostPart>[];
     for (final part in s.split(', ')) {
+      final x = _powerCostPart(part);
+      if (x != null) {
+        extra.add(x);
+        continue;
+      }
       if (part == '{E}') {
         exhaust = true;
         continue;
@@ -280,7 +317,7 @@ class _Line {
         continue;
       }
       if (!RegExp(r'^(\{[0-9A-Z]+\})+$').hasMatch(part)) {
-        if (_genCostPart(part, extra)) continue;
+        if (general && _genCostPart(part, extra)) continue;
         return null;
       }
       for (final m in RegExp(r'\{([0-9A-Z]+)\}').allMatches(part)) {
@@ -309,7 +346,9 @@ class _Line {
     for (final s in _sentences(text)) {
       final e = _sentence(s);
       if (e == null) return null;
-      out.addAll(e);
+      final merged = _powerMerge(out, e);
+      if (merged == false) return null;
+      if (merged == null) out.addAll(e);
     }
     return out.isEmpty ? null : _genPost(out);
   }
@@ -327,11 +366,26 @@ class _Line {
     return [for (final s in out) if (s.isNotEmpty) s];
   }
 
+  /// One sentence: this family's forms that must come first, the core forms, then this family's
+  /// other forms (parser/power.dart).
   List<Effect>? _sentence(String s0) {
     final mark = _mark();
-    final g = _genSentence(s0);
+    final early = _powerSentenceEarly(s0);
+    if (early != null) return early;
+    final slot = _slotCounter[0];
+    final g = general ? _genSentence(s0) : null;
     if (g != null) return g;
+    _slotCounter[0] = slot;
+    final core = _sentenceCore(s0);
+    if (core != null) return core;
+    _slotCounter[0] = slot;
+    return _powerSentence(s0) ?? _miss(mark, 'S', s0);
+  }
+
+  List<Effect>? _sentenceCore(String s0) {
     var s = s0;
+    final hidden = _hSentence(s);
+    if (hidden != null) return hidden;
     if (s.startsWith('You may ')) {
       final inner = _sentence('${s[8].toUpperCase()}${s.substring(9)}');
       return inner == null ? null : [May(inner)];
@@ -467,22 +521,28 @@ class _Line {
       final count = _num(m[1]!);
       return count == null ? null : [PlayToken('Gold', count, ready: m[2] == null)];
     }
-    return _miss(mark, 'S', s0);
+    return null;
   }
 
   Cond? _cond(String c) {
+    final hidden = _hCond(c);
+    if (hidden != null) return hidden;
     if (c == 'you have one or fewer cards in your hand') return const HandAtMost(1);
     final m = RegExp(r'^you have (\d+)\+ units at that battlefield$').firstMatch(c);
     if (m != null && _eventBf) return UnitsThere(int.parse(m[1]!));
     final mark = _mark();
-    return _genCond(c) ?? _miss(mark, 'C', c);
+    return _powerCond(c) ?? (general ? _genCond(c) : null) ?? _miss(mark, 'C', c);
   }
 
   /// A target phrase → a target; null if not understood.
   Target? _target(String p) {
     p = p.trim();
+    final pw = _powerTarget(p);
+    if (pw != null) return pw;
+    final hidden = _hTarget(p);
+    if (hidden != null) return hidden;
     final mark = _mark();
-    final g = _genTarget(p);
+    final g = general ? _genTarget(p) : null;
     if (g != null) return g;
     if (p == 'me' && card.type == CardType.unit) return const Me();
     if (p == 'this' && card.type == CardType.gear) return const Me();
@@ -520,7 +580,7 @@ class _Line {
 
   /// "enemy unit here with 3 {M} or less" → a filter.
   Filter? _filter(String p, {required bool plural}) {
-    final g = _genFilter(p, plural: plural);
+    final g = general ? _genFilter(p, plural: plural) : null;
     if (g != null) return g;
     var side = Side.any;
     var where = Where.anywhere;

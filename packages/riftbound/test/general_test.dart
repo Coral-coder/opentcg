@@ -260,6 +260,22 @@ void main() {
       ], isEmpty);
     });
 
+    test('a token isn’t a card: Viktor, Innovator’s Recruit doesn’t trigger it again', () {
+      final g = emptyGame(active: 1);
+      g.addRunes(0, Domain.calm, 2);
+      g.addCard('Viktor, Innovator', 0, zone: Zone.board);
+      final u = g.addCard('Daring Poro', 1, zone: Zone.board);
+      final pump = g.addCard('Discipline', 0);
+      g.addRunes(1, Domain.calm, 2);
+      g.apply(PlayMove(1, g.addCard('Discipline', 1)));
+      if (g.pending != null) answer(g, [u]);
+      g.apply(PlayMove(0, pump));
+      if (g.pending != null) answer(g, [u]);
+      passAll(g);
+      final recruits = [for (final o in g.state.objects.values) if (o.zone == Zone.board && g.card(o.id).name == 'Recruit') o];
+      expect(recruits, hasLength(1));
+    });
+
     test('When I move from a location: Lillia leaves a Sprite where she was', () {
       final g = emptyGame();
       g.setControl(0, 0);

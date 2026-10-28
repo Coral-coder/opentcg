@@ -16,9 +16,9 @@ extension GameGeneral on Game {
   // Choices as a spell or ability is played (CR 355)
   // -------------------------------------------------------------------------------------------
 
-  void _genChoose(GenEffect e, int p, ObjId source, int loc, List<int> out, void Function(int, int) set, void Function(List<Effect>) walk, {required bool optional}) {
+  void _genChoose(GenEffect e, int p, ObjId source, int loc, List<int> out, void Function(int, int) set, void Function(List<Effect>) walk, {required bool optional, int restrictBf = -1}) {
     for (final t in e.targets) {
-      _genChooseOne(e, t, p, source, loc, out, set, optional: optional);
+      _genChooseOne(e, t, p, source, loc, out, set, optional: optional, restrictBf: restrictBf);
     }
     if (e is Move) _genChooseDest(e, p, source, loc, out, set, optional: optional);
     // Delayed abilities and "do this" effects choose when they happen.
@@ -31,18 +31,12 @@ extension GameGeneral on Game {
   /// Objects [p]'s spell or ability from [source] may choose (CR 355.9.b).
   List<ObjId> _genTargetable(List<ObjId> ids, int p, ObjId source) => [
     for (final id in ids)
-      if (!_genUntargetable(id, p)) id,
+      if (!_genUntargetable(id, p) && !_unchoosable(id, p)) id,
   ];
 
   bool _genUntargetable(ObjId id, int p) {
     final o = state.objOrNull(id);
     if (o == null || o.zone != Zone.board || o.controller == p) return false;
-    for (final a in parsed(id).abilities) {
-      if (a is Static && a.passive is Restrict) {
-        final r = a.passive as Restrict;
-        if (r.kind == RKind.untargetable && (r.cond == null || _genPassiveCond(r.cond!, id))) return true;
-      }
-    }
     for (final (src, pa) in _passives()) {
       if (pa is! UntargetableOthers || src == id) continue;
       final so = state.obj(src);
@@ -52,10 +46,21 @@ extension GameGeneral on Game {
     return false;
   }
 
-  void _genChooseOne(GenEffect e, Target t, int p, ObjId source, int loc, List<int> out, void Function(int, int) set, {required bool optional}) {
+  void _genChooseOne(GenEffect e, Target t, int p, ObjId source, int loc, List<int> out, void Function(int, int) set, {required bool optional, int restrictBf = -1}) {
     switch (t) {
+      case HTarget():
+        // ir_hidden.dart's choices (a battlefield, a unit relative to another, …).
+        final h = _hOptions(t, p, source, loc, out);
+        if (h == null) return;
+        final options = _genTargetable(_hNarrow(h.options, t, p, restrictBf), p, source);
+        if (options.isEmpty) {
+          if (h.upTo || optional) return set(h.slot, -1);
+          throw RiftboundError('No legal target for ${nameOf(source)}');
+        }
+        final a = ask(Decision(kind: DecisionKind.cards, player: p, prompt: '${nameOf(source)}: ${h.prompt}', options: options, min: h.upTo ? 0 : 1, max: 1, source: source));
+        set(h.slot, a.isEmpty ? -1 : a.first);
       case Choose(:final filter, :final slot, :final upTo):
-        var options = _genTargetable(matching(filter, controller: p, source: source, here: loc, slots: out), p, source);
+        var options = _genTargetable(_hNarrow(matching(filter, controller: p, source: source, here: loc, slots: out), t, p, restrictBf), p, source);
         if (e is DealOther && e.except < out.length) {
           options = [
             for (final x in options)
@@ -140,16 +145,6 @@ extension GameGeneral on Game {
         ];
         if (options.isEmpty) return set(slot, -1);
         set(slot, ask(Decision(kind: DecisionKind.cards, player: p, prompt: '${nameOf(source)}: choose something exhausted to ready', options: options, min: 0, source: source)).firstOrNull ?? -1);
-      case ChooseBf(:final slot, :final withYourUnits, :final youControl):
-        final options = [
-          for (var i = 0; i < state.bfs.length; i++)
-            if ((!withYourUnits || unitsAt(i, player: p).isNotEmpty) && (!youControl || state.bfs[i].controller == p)) state.bfs[i].obj,
-        ];
-        if (options.isEmpty) {
-          if (optional) return set(slot, -1);
-          throw RiftboundError('No battlefield to choose');
-        }
-        set(slot, ask(Decision(kind: DecisionKind.cards, player: p, prompt: '${nameOf(source)}: choose a battlefield', options: options, source: source)).first);
       case ChoosePlayer(:final slot, :final opponent):
         if (opponent) return set(slot, state.other(p));
         final a = ask(
@@ -214,8 +209,8 @@ extension GameGeneral on Game {
       Move() => '$what to move',
       Banish() => '$what to banish',
       CardToHand() => '$what to return to hand',
-      PlayFrom() || Blink() => '$what to play',
-      TakeControl() || ToDeck() => '$what to take',
+      PlayFrom() || BlinkTo() => '$what to play',
+      TakeControlRecall() || ToDeck() => '$what to take',
       ChooseOnly() => what,
       _ => what,
     };
@@ -304,8 +299,6 @@ extension GameGeneral on Game {
         return slots(slot, 1).where((id) => state.objOrNull(id)?.zone == Zone.legend).toList();
       case ChooseAnything(:final slot):
         return slots(slot, 1).where((id) => const {Zone.board, Zone.runes, Zone.legend}.contains(state.objOrNull(id)?.zone)).toList();
-      case ChooseBf(:final slot):
-        return slots(slot, 1);
       case EventObj():
         return ctx.event > 0 && state.objOrNull(ctx.event) != null ? [ctx.event] : const [];
       case ChooseOther(:final slot, :final filter):
@@ -657,8 +650,6 @@ extension GameGeneral on Game {
     try {
       final o = state.obj(id);
       var d = 0;
-      final extraBuffs = _gen.getL('o$id:buffs');
-      if (extraBuffs > 0) d += extraBuffs;
       int? floor;
       for (final (src, pa) in _passives()) {
         if (pa is! GenPassive) continue;
@@ -774,7 +765,7 @@ extension GameGeneral on Game {
   bool _genCanReady(ObjId id, int byPlayer) {
     final o = state.objOrNull(id);
     if (o == null) return false;
-    if (o.zone == Zone.board && card(id).type == CardType.unit && _genSelfRestricted(id, RKind.cantBeReadied)) return false;
+    if (_hCantReady(id)) return false;
     if (o.zone == Zone.board && o.controller != byPlayer && _genRestricted(RKind.noReadyEnemies, test: (src, _) => state.obj(src).controller == byPlayer ? false : true)) {
       // "Spells and abilities can't ready enemy units and gear" (enemy to the restriction's controller).
     }
@@ -825,7 +816,7 @@ extension GameGeneral on Game {
   /// Deals [n] to unit [id] from the spell or ability in [ctx] (or from [byUnit]); applies Bonus
   /// Damage and prevention. Returns the damage dealt.
   int _genDeal(ObjId id, int n, _Ctx ctx, {ObjId? byUnit}) {
-    if (!isUnit(id)) return 0;
+    if (!isUnit(id) || _noDamage(id)) return 0;
     final o = state.obj(id);
     final p = ctx.controller;
     var amt = n;
@@ -838,6 +829,7 @@ extension GameGeneral on Game {
       }
       amt += ctx.scratch['bonus'] ?? 0;
     }
+    amt = _hDamage(id, amt);
     if (amt <= 0) return 0;
     // Prevention (CR 438).
     if (byUnit == null) {
@@ -992,11 +984,6 @@ extension GameGeneral on Game {
           if (_genCantMoveTo(u, to)) continue;
           _moveUnits([u], to, p);
         }
-      case Banish(:final target):
-        for (final id in _resolveTarget(target, ctx)) {
-          log('${nameOf(id)} is banished.', player: p, card: id, kind: 'die');
-          _genBanish(id);
-        }
       case CardToHand(:final target):
         for (final id in _resolveTarget(target, ctx)) {
           final o = state.obj(id);
@@ -1103,7 +1090,7 @@ extension GameGeneral on Game {
         for (final id in _resolveTarget(target, ctx)) {
           _genPlayCard(p, id, ignoreAll: ignoreAll, source: ctx.source);
         }
-      case Blink(:final target, :final to):
+      case BlinkTo(:final target, :final to):
         for (final id in _resolveTarget(target, ctx)) {
           final owner = state.obj(id).owner;
           _genBanish(id);
@@ -1130,7 +1117,7 @@ extension GameGeneral on Game {
                 ).first];
           _genPlayCard(owner, id, ignoreAll: true, source: ctx.source, fromBanish: true, loc: where);
         }
-      case TakeControl(:final target):
+      case TakeControlRecall(:final target):
         for (final id in _resolveTarget(target, ctx)) {
           final o = state.obj(id);
           o.controller = p;
@@ -1335,7 +1322,7 @@ extension GameGeneral on Game {
     if (_genCantScore(q, -1)) return;
     state.player(q).points += n;
     log('${playerName(q)} gains $n point${n == 1 ? '' : 's'}.', player: q, kind: 'point', amount: n);
-    _genEvent(GEv.oppScores, player: q);
+    _hScored(q);
   }
 
   /// "Opponents can't score points" (while the source is at a battlefield); "Players can't score
@@ -1388,37 +1375,19 @@ extension GameGeneral on Game {
   }
 
   /// Banish a permanent from the board (CR 428).
-  void _genBanish(ObjId id) {
+  void _genBanish(ObjId id) => _banishPermanent(id, state.obj(id).controller);
+
+  /// [id] is about to be banished: last-known information, and out of its owner's trash.
+  void _genBanishing(ObjId id) {
     final o = state.obj(id);
-    if (o.zone == Zone.trash) {
-      state.player(o.owner).trash.remove(id);
-      o.zone = Zone.banish;
-      state.player(o.owner).banish.add(id);
-      return;
-    }
-    if (o.zone != Zone.board) return;
-    _genLeaving(id);
-    final c = card(id);
-    o.reset();
+    if (o.zone == Zone.board) _genLeaving(id);
+    if (o.zone == Zone.trash) state.player(o.owner).trash.remove(id);
     _gen.forget(id);
-    if (c.token) {
-      o.zone = Zone.gone;
-      return;
-    }
-    o.zone = Zone.banish;
-    state.player(o.owner).banish.add(id);
   }
 
-  void _genSpendBuff(ObjId u, int p) {
-    final o = state.obj(u);
-    if (_gen.getL('o$u:buffs') > 0) {
-      _gen.setL('o$u:buffs', _gen.getL('o$u:buffs') - 1);
-    } else {
-      o.buffed = false;
-    }
-    log('${playerName(p)} spends ${nameOf(u)}’s buff.', player: p, card: u, kind: 'buff');
-    _genEvent(GEv.spentBuff, player: p, obj: u);
-  }
+
+  void _genSpendBuff(ObjId u, int p) => _spendBuff(u, p);
+
 
   /// Plays card [id] (in a trash, banishment or the deck) for [p] without paying its Energy cost
   /// (or any cost, [ignoreAll]); units and gear go to base (CR 420.3).
@@ -1514,7 +1483,7 @@ extension GameGeneral on Game {
         deck.insertAll(0, rest);
     }
     log('${playerName(p)} looks at ${top.length} card${top.length == 1 ? '' : 's'}${picked.isEmpty ? '' : ' and takes ${picked.length}'}.', player: p, kind: 'draw');
-    if (rest.isNotEmpty && e.rest == Rest.recycle) _genEvent(GEv.recycled, player: p);
+    if (rest.isNotEmpty && e.rest == Rest.recycle) _recycled(p);
     if (picked.isNotEmpty && e.picked.isNotEmpty) {
       ctx.scratch['picked'] = 1;
       _genResolveLater(e.picked, ctx);
@@ -1704,7 +1673,7 @@ extension GameGeneral on Game {
     final objs = e.target == null ? <ObjId>[e.kind == DelayKind.noSpells && e.n == 1 ? (ctx.scratch['counteredCtl'] ?? -1) : -1] : _resolveTarget(e.target!, ctx);
     for (final id in objs) {
       _gen.delayed.add(
-        Delayed(
+        GenDelayed(
           kind: e.kind.index,
           controller: ctx.controller,
           source: ctx.source,
@@ -1722,7 +1691,7 @@ extension GameGeneral on Game {
   }
 
   /// Runs a delayed trigger's effects.
-  void _genRunDelayed(Delayed d, {int event = -1, int? lkMight}) {
+  void _genRunDelayed(GenDelayed d, {int event = -1, int? lkMight}) {
     final e = d.card.isEmpty ? null : _genAt(_genRootEffects(d.card, d.ability), d.path);
     if (e is! Delay) return;
     final ctx = _Ctx(controller: d.controller, source: d.source, loc: d.loc, targets: d.targets, event: event, ability: d.ability);
@@ -1866,17 +1835,15 @@ extension GameGeneral on Game {
   }
 
   /// After [p] conquers or holds [bf]: general triggers, and "trigger an additional time".
-  void _genScored(int p, int bf, bool conquer, int waitingBefore) {
+  void _genScored(int p, int bf, bool conquer, int queuedFrom) {
     _genEvent(GEv.conquerOrHold, player: p, loc: bf);
     for (final u in unitsAt(bf, player: p)) {
       _genEvent(GEv.conquerOrHold, player: p, obj: u, loc: bf);
     }
-    final twice = _genRestricted(
-      conquer ? RKind.conquerTwiceHere : RKind.holdTwiceHere,
-      test: (src, _) => state.obj(src).controller == p && state.obj(src).zone == Zone.board && state.obj(src).loc == bf,
-    );
+    // "Your hold effects for holding here trigger an additional time" (conquering: power.dart).
+    final twice = !conquer && _genRestricted(RKind.holdTwiceHere, test: (src, _) => state.obj(src).controller == p && state.obj(src).zone == Zone.board && state.obj(src).loc == bf);
     if (twice) {
-      final fresh = state.waiting.sublist(waitingBefore);
+      final fresh = state.waiting.sublist(queuedFrom);
       state.waiting.addAll(fresh);
     }
   }
@@ -2006,7 +1973,7 @@ extension GameGeneral on Game {
     }
     if (w.self && obj != src) return false;
     if (ev == GEv.discarded && extra == 'more' && !w.self) return false;
-    if (ev == GEv.recycled && extra == 'rune' && !w.extra.contains('rune')) return false;
+    if (ev == GEv.recycled && !w.extra.contains('rune')) return false;
     if (ev == GEv.conquerOrHold && extra == 'conquer' && !w.self) return false;
     if (w.filter != null) {
       if (obj < 0) return false;
@@ -2201,10 +2168,6 @@ extension GameGeneral on Game {
     if (_genSelfRestricted(src, RKind.abilitiesOnlyAtBf) && (o.zone != Zone.board || o.loc == base)) return 'Only while it’s at a battlefield';
     for (final x in a.cost.extra) {
       switch (x) {
-        case DiscardCost(:final n, :final filter):
-          final hand = state.player(p).hand;
-          final ok = filter == null ? hand.length : hand.where((id) => filter.cardTypes.contains(card(id).type)).length;
-          if (ok < n) return 'Not enough cards to discard';
         case RecycleTrashCost(:final n, :final filter):
           final trash = state.player(p).trash;
           final ok = filter == null ? trash.length : trash.where((id) => filter.cardTypes.contains(card(id).type)).length;
@@ -2213,8 +2176,6 @@ extension GameGeneral on Game {
           if (matching(filter, controller: p, source: src).isEmpty) return 'Nothing to kill';
         case ExhaustCost(:final filter):
           if (matching(filter.copyWith(exhausted: false), controller: p, source: src).isEmpty) return 'Nothing to exhaust';
-        case SpendMyBuffCost():
-          if (!o.buffed && _gen.getL('o$src:buffs') == 0) return 'No buff to spend';
         default:
           break;
       }
@@ -2226,19 +2187,6 @@ extension GameGeneral on Game {
   void _genPayExtra(Activated a, ObjId src, int p, List<int> targets) {
     for (final x in a.cost.extra) {
       switch (x) {
-        case DiscardCost(:final n, :final filter):
-          final hand = [
-            for (final id in state.player(p).hand)
-              if (filter == null || filter.cardTypes.contains(card(id).type)) id,
-          ];
-          final pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Discard $n to pay', options: hand, min: n, max: n, source: src));
-          for (final id in pick) {
-            state.player(p).hand.remove(id);
-            state.obj(id).zone = Zone.trash;
-            state.player(p).trash.add(id);
-          }
-          log('${playerName(p)} discards ${pick.map(nameOf).join(', ')}.', player: p, kind: 'discard');
-          _genDiscarded(p, pick);
         case RecycleTrashCost(:final n, :final filter):
           final trash = [
             for (final id in state.player(p).trash)
@@ -2255,8 +2203,6 @@ extension GameGeneral on Game {
           final options = matching(filter.copyWith(exhausted: false), controller: p, source: src);
           final u = ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Exhaust one to pay', options: options, source: src)).first;
           state.obj(u).exhausted = true;
-        case SpendMyBuffCost():
-          _genSpendBuff(src, p);
         default:
           break;
       }
@@ -2268,8 +2214,6 @@ extension GameGeneral on Game {
     _genEvent(GEv.readied, player: byPlayer, obj: id);
   }
 
-  /// A unit was buffed by [p].
-  void _genBuffed(ObjId id, int p) => _genEvent(GEv.buffed, player: p, obj: id);
 
   /// Units [p]'s spell or ability chose (targeting effects, CR 383.4.b).
   void _genChosen(List<int> chosen, int p, ObjId source) {

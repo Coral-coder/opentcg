@@ -738,11 +738,12 @@ extension _General on _Line {
       return t == null ? null : [ToBase(t)];
     }
     if (mt(r"Its owner places it on the top or bottom of their Main Deck") != null && _gs.last != null) return [ToDeck(Chosen(_gs.last!))];
-    if (s == 'Take control of it and recall it' && _gs.last != null) return [TakeControl(Chosen(_gs.last!))];
-    if (mt(r'Banish (a friendly unit), then (?:its owner plays|play) it(?: to (any battlefield|base))?, ignoring its cost') != null) {
+    if (s == 'Take control of it and recall it' && _gs.last != null) return [TakeControlRecall(Chosen(_gs.last!))];
+    // "… to any battlefield" / "… to the same location" are parser/hidden.dart's.
+    if (mt(r'Banish (a friendly unit), then (?:its owner plays|play) it(?: to (base))?, ignoring its cost') != null) {
       final t = _target(m![1]!);
       if (t == null) return null;
-      return [Blink(t, to: m![2] == 'any battlefield' ? Dest.battlefield : (m![2] == 'base' ? Dest.base : Dest.any))];
+      return [BlinkTo(t, to: m![2] == 'base' ? Dest.base : Dest.any)];
     }
     if (s == 'Pay any amount of {A} to deal that much damage to all enemy units at a battlefield') {
       final slot = _take(1);
@@ -810,7 +811,7 @@ extension _General on _Line {
       final slot = _take(1);
       _gs.bfSlot = slot;
       return [
-        ChooseOnly([ChooseBf(slot, withYourUnits: m![1] != null)]),
+        ChooseOnly([ChooseBf(slot, withFriendlyUnits: m![1] != null)]),
       ];
     }
     if (mt(r'Choose a battlefield and (.+) there') != null) {
@@ -1515,9 +1516,6 @@ extension _General on _Line {
           GEv.played,
           filter: Filter(side: Side.friendly, tag: 'Dragon'),
         );
-      case 'When you play another unit' when self:
-        _eventUnit = true;
-        return const GenWhen(GEv.played, filter: Filter(side: Side.friendly, other: true));
       case 'When you play a token unit' when perm:
         _eventUnit = true;
         return const GenWhen(GEv.played, filter: Filter(side: Side.friendly, token: true));
@@ -1552,11 +1550,11 @@ extension _General on _Line {
       case 'When you play a unit during a showdown' when perm:
         return const GenWhen(GEv.played, filter: Filter(side: Side.friendly), inShowdown: true);
       case "When you play a card on an opponent's turn" when perm:
-        return const GenWhen(GEv.played, filter: Filter(types: {CardType.unit, CardType.gear, CardType.spell}), oppTurn: true);
+        return const GenWhen(GEv.played, filter: Filter(types: {CardType.unit, CardType.gear, CardType.spell}, token: false), oppTurn: true);
       case "When you play a spell on an opponent's turn" when perm:
         return const GenWhen(GEv.spellPlayed, oppTurn: true);
       case 'When you play your second card in a turn' when perm:
-        return const GenWhen(GEv.played, filter: Filter(types: {CardType.unit, CardType.gear, CardType.spell}), nth: 2);
+        return const GenWhen(GEv.played, filter: Filter(types: {CardType.unit, CardType.gear, CardType.spell}, token: false), nth: 2);
       case 'When a player plays a spell' when _isBattlefield:
         _gs.they = const PEvent();
         return const GenWhen(GEv.anySpell, by: Side.any);
@@ -1564,8 +1562,6 @@ extension _General on _Line {
         return const GenWhen(GEv.dies, filter: Filter(side: Side.friendly));
       case 'When another friendly unit dies' when self:
         return const GenWhen(GEv.dies, filter: Filter(side: Side.friendly, other: true));
-      case 'When a buffed friendly unit dies' when perm:
-        return const GenWhen(GEv.dies, filter: Filter(side: Side.friendly, buffed: true));
       case 'When another non-Recruit unit you control dies' when self:
         return const GenWhen(
           GEv.dies,
@@ -1581,11 +1577,6 @@ extension _General on _Line {
         return const GenWhen(GEv.dies, filter: Filter(side: Side.friendly), limit: 1);
       case 'When I die in combat' when me:
         return null;
-      case 'When you buff me' when me:
-        return const GenWhen(GEv.buffed, self: true);
-      case 'When you buff a friendly unit' when perm:
-        _eventUnit = true;
-        return const GenWhen(GEv.buffed, filter: Filter(side: Side.friendly));
       case 'When I become ready' when me:
         return const GenWhen(GEv.readied, self: true);
       case 'When you ready a friendly unit' when perm:
@@ -1624,14 +1615,8 @@ extension _General on _Line {
         return const GenWhen(GEv.combatHere, by: Side.any, here: true);
       case 'When you draw your second card each turn' when perm:
         return const GenWhen(GEv.drawSecond);
-      case 'When you recycle one or more cards' when perm:
-        return const GenWhen(GEv.recycled, extra: ['once']);
-      case 'When an opponent scores' when perm:
-        return const GenWhen(GEv.oppScores, by: Side.enemy);
       case 'When this leaves the board' when card.type == CardType.gear:
         return const GenWhen(GEv.leaves, self: true);
-      case 'When you spend a buff' when perm:
-        return const GenWhen(GEv.spentBuff);
       case 'When you use an activated ability of a gear' when perm:
         return const GenWhen(GEv.gearAbility);
       case 'When you kill a stunned enemy unit' when perm:
@@ -1659,6 +1644,14 @@ extension _General on _Line {
         return const GenWhen(GEv.recycled, extra: ['rune']);
     }
     return null;
+  }
+
+  /// "When …, if X, Y": the condition is part of the trigger (CR 383.2.a.1), checked as it
+  /// triggers rather than on resolution.
+  List<Effect> _genTrigIf(String body, List<Effect> e) {
+    if (!body.startsWith('if ') || e.length != 1) return e;
+    final x = e.first;
+    return x is If ? [TrigIf(x.cond, x.effects)] : e;
   }
 
   /// Triggered abilities (all of them, so a condition right after the trigger is part of it,
@@ -1693,7 +1686,7 @@ extension _General on _Line {
         continue;
       }
       if (w is! GenWhen) {
-        _eventUnit = w.on == On.enemyAttacksYourBf;
+        _eventUnit = w.on == On.enemyAttacksYourBf || _PowerLine.eventUnitTrigger(w.on);
         _eventBf = const {On.youConquer, On.youHold, On.conquerHere, On.holdHere}.contains(w.on) || _eventBf;
       }
       if (limit > 0) {
@@ -1740,7 +1733,6 @@ extension _General on _Line {
   // -------------------------------------------------------------------------------------------
 
   Ability? _genAbility(String t, String line) {
-    if (t == '[Reaction]' && card.isPermanent) return KeywordAb(line, Kw.reaction);
     if (_isSpell && t == "This can't be countered.") return Static(line, const CantBeCountered());
     if (_isSpell && t == "This spell's Energy cost is reduced by the highest Might among units you control.") return Static(line, const SelfCostByMight());
     // "If you control fewer runes than an opponent at the start of your Beginning Phase, give me …":
@@ -1861,14 +1853,10 @@ extension _General on _Line {
         final c = _readyCond(m![1]!);
         return c == null ? null : EnterReady(cond: c);
       }
-      if (t == "I can't be chosen by enemy spells and abilities.") return const Restrict(RKind.untargetable);
-      if (t == "I can't be chosen by enemy spells and abilities unless I'm in combat.") return const Restrict(RKind.untargetable, cond: SelfCond(SelfKind.inCombat, negate: true));
       if (t == "I can't move to base.") return const Restrict(RKind.cantMoveToBase);
-      if (t == "I can't be readied.") return const Restrict(RKind.cantBeReadied);
       if (t == "I can't be played on your first, second, or third turns.") return const Restrict(RKind.notBeforeTurn4);
       if (t == 'Play me only to a battlefield you conquered this turn.') return const Restrict(RKind.onlyToConquered);
       if (t == "I can be played to a battlefield you're attacking.") return null;
-      if (t == 'I can have any number of buffs.') return const Restrict(RKind.manyBuffs);
       if (t == 'Use my abilities only while I\'m at a battlefield.') return const Restrict(RKind.abilitiesOnlyAtBf);
       if (t == 'While I\'m at a battlefield, opponents can\'t score points.') return const Restrict(RKind.oppCantScore);
       if (t == "I don't deal combat damage unless I'm at a battlefield with exactly one other unit you control.") return const Restrict(RKind.noCombatDamageUnless);
@@ -1881,7 +1869,6 @@ extension _General on _Line {
       if (t == 'Your spells and abilities deal 1 Bonus Damage.') return const Restrict(RKind.bonusDamage, n: 1);
       if (t == 'You ignore [Tank] while assigning combat damage here.') return const Restrict(RKind.ignoreTankHere);
       if (t == 'Your [Deathknell] effects trigger an additional time.') return const Restrict(RKind.deathknellTwice);
-      if (t == 'Your conquer effects for conquering here trigger an additional time.') return const Restrict(RKind.conquerTwiceHere);
       if (t == 'Your hold effects for holding here trigger an additional time.') return const Restrict(RKind.holdTwiceHere);
       if (t == 'Any amount of your damage is enough to kill enemy units.') return const Restrict(RKind.anyDamageKills);
       if (t == 'Units can\'t move to base.') return const Restrict(RKind.noneMoveToBase);
@@ -1930,12 +1917,8 @@ extension _General on _Line {
   bool _genCostPart(String part, List<CostPart> out) {
     RegExpMatch? m;
     RegExpMatch? mt(String re) => m = RegExp('^$re\$').firstMatch(part);
-    if (mt(r'Discard (\d+)') != null) {
-      out.add(DiscardCost(int.parse(m![1]!)));
-      return true;
-    }
     if (mt(r'Discard a gear') != null) {
-      out.add(const DiscardCost(1, filter: Filter(gear: true, zone: FZone.hand)));
+      out.add(const DiscardCost(1, gear: true));
       return true;
     }
     if (mt(r'Recycle (\d+) from your trash') != null) {
@@ -1953,10 +1936,6 @@ extension _General on _Line {
     }
     if (mt(r'Kill a friendly unit or gear') != null) {
       out.add(const KillCost(Filter(side: Side.friendly, types: {CardType.unit, CardType.gear})));
-      return true;
-    }
-    if (mt(r'Spend my buff') != null && card.type == CardType.unit) {
-      out.add(const SpendMyBuffCost());
       return true;
     }
     if (mt(r'Exhaust a unit you control') != null) {
