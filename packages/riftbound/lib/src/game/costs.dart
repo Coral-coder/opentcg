@@ -403,7 +403,7 @@ extension GameCosts on Game {
   (int, List<Domain?>)? _xPayable(int p, ObjId id, XPlay x, {List<Domain?> mandatory = const []}) {
     final spell = card(id).type == CardType.spell;
     for (final t in _xTotals(p, id, x, mandatory: mandatory)) {
-      if (canPay(p, t.$1, t.$2, forSpell: spell)) return t;
+      if (canPay(p, t.$1, t.$2, forSpell: spell, forUnit: card(id).type == CardType.unit)) return t;
     }
     return null;
   }
@@ -694,7 +694,7 @@ extension GameCosts on Game {
     final t = _xPayable(p, id, x, mandatory: mandatory);
     if (t == null) throw RiftboundError('Not enough runes to pay');
     final c = card(id);
-    _pay(p, t.$1, t.$2, forSpell: c.type == CardType.spell);
+    _pay(p, t.$1, t.$2, forSpell: c.type == CardType.spell, forUnit: c.type == CardType.unit);
     final pl = state.player(p);
     // Discounts used up.
     if (c.type == CardType.spell) _turn(pl).remove('nextSpell');
@@ -1391,6 +1391,7 @@ extension GameCosts on Game {
         }
         _recycleCards(p, rest);
       case RevealPlay(:final n, :final reduceEnergy):
+        _w3BeforeReveal(p);
         final deck = state.player(p).deck;
         final top = deck.take(n).toList();
         for (final id in top) {

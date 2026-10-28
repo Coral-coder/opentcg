@@ -127,9 +127,17 @@ extension GameCombat on Game {
         if (o.zone == Zone.board) o.damage = 0;
       }
       _combatEnded([...attackers, ...defenders]);
-      final defLeft = unitsAt(bf, player: def);
+      var defLeft = unitsAt(bf, player: def);
       var attLeft = unitsAt(bf, player: att);
       if (defLeft.isNotEmpty && attLeft.isNotEmpty) {
+        // Symbol of the Solari: a tie of your attack recalls ALL units instead.
+        if (_w3SolariTie(att)) {
+          for (final u in defLeft) {
+            state.obj(u).loc = base;
+          }
+          log('${playerName(def)}’s defenders are recalled too.', player: def, kind: 'move');
+          defLeft = const [];
+        }
         for (final u in attLeft) {
           state.obj(u).loc = base;
         }

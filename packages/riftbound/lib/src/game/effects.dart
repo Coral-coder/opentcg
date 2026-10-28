@@ -123,6 +123,8 @@ extension GameEffects on Game {
             for (final t in e.targets) {
               pick(e, t, mayDecline: mayDecline);
             }
+          case W3Effect():
+            _w3Choose(e, p, source, loc, out, set, optional: optional || mayDecline);
           case XEffect():
             _xChooseFor(e, p, source, loc, optional || mayDecline, set, (e, t, exclude) => pick(e, t, mayDecline: mayDecline, exclude: exclude), (es) => walk(es, mayDecline: mayDecline), () => List.of(chosenNow), (slot, id) => _xAllowed(out, slot + offset, id));
           default:
@@ -143,6 +145,7 @@ extension GameEffects on Game {
       walk(effects);
     }
     _genChosen(out, p, source);
+    _w3Chosen(out, p, source);
     return out;
   }
 
@@ -161,6 +164,10 @@ extension GameEffects on Game {
       }
       if (e is GenEffect) {
         if (_genMissing(e, targets)) return true;
+        continue;
+      }
+      if (e is W3Effect) {
+        if (_w3Missing(e, targets)) return true;
         continue;
       }
       final t0 = _targetOf(e);
@@ -404,8 +411,9 @@ extension GameEffects on Game {
         ctx.scratch['countered'] = victim;
         log('${nameOf(victim)} is countered.', player: p, card: victim, kind: 'info');
       case AddRes(:final energy, :final anyPower, :final power):
+        if (e is W3UnitAdd) return _w3AddUnitEnergy(p, energy);
         final pl = state.player(p);
-        pl.energyPool += energy;
+        pl.energyPool += energy + _w3GoldExtra(ctx.source);
         pl.anyPool += anyPower;
         for (final d in power) {
           pl.powerPool[d.index]++;
@@ -439,6 +447,8 @@ extension GameEffects on Game {
         _genResolve(e, ctx);
       case PowerEffect():
         _resolvePower(e, ctx);
+      case W3Effect():
+        _w3Resolve(e, ctx);
     }
   }
 
@@ -450,6 +460,7 @@ extension GameEffects on Game {
         PowerCond() => _powerCondEval(c, ctx),
         HCond() => _hCond(c, ctx),
         XCond() => _xCondNow(ctx.controller, c, source: ctx.source),
+        W3Cond() => _w3Cond(c, ctx),
       };
 
   String _mayPrompt(List<Effect> effects) => effects.map(describeEffect).join(', then ');
