@@ -221,13 +221,14 @@ extension GameEffects on Game {
         final id = ctx.targets[slot];
         if (id < 0) return const [];
         _powerTargetsOf[this] = ctx.targets;
-        return matches(filter, id, controller: ctx.controller, source: ctx.source, here: ctx.loc) && _eqChoosable(t, id, ctx.targets) ? [id] : const [];
+        return matches(filter, id, controller: ctx.controller, source: ctx.source, here: ctx.loc, slots: ctx.targets) && _eqChoosable(t, id, ctx.targets) ? [id] : const [];
       case Chosen(:final slot):
         if (slot >= ctx.targets.length) return const [];
         final id = ctx.targets[slot];
         return id >= 0 && state.objOrNull(id)?.zone == Zone.board ? [id] : const [];
       case Each(:final filter):
-        return matching(filter, controller: ctx.controller, source: ctx.source, here: ctx.loc);
+        // "There" may name a battlefield or unit chosen earlier in this ability (CR 355.3).
+        return matching(filter, controller: ctx.controller, source: ctx.source, here: ctx.loc, slots: ctx.targets);
       case EventUnit():
         final id = ctx.event;
         return id >= 0 && state.objOrNull(id)?.zone == Zone.board ? [id] : const [];
@@ -377,7 +378,8 @@ extension GameEffects on Game {
         final loc = _hTokenLoc(ctx) ?? (here && src != null && src.zone == Zone.board ? src.loc : base);
         for (var i = 0; i < count; i++) {
           final id = _newObj(token, p, Zone.board);
-          _enterBoard(id, p, loc, ready: ready || db[token]!.type == CardType.gear);
+          // [ready] is the text's: "Play a Gold gear token exhausted" plays it exhausted.
+          _enterBoard(id, p, loc, ready: ready);
           _eqTokenPlayed(id, p);
           _hs.lastMade = id;
         }

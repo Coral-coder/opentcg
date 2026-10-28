@@ -1509,8 +1509,22 @@ extension GameGeneral on Game {
       }
     }
     if (e.optional && !askYesNo(p, '${nameOf(ctx.source)}: ${e.describe().replaceFirst('may ', '')}?', source: ctx.source)) return;
-    _pay(p, e.energy, e.power);
-    _genSpent(p, e.energy + e.power.length, power: e.power.length);
+    // "Pay any amount of {A} to …" (Bullet Time): the player picks how many, up to what they can
+    // pay; "that much" is the number paid.
+    var power = e.power;
+    if (e.anyAmount) {
+      var most = 0;
+      while (most < 30 && canPay(p, e.energy, [...e.power, for (var i = 0; i <= most; i++) null])) {
+        most++;
+      }
+      final k = most == 0
+          ? 0
+          : ask(Decision(kind: DecisionKind.option, player: p, prompt: '${nameOf(ctx.source)}: pay how many {A}?', labels: [for (var i = 0; i <= most; i++) '$i'], source: ctx.source)).first;
+      power = [...e.power, for (var i = 0; i < k; i++) null];
+      ctx.scratch['that'] = k;
+    }
+    _pay(p, e.energy, power);
+    _genSpent(p, e.energy + power.length, power: power.length);
     if (e.exhaustMe) src!.exhausted = true;
     for (final x in e.parts) {
       switch (x.kind) {

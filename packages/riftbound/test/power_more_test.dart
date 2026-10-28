@@ -179,7 +179,8 @@ void main() {
     g.apply(PlayMove(0, g.addCard('Shadow Dash', 0)));
     while (g.pending != null) {
       final d = g.pending!.decision;
-      answer(g, d.kind == DecisionKind.cards ? [e] : [0]);
+      // The enemy to move, then (in the combat that follows) where its 1 damage goes.
+      answer(g, d.kind == DecisionKind.cards ? [d.options.contains(e) ? e : d.options.first] : [0]);
     }
     passAll(g);
     expect(g.state.obj(a).mightMod, 1);
@@ -262,6 +263,13 @@ void main() {
     g.apply(PlayMove(0, g.addCard('Alpha Strike', 0))); // the only friendly unit: chosen without asking
     expect(big, isPositive);
     passAll(g);
+    // The player splits the 5 damage point by point (CR 355.14): 2 to each, the last anywhere.
+    final given = <int, int>{};
+    while (g.pending != null) {
+      final pick = (given[a] ?? 0) < 2 ? a : b;
+      given[pick] = (given[pick] ?? 0) + 1;
+      answer(g, [pick]);
+    }
     expect(g.state.obj(a).zone, Zone.trash);
     expect(g.state.obj(b).zone, Zone.trash);
     expect(g.state.player(0).pw.xp, 2);
@@ -275,8 +283,9 @@ void main() {
     final strong = g.addCard('Bandle Soldier', 1, zone: Zone.board, loc: 0); // 5
     g.apply(PlayMove(0, g.addCard('Stare Down', 0))); // the only friendly unit: chosen without asking
     expect(mine, isPositive);
-    passAll(g);
-    answer(g, [0]); // the battlefield
+    // The battlefield is chosen as the spell is played (CR 355.4), before anyone can respond.
+    expect(g.state.chain, isEmpty);
+    answer(g, [g.state.bfs[0].obj]);
     passAll(g);
     expect(g.state.obj(weak).loc, base);
     expect(g.state.obj(strong).loc, 0);
