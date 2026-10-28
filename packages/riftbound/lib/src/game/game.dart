@@ -55,7 +55,7 @@ class Game implements TcgMatch {
   Game(this.db, {required List<String> players, required int seed}) : state = GameState(seed, players);
   Game._probe(Game g)
       : db = g.db,
-        state = g.state.clone(),
+        state = g.state.clone(probe: true),
         _probe = true;
 
   final RCardDb db;
@@ -65,6 +65,10 @@ class Game implements TcgMatch {
 
   /// Legality probes answer every question with the default answer.
   bool _probe = false;
+
+  /// The passives in effect, scanned once for the duration of a query that doesn't change the
+  /// state (see [_memoPassives]); null outside one.
+  List<(ObjId, Passive)>? _passMemo;
   List<List<int>> _answers = const [];
   int _answerIndex = 0;
 

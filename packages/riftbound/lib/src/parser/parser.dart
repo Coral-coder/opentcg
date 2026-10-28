@@ -42,9 +42,24 @@ class ParsedCard {
 class RiftboundParser {
   static final Map<String, ParsedCard> _cache = {};
 
-  static ParsedCard parse(RCard c) => _cache.putIfAbsent(c.key, () => parseUncached(c));
+  /// The same cache, found from the card object itself (an identity lookup, much cheaper than
+  /// hashing its key: the engine asks for parses constantly). [_generation] retires it on
+  /// [clearCache].
+  static final _byCard = Expando<(int, ParsedCard)>();
+  static var _generation = 0;
 
-  static void clearCache() => _cache.clear();
+  static ParsedCard parse(RCard c) {
+    final hit = _byCard[c];
+    if (hit != null && hit.$1 == _generation) return hit.$2;
+    final p = _cache.putIfAbsent(c.key, () => parseUncached(c));
+    _byCard[c] = (_generation, p);
+    return p;
+  }
+
+  static void clearCache() {
+    _cache.clear();
+    _generation++;
+  }
 
   /// When not null, parsing records here each piece of text it couldn't read, most specific
   /// first ("S: sentence", "W: trigger", "T: target", "C: condition", "P: passive", "K: cost").

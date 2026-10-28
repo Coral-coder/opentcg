@@ -1930,7 +1930,7 @@ extension GameGeneral on Game {
           _gen.add(k);
         }
         if (w.extra.contains('once')) {
-          final k = 'once:$src:$i:${ev.index}:${state.log.length}';
+          final k = 'once:$src:$i:${ev.index}:${state.logCount}';
           if (_gen.get(k) > 0) continue;
           _gen.add(k);
         }

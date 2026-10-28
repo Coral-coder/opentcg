@@ -4,12 +4,13 @@ part of 'bot.dart';
 /// and answers the decisions game/equip.dart asks.
 extension _BotEquip on RiftboundBot {
   /// An Equip (or other attaching) move worth making now, if any.
-  RMove? _equipMove(Game g, List<RMove> legal) {
+  RMove? _equipMove(Game g, _Legal legal) {
     ActivateMove? best;
     var bestScore = 0;
-    for (final m in legal.whereType<ActivateMove>()) {
+    for (final m in legal.candidates.whereType<ActivateMove>()) {
       final a = g.abilityOfMove(m);
       if (a is! Activated || !a.effects.any((e) => e is EqAttachMe || e is EqAttachTo)) continue;
+      if (!legal.ok(m)) continue;
       final o = g.state.objOrNull(m.source);
       final score = o != null && g.isEquipmentObj(m.source) ? 10 + (g.card(m.source).mightBonus ?? 0) : 5;
       if (score > bestScore) {

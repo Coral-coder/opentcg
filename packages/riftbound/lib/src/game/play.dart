@@ -192,8 +192,10 @@ extension GamePlay on Game {
   /// trash with Flow or an alternative cost, or — with [via] — as part of an effect, from
   /// elsewhere, or with its cost replaced or ignored. The cost is worked out in one place,
   /// game/costs.dart (CR 356).
-  void _playFromHand(int p, ObjId id, {XPlay? via}) {
-    final pl = state.player(p);
+  /// The first checks of playing [id] (where it's played from, support, timing, whether it can be
+  /// paid for), which only read the state; throws the reason it can't be played. [whyNot] runs these on the game itself
+  /// before trying the play on a copy, since most cards fail here (Reactions-only windows).
+  ({XPlay x, int? fd, bool ambushOnly}) _playStart(int p, ObjId id, {XPlay? via}) {
     final o = state.objOrNull(id);
     if (o == null) throw RiftboundError('That card isn’t in your hand');
     final x = via ?? _xPlayFromMove(p, id);
@@ -201,7 +203,6 @@ extension GamePlay on Game {
     final parsedCard = parsed(id);
     if (!parsedCard.supported) throw RiftboundError('${c.name} isn’t supported yet');
     if (!c.isMainDeck) throw RiftboundError('That can’t be played');
-    final eqQuickDraw = _eqGrantedQuickDraw(p, id);
     // A card hidden facedown at a battlefield (CR 811): played as a Reaction, ignoring its own
     // cost, to that battlefield and choosing there.
     final fd = x.facedown >= 0 ? x.facedown : null;
@@ -220,6 +221,16 @@ extension GamePlay on Game {
     final gp = _genPlayProblem(p, id);
     if (gp != null) throw RiftboundError(gp);
     if (!_xCanPay(p, id, x)) throw RiftboundError('Not enough runes (${_costLabel(c)})');
+    return (x: x, fd: fd, ambushOnly: ambushOnly);
+  }
+
+  void _playFromHand(int p, ObjId id, {XPlay? via}) {
+    final pl = state.player(p);
+    final (:x, :fd, :ambushOnly) = _playStart(p, id, via: via);
+    final o = state.obj(id);
+    final c = card(id);
+    final parsedCard = parsed(id);
+    final eqQuickDraw = _eqGrantedQuickDraw(p, id);
     // Make relevant choices (CR 355): optional, additional and alternative costs first (CR
     // 355.1.a). Known from here on: "If you paid the additional cost, choose … instead".
     if (!x.noExtras) _xChooseCosts(p, id, x);
@@ -345,27 +356,43 @@ extension GamePlay on Game {
   // Activated abilities (CR 376)
   // -------------------------------------------------------------------------------------------
 
+  /// The first checks of activating ability [index] of [src] (control, timing, once per turn,
+  /// exhausted), which only read the state: the reason it can't be activated, or null if they
+  /// pass (or the ability takes another path: granted and Equipment abilities). [whyNot] runs
+  /// these on the game itself before trying the activation on a copy.
+  String? _activateEarlyProblem(int p, ObjId src, int index) {
+    if (index == grantedXpAbility) return null;
+    final o = state.objOrNull(src);
+    if (o == null || o.controller != p || !(o.zone == Zone.board || (o.zone == Zone.legend))) return 'You don’t control that';
+    if (index >= 1000) return null;
+    if (_eqInactive(src)) return '${nameOf(src)} is attached: its own text is inactive';
+    final abs = parsed(src).abilities;
+    if (index < 0 || index >= abs.length || abs[index] is! Activated) return 'No such ability';
+    if (!parsed(src).supported) return '${nameOf(src)} isn’t supported yet';
+    final a = abs[index] as Activated;
+    if (a is EqEquip || a is EqActivated) return null;
+    if (a.legion && state.player(p).playedThisTurn < 1) return 'Legion: play another card this turn first';
+    final isAdd = a.adds;
+    final t = isAdd ? null : _timingProblem(p, a.timing);
+    if (t != null) return t;
+    if (isAdd && a.timing != Timing.reaction && _timingProblem(p, Timing.normal) != null) return 'Not now';
+    if (a.oncePerTurn && o.usedThisTurn.contains(index)) return 'Only once per turn';
+    if (a.cost.exhaust && o.exhausted) return '${nameOf(src)} is exhausted';
+    return null;
+  }
+
   void _activate(int p, ObjId src, int index) {
     if (index == grantedXpAbility) {
       _activateGranted(p, src);
       return;
     }
-    final o = state.objOrNull(src);
-    if (o == null || o.controller != p || !(o.zone == Zone.board || (o.zone == Zone.legend))) throw RiftboundError('You don’t control that');
+    final early = _activateEarlyProblem(p, src, index);
+    if (early != null) throw RiftboundError(early);
+    final o = state.obj(src);
     if (index >= 1000) return _eqActivateGranted(p, src, index);
-    if (_eqInactive(src)) throw RiftboundError('${nameOf(src)} is attached: its own text is inactive');
-    final abs = parsed(src).abilities;
-    if (index < 0 || index >= abs.length || abs[index] is! Activated) throw RiftboundError('No such ability');
-    if (!parsed(src).supported) throw RiftboundError('${nameOf(src)} isn’t supported yet');
-    final a = abs[index] as Activated;
+    final a = parsed(src).abilities[index] as Activated;
     if (a is EqEquip || a is EqActivated) return _eqActivate(p, src, index, a);
-    if (a.legion && state.player(p).playedThisTurn < 1) throw RiftboundError('Legion: play another card this turn first');
     final isAdd = a.adds;
-    final t = isAdd ? null : _timingProblem(p, a.timing);
-    if (t != null) throw RiftboundError(t);
-    if (isAdd && a.timing != Timing.reaction && _timingProblem(p, Timing.normal) != null) throw RiftboundError('Not now');
-    if (a.oncePerTurn && o.usedThisTurn.contains(index)) throw RiftboundError('Only once per turn');
-    if (a.cost.exhaust && o.exhausted) throw RiftboundError('${nameOf(src)} is exhausted');
     final problem = _powerActivateProblem(p, src, index, a) ?? _xCostProblem(p, src, a.cost);
     if (problem != null) throw RiftboundError(problem);
     final ac = _activationCost(p, src, a);
