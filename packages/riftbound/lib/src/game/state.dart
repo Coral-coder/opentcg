@@ -286,6 +286,33 @@ class LogEntry {
 
 enum Phase { setup, main, over }
 
+/// Sanctioned Modes of Play (CR 486–491).
+enum RMode {
+  /// 1v1 Duel (CR 487).
+  duel,
+
+  /// FFA3, Skirmish (CR 489).
+  ffa3,
+
+  /// FFA4, War (CR 490).
+  ffa4,
+
+  /// 2v2, Magma Chamber (CR 491): seats 0 and 2 against 1 and 3.
+  teams;
+
+  int get players => switch (this) { RMode.duel => 2, RMode.ffa3 => 3, _ => 4 };
+
+  /// Victory Score (CR 487.3, 489.3, 490.3, 491.3).
+  int get victoryScore => this == RMode.teams ? 11 : 8;
+
+  /// The mode's id in game options and the digest.
+  String get id => switch (this) { RMode.duel => 'duel', RMode.ffa3 => 'ffa3', RMode.ffa4 => 'ffa4', RMode.teams => '2v2' };
+
+  static RMode fromId(String? id) => RMode.values.firstWhere((m) => m.id == id, orElse: () => RMode.duel);
+
+  String get label => switch (this) { RMode.duel => 'Duel (1v1)', RMode.ffa3 => 'Skirmish (3 players)', RMode.ffa4 => 'War (4 players)', RMode.teams => 'Magma Chamber (2v2)' };
+}
+
 /// Steps of a turn (CR 314–317) the engine walks through.
 enum Step { beginning, scoring, channel, draw, main, ending }
 
@@ -341,7 +368,50 @@ class GameState {
   Player player(int i) => players[i];
   Obj obj(ObjId id) => objects[id]!;
   Obj? objOrNull(ObjId id) => objects[id];
-  int other(int p) => 1 - p;
+  /// The Mode of Play (CR 485). A Duel's digest doesn't mention it, so Duels fingerprint as they
+  /// always have.
+  RMode mode = RMode.duel;
+
+  bool get multi => mode != RMode.duel;
+
+  /// Seat [p]'s team: seats 0 and 2 against 1 and 3 in 2v2 (turn order alternates teams, CR
+  /// 491.5.c); everyone is alone otherwise.
+  int team(int p) => mode == RMode.teams ? p % 2 : p;
+
+  /// Friendly players: the same player or teammates (CR 491.8.e, 740.1.a).
+  bool allied(int a, int b) => a == b || team(a) == team(b);
+
+  /// Players still in the game (CR 651.3).
+  bool inGame(int p) => !players[p].lost;
+
+  /// The next player in turn order who's still playing (CR 315, 491.5.c).
+  int nextSeat(int p) {
+    for (var i = 1; i <= players.length; i++) {
+      final q = (p + i) % players.length;
+      if (inGame(q)) return q;
+    }
+    return p;
+  }
+
+  /// The opponents still in the game, in turn order after [p] (CR 485.2.b).
+  List<int> opponents(int p) => [
+        for (var i = 1; i < players.length; i++)
+          if (inGame((p + i) % players.length) && !allied(p, (p + i) % players.length)) (p + i) % players.length,
+      ];
+
+  /// Seat [p]'s teammates still in the game.
+  List<int> teammates(int p) => [for (var q = 0; q < players.length; q++) if (q != p && inGame(q) && allied(p, q)) q];
+
+  /// "The opponent": in a Duel the other player; with several, the next opponent in turn order.
+  /// Effects that mean "an opponent" choose one instead, and "each opponent" loops.
+  int other(int p) {
+    if (mode == RMode.duel) return 1 - p;
+    final o = opponents(p);
+    return o.isEmpty ? nextSeat(p) : o.first;
+  }
+
+  /// Players still in the game.
+  int get inGameCount => players.where((p) => !p.lost).length;
 
   /// A copy. A [probe] copy (one a legality check throws away) skips the log's entries, which
   /// only the app reads, and keeps their count.
@@ -359,6 +429,7 @@ class GameState {
       ..step = step
       ..winner = winner
       ..victoryScore = victoryScore
+      ..mode = mode
       ..bfs = [for (final b in bfs) b.clone()]
       ..chain = List.of(chain)
       ..nextChainId = nextChainId
@@ -385,7 +456,8 @@ class GameState {
       ..write('${bfs.map((x) => x.digest()).join(';')}|')
       ..write('${chain.map((c) => c.digest()).join(';')}|$nextChainId|$priority|$passes|${showdown?.digest() ?? ''}|')
       ..write('${waiting.map((c) => c.digest()).join(';')}|${eq.digest()}|${pw.digest()}|${gen.digest()}|')
-      ..write('${(marks.keys.toList()..sortStable((a, b) => a.compareTo(b))).map((k) => '$k=${marks[k]}').join(',')}|');
+      ..write('${(marks.keys.toList()..sortStable((a, b) => a.compareTo(b))).map((k) => '$k=${marks[k]}').join(',')}|')
+      ..write(mode == RMode.duel ? '' : 'mode:${mode.id}|');
     for (final p in players) {
       b.write('${p.digest()}#');
     }

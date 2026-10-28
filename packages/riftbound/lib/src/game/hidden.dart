@@ -99,8 +99,10 @@ extension GameHidden on Game {
     if (o.controller != p) return 'That card isn’t yours';
     if (o.enteredTurn >= state.turn) return 'A hidden card can be played from the next turn on';
     // "Your opponents' [Hidden] cards can't be revealed here."
-    for (final (src, passive) in _hPassivesOf(state.other(p))) {
-      if (passive is NoRevealHere && state.obj(src).zone == Zone.board && state.obj(src).loc == o.loc) return '${nameOf(src)} stops facedown cards there';
+    for (final q in state.opponents(p)) {
+      for (final (src, passive) in _hPassivesOf(q)) {
+        if (passive is NoRevealHere && state.obj(src).zone == Zone.board && state.obj(src).loc == o.loc) return '${nameOf(src)} stops facedown cards there';
+      }
     }
     return null;
   }
@@ -163,7 +165,7 @@ extension GameHidden on Game {
     final enemyToo = _hHas(id, (x) => x is PlayTo && x.place == PlayPlace.enemyUnits);
     return [
       for (var i = 0; i < state.bfs.length; i++)
-        if (unitsAt(i, player: p).isNotEmpty || (enemyToo && unitsAt(i, player: state.other(p)).isNotEmpty)) i,
+        if ((unitsAt(i, player: p).isNotEmpty || (enemyToo && enemyUnits(p, bf: i).isNotEmpty)) && _multiCanEnter(p, i)) i,
     ];
   }
 
@@ -174,18 +176,17 @@ extension GameHidden on Game {
   List<int> _hDestinations(int p, ObjId id, {bool ambushOnly = false, int extra = base}) {
     if (ambushOnly) return _hAmbushPlaces(p, id);
     final out = <int>{base};
-    final opp = state.other(p);
     bool has(PlayPlace place) => _hHas(id, (x) => x is PlayTo && x.place == place);
     final toOpen = has(PlayPlace.open) || _hPassivesOf(p).any((e) => e.$2 is FriendlyToOpen);
     for (var i = 0; i < state.bfs.length; i++) {
       final b = state.bfs[i];
-      final mine = unitsAt(i, player: p), theirs = unitsAt(i, player: opp);
+      final mine = unitsAt(i, player: p), theirs = enemyUnits(p, bf: i);
       final sd = state.showdown;
       if (b.controller == p) out.add(i);
       if (parsed(id).has(Kw.ambush) && (mine.isNotEmpty || (has(PlayPlace.enemyUnits) && theirs.isNotEmpty))) out.add(i);
       // Open: unoccupied and uncontrolled (CR 170.11.c).
-      if (toOpen && b.controller == null && mine.isEmpty && theirs.isEmpty) out.add(i);
-      if (has(PlayPlace.occupiedEnemy) && b.controller == opp && theirs.isNotEmpty) out.add(i);
+      if (toOpen && b.controller == null && unitsAt(i).isEmpty) out.add(i);
+      if (has(PlayPlace.occupiedEnemy) && b.controller != null && !state.allied(b.controller!, p) && theirs.isNotEmpty) out.add(i);
       if (has(PlayPlace.attacking) && sd != null && sd.combat && sd.bf == i && sd.attacker == p) out.add(i);
       if (extra == i) out.add(i);
     }
@@ -270,7 +271,7 @@ extension GameHidden on Game {
   /// abilities.
   bool _hChooseable(ObjId id, int chooser) {
     final o = state.objOrNull(id);
-    if (o == null || o.zone != Zone.board || o.controller == chooser || !isUnit(id)) return true;
+    if (o == null || o.zone != Zone.board || state.allied(o.controller, chooser) || !isUnit(id)) return true;
     for (final a in parsed(id).abilities) {
       if (a is Static && a.passive is CantBeChosen && _gateOk(id, a.gate)) {
         final c = a.passive as CantBeChosen;
@@ -367,10 +368,11 @@ extension GameHidden on Game {
             case MoveDest.base:
               options = [if (from != base) base];
             case MoveDest.weakerEnemyBf:
-              final opp = state.other(o.controller);
               options = [
                 for (var i = 0; i < state.bfs.length; i++)
-                  if (i != from && state.bfs[i].controller == opp && unitsAt(i, player: opp).isNotEmpty && mightUsed(id) > unitsAt(i, player: opp).fold<int>(0, (t, u) => t + mightUsed(u))) i,
+                  if (i != from && state.bfs[i].controller != null && !state.allied(state.bfs[i].controller!, o.controller)) ...[
+                    if (unitsAt(i, player: state.bfs[i].controller).isNotEmpty && mightUsed(id) > unitsAt(i, player: state.bfs[i].controller).fold<int>(0, (t, u) => t + mightUsed(u))) i,
+                  ],
               ];
           }
           if (options.isEmpty) continue;
@@ -394,7 +396,7 @@ extension GameHidden on Game {
         final a = m.first;
         final options = [
           for (final u in unitsAt(state.obj(a).loc))
-            if (u != a && state.obj(u).controller != p && (state.obj(a).loc != base || state.obj(u).controller == state.obj(a).controller)) u,
+            if (u != a && !state.allied(state.obj(u).controller, p) && (state.obj(a).loc != base || state.obj(u).controller == state.obj(a).controller)) u,
         ];
         if (options.isEmpty) break;
         final b = ask(Decision(kind: DecisionKind.cards, player: p, prompt: '${nameOf(ctx.source)}: choose another enemy unit there', options: options, source: ctx.source)).first;
@@ -446,7 +448,7 @@ extension GameHidden on Game {
       case TakeControl(:final target, :final untilEot):
         for (final id in _resolveTarget(target, ctx)) {
           final o = state.obj(id);
-          if (o.controller == p) continue;
+          if (state.allied(o.controller, p)) continue;
           if (untilEot) state.marks['t:steal:$id'] = o.controller;
           o.controller = p;
           log('${playerName(p)} takes control of ${nameOf(id)}.', player: p, card: id, kind: 'info');
@@ -525,7 +527,7 @@ extension GameHidden on Game {
       case OpponentPlaysUnit(:final bf):
         final r = _resolveTarget(bf, ctx);
         if (r.isEmpty) break;
-        final opp = state.other(p);
+        final opp = state.multi ? chooseOpponent(p, '${nameOf(ctx.source)}: which opponent reveals their hand?') : state.other(p);
         final hand = state.player(opp).hand;
         log('${playerName(opp)} reveals their hand: ${hand.isEmpty ? 'nothing' : hand.map(nameOf).join(', ')}.', player: opp, kind: 'info');
         final options = [for (final id in hand) if (card(id).type == CardType.unit && parsed(id).supported) id];
@@ -614,11 +616,11 @@ extension GameHidden on Game {
         final from = id < 0 ? null : _hs.origins[id];
         if (from == null || from == base) return false;
         final there = unitsAt(from);
-        return there.length == 1 && state.obj(there.first).controller != ctx.controller;
+        return there.length == 1 && !state.allied(state.obj(there.first).controller, ctx.controller);
       case EnemyAloneHere():
         if (ctx.loc == base) return false;
         final there = unitsAt(ctx.loc);
-        return there.where((u) => state.obj(u).controller != ctx.controller).length == 1;
+        return there.where((u) => !state.allied(state.obj(u).controller, ctx.controller)).length == 1;
     }
   }
 
@@ -635,7 +637,7 @@ extension GameHidden on Game {
       if (a is! Static) continue;
       switch (a.passive) {
         case MightWhileStunnedEnemy(:final n):
-          if (unitsAt(o.loc).any((u) => state.obj(u).controller != o.controller && state.obj(u).stunned && (o.loc != base))) m += n;
+          if (unitsAt(o.loc).any((u) => !state.allied(state.obj(u).controller, o.controller) && state.obj(u).stunned && (o.loc != base))) m += n;
         case MightPerNamesake():
           m += unitsAt(o.loc, player: o.controller).where((u) => u != id && card(u).name == card(id).name).length;
         default:
@@ -662,8 +664,10 @@ extension GameHidden on Game {
   /// "Enemy units here with less Might than me don't deal combat damage."
   bool _hNoCombatDamage(ObjId u) {
     final o = state.obj(u);
-    for (final (src, passive) in _hPassivesOf(state.other(o.controller))) {
-      if (passive is SilenceWeakerHere && state.obj(src).zone == Zone.board && state.obj(src).loc == o.loc && might(u) < might(src)) return true;
+    for (final q in state.opponents(o.controller)) {
+      for (final (src, passive) in _hPassivesOf(q)) {
+        if (passive is SilenceWeakerHere && state.obj(src).zone == Zone.board && state.obj(src).loc == o.loc && might(u) < might(src)) return true;
+      }
     }
     return false;
   }
@@ -699,11 +703,18 @@ extension GameHidden on Game {
   /// A unit is about to die: "when an enemy unit dies" for its controller's opponent.
   void _hOnDeath(ObjId id) {
     if (!isUnit(id)) return;
-    _fire(On.enemyUnitDies, player: state.other(state.obj(id).controller), event: id);
+    for (final q in state.opponents(state.obj(id).controller)) {
+      _fire(On.enemyUnitDies, player: q, event: id);
+    }
   }
 
-  /// [p] scored: "when an opponent scores" for the other player.
-  void _hScored(int p) => _fire(On.opponentScores, player: state.other(p));
+  /// [p] scored: "when an opponent scores" for each of their opponents (in 2v2, scoring is the
+  /// team's, CR 491.8.d.3).
+  void _hScored(int p) {
+    for (final q in state.opponents(p)) {
+      _fire(On.opponentScores, player: q);
+    }
+  }
 
   /// May trigger [index] of [src] go on the chain now (its "on your turn", "while I'm at a
   /// battlefield", "once each turn" conditions)?

@@ -17,7 +17,7 @@ extension GameWs2 on Game {
     // "Gain control of a spell": any spell on the chain but this one (CR 750).
     final items = [
       for (final it in state.chain)
-        if (it.isSpell && it.source != source && it.controller != p) it,
+        if (it.isSpell && it.source != source && !state.allied(it.controller, p)) it,
       for (final it in state.chain)
         if (it.isSpell && it.source != source && it.controller == p) it,
     ];
@@ -412,7 +412,7 @@ extension GameWs2 on Game {
     if (to == base || moving.length < 2) return;
     var n = 0;
     for (final o in state.objects.values) {
-      if (o.zone == Zone.board && o.loc == to && o.controller != p && isUnit(o.id) && _ws2Has(o.id, (x) => x is Ws2MoveTax)) n += moving.length - 1;
+      if (o.zone == Zone.board && o.loc == to && !state.allied(o.controller, p) && isUnit(o.id) && _ws2Has(o.id, (x) => x is Ws2MoveTax)) n += moving.length - 1;
     }
     if (n == 0) return;
     final power = List<Domain?>.filled(n, null);
@@ -509,7 +509,7 @@ extension GameWs2 on Game {
     final targets = _chooseTargets(a.effects, p, src, o.loc);
     final extraP = <Domain?>[];
     for (final tg in targets) {
-      if (tg >= 0 && tg < _chainRef && state.objOrNull(tg)?.zone == Zone.board && state.obj(tg).controller != p && !_xIgnoreDeflect(src, tg)) {
+      if (tg >= 0 && tg < _chainRef && state.objOrNull(tg)?.zone == Zone.board && !state.allied(state.obj(tg).controller, p) && !_xIgnoreDeflect(src, tg)) {
         for (var d = 0; d < _kw(tg, Kw.deflect); d++) {
           extraP.add(null);
         }

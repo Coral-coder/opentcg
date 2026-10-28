@@ -431,7 +431,7 @@ extension GamePlay on Game {
     final targets = _chooseTargets(a.effects, p, src, o.loc);
     final extraP = <Domain?>[];
     for (final tg in targets) {
-      if (tg >= 0 && state.objOrNull(tg)?.zone == Zone.board && state.obj(tg).controller != p && !_xIgnoreDeflect(src, tg)) {
+      if (tg >= 0 && state.objOrNull(tg)?.zone == Zone.board && !state.allied(state.obj(tg).controller, p) && !_xIgnoreDeflect(src, tg)) {
         for (var i = 0; i < _kw(tg, Kw.deflect); i++) {
           extraP.add(null);
         }
@@ -482,6 +482,9 @@ extension GamePlay on Game {
 
   /// Moves units (a move, not a recall: CR 448) and applies Contested (CR 452).
   void _moveUnits(List<ObjId> moving, int to, int byPlayer) {
+    // A move to a place the units can't go (a combat between others, a teammate's battlefield)
+    // recalls them instead (CR 449.2.c).
+    if (state.multi && moving.isNotEmpty && !_multiCanEnter(state.obj(moving.first).controller, to)) to = base;
     final from = [for (final u in moving) state.obj(u).loc];
     for (final u in moving) {
       state.obj(u)
@@ -561,7 +564,7 @@ extension GamePlay on Game {
     // Deflect (CR 809) applies to triggered abilities too: pay it, or the ability can't go on.
     final deflect = <Domain?>[];
     for (final tg in targets) {
-      if (tg >= 0 && state.objOrNull(tg)?.zone == Zone.board && state.obj(tg).controller != t.controller && !_xIgnoreDeflect(t.source, tg)) {
+      if (tg >= 0 && state.objOrNull(tg)?.zone == Zone.board && !state.allied(state.obj(tg).controller, t.controller) && !_xIgnoreDeflect(t.source, tg)) {
         for (var i = 0; i < _kw(tg, Kw.deflect); i++) {
           deflect.add(null);
         }
@@ -657,8 +660,9 @@ extension GamePlay on Game {
       state.obj(id).zone = Zone.mainDeck;
       pl.deck.add(id);
     }
-    final o = state.other(p);
-    state.player(o).points++;
+    // The player burning out picks an opponent to gain the point (CR 194.1.d, 432.2).
+    final o = state.multi ? chooseOpponent(p, 'You burn out: which opponent gains 1 point?') : state.other(p);
+    _addPoints(o, 1);
     log('${pl.name} burns out: ${playerName(o)} gains 1 point.', player: o, kind: 'point', amount: 1);
     _checkWin();
   }

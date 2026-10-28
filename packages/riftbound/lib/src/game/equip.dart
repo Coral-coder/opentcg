@@ -394,7 +394,7 @@ extension GameEquip on Game {
     if (a.legion && pl.playedThisTurn < 1) throw RiftboundError('Legion: play another card this turn first');
     final t = _timingProblem(p, a.timing);
     if (t != null) throw RiftboundError(t);
-    if (a is EqActivated && a.onlyIfPlayedEquipment && state.eq.equipmentPlayed[p] != state.turn) throw RiftboundError('Use only if you’ve played an Equipment this turn');
+    if (a is EqActivated && a.onlyIfPlayedEquipment && (p < state.eq.equipmentPlayed.length ? state.eq.equipmentPlayed[p] : 0) != state.turn) throw RiftboundError('Use only if you’ve played an Equipment this turn');
     if (a.oncePerTurn && o.usedThisTurn.contains(index)) throw RiftboundError('Only once per turn');
     if (a.cost.exhaust && o.exhausted) throw RiftboundError('${nameOf(src)} is exhausted');
     final c = a.cost;
@@ -511,7 +511,12 @@ extension GameEquip on Game {
 
   /// After [id] is played: Equipment played this turn, granted Quick-Draw.
   void _eqAfterPlay(int p, ObjId id, {(String, int)? quickDraw}) {
-    if (isEquipmentObj(id)) state.eq.equipmentPlayed[p] = state.turn;
+    if (isEquipmentObj(id)) {
+      while (state.eq.equipmentPlayed.length <= p) {
+        state.eq.equipmentPlayed.add(0);
+      }
+      state.eq.equipmentPlayed[p] = state.turn;
+    }
     if (quickDraw != null) _queue(id, quickDraw.$2, p, card: quickDraw.$1);
   }
 

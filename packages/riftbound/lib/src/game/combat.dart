@@ -49,6 +49,11 @@ extension GameCombat on Game {
 
   void _checkWin() {
     if (state.over) return;
+    if (state.multi) {
+      final w = _multiWinner();
+      if (w != null) _win(w);
+      return;
+    }
     // CR 194.2: at or above the Victory Score and more points than every opponent.
     for (var p = 0; p < state.players.length; p++) {
       final pts = state.player(p).points;
@@ -68,7 +73,8 @@ extension GameCombat on Game {
       if (c == null) continue;
       final mine = unitsAt(i, player: c);
       if (mine.isEmpty) continue;
-      final theirs = unitsAt(i, player: state.other(c));
+      final def = _defenderAt(i, c);
+      final theirs = unitsAt(i, player: def);
       final combat = theirs.isNotEmpty;
       state.showdown = Showdown(bf: i, combat: combat, attacker: c, focus: c);
       if (combat) {
@@ -81,7 +87,6 @@ extension GameCombat on Game {
           _fireUnit(u, const {On.defend, On.attackOrDefend});
         }
         // "When an enemy unit attacks a battlefield you control" — once per attacking unit.
-        final def = state.other(c);
         if (b.controller == def) {
           for (final u in mine) {
             _fire(On.enemyAttacksYourBf, player: def, bf: i, event: u);
@@ -112,7 +117,7 @@ extension GameCombat on Game {
     final bf = sd.bf;
     final b = state.bfs[bf];
     final att = sd.attacker;
-    final def = state.other(att);
+    final def = _defenderAt(bf, att);
     if (sd.combat) {
       final attackers = unitsAt(bf, player: att);
       final defenders = unitsAt(bf, player: def);
@@ -184,19 +189,19 @@ extension GameCombat on Game {
   /// battlefield scored this turn when it comes from a Conquer (CR 473.1.b).
   void _scoreBf(int p, int bf, {required bool conquer}) {
     final pl = state.player(p);
-    if (pl.scored.contains(bf)) return;
+    if (_sideScored(p, bf)) return;
     pl.scored.add(bf);
     final b = state.bfs[bf];
     if (conquer) _gen.add('p$p:conquered$bf');
     if (_genCantScore(p, bf)) {
       log('${pl.name} ${conquer ? 'conquers' : 'holds'} ${nameOf(b.obj)} but can’t score.', player: p, kind: conquer ? 'conquer' : 'hold');
-    } else if (conquer && pl.points >= _genVictoryScore() - 1 && pl.scored.length < state.bfs.length) {
+    } else if (conquer && pl.points >= _genVictoryScore() - 1 && !_scoredEvery(p)) {
       log('${pl.name} conquers ${nameOf(b.obj)} but needs every battlefield this turn for the final point, and draws instead.', player: p, kind: 'conquer');
       _draw(p, 1);
     } else if (_ws2ScoreDraws(p)) {
       // Otterpus: a draw instead of the point.
     } else {
-      pl.points++;
+      _addPoints(p, 1);
       if (!conquer) _xHeld(p);
       _hScored(p);
       log('${pl.name} ${conquer ? 'conquers' : 'holds'} ${nameOf(b.obj)}: ${pl.points} point${pl.points == 1 ? '' : 's'}.', player: p, kind: conquer ? 'conquer' : 'hold', amount: 1);
@@ -237,10 +242,11 @@ extension GameCombat on Game {
 
     final bf = state.obj(attackers.first).loc;
     final att = state.obj(attackers.first).controller;
+    final def = state.multi ? state.obj(defenders.first).controller : state.other(att);
     final toDefenders = _assign(total(attackers), defenders, ignoreTank: _genIgnoresTank(att, bf), chooser: att);
-    final toAttackers = _assign(total(defenders), attackers, ignoreTank: _genIgnoresTank(state.other(att), bf), chooser: state.other(att));
+    final toAttackers = _assign(total(defenders), attackers, ignoreTank: _genIgnoresTank(def, bf), chooser: def);
     _genNoteExcess(att, total(attackers), defenders);
-    _genNoteExcess(state.other(att), total(defenders), attackers);
+    _genNoteExcess(def, total(defenders), attackers);
     for (final e in [...toDefenders.entries, ...toAttackers.entries]) {
       if (e.value <= 0) continue;
       final d = _genCombatHit(e.key, e.value);

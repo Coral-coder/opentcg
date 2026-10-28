@@ -2,7 +2,8 @@
 /// that applies the same moves reaches the same state and fingerprint.
 ///
 /// Rules follow the Riftbound Core Rules (docs/riftbound-core-rules.txt); comments cite them as
-/// "CR n". Mode of play: 1v1 Duel (CR 487).
+/// "CR n". Modes of play: 1v1 Duel (CR 487), Skirmish and War free-for-all (CR 489–490) and
+/// 2v2 Magma Chamber (CR 491); the multiplayer rules are in multi.dart.
 ///
 /// Decisions work like the other engines': a move runs as a task that may stop to ask a player
 /// something ([NeedDecision]); the state before the move is kept, and each answer re-runs the
@@ -40,6 +41,7 @@ part 'hidden.dart';
 part 'w2s2.dart';
 part 'w2s3.dart';
 part 'w2s1.dart';
+part 'multi.dart';
 
 class NeedDecision implements Exception {
   NeedDecision(this.decision);
@@ -117,10 +119,18 @@ class Game implements TcgMatch {
     if (state.over) throw RiftboundError('The game is over');
     if (move is ConcedeMove) {
       pending = null;
-      state.player(move.seat).lost = true;
       log('${playerName(move.seat)} concedes.', player: move.seat, kind: 'lose');
-      _win(state.other(move.seat));
+      _removePlayer(move.seat);
       actions.add(move);
+      // With players left, the game carries on from here (and may ask someone something).
+      if (state.multi && !state.over) {
+        final snapshot = state.clone();
+        try {
+          _settle();
+        } on NeedDecision catch (e) {
+          pending = Pending(move, const [], e.decision, snapshot);
+        }
+      }
       return;
     }
     final p = pending;
@@ -239,6 +249,8 @@ class Game implements TcgMatch {
 
   void _start(StartMove m) {
     if (m.decks.length != state.players.length) throw RiftboundError('One deck per player');
+    if (m.mode.players != state.players.length) throw RiftboundError('${m.mode.label} needs ${m.mode.players} players');
+    if (m.mode != RMode.duel) return _startMulti(m);
     final chosenBfs = <ObjId>[];
     for (var p = 0; p < m.decks.length; p++) {
       final deck = m.decks[p];
@@ -283,6 +295,76 @@ class Game implements TcgMatch {
       state.bfs.add(Bf(b));
     }
     state.firstPlayer = m.firstPlayer ?? state.rng.nextInt(state.players.length);
+    _openingHands();
+  }
+
+  /// Skirmish, War and Magma Chamber (CR 489–491). The first player is decided before the
+  /// battlefields, because in War and 2v2 theirs aren't used (CR 490.4.b, 491.5.b).
+  void _startMulti(StartMove m) {
+    state.mode = m.mode;
+    state.victoryScore = m.mode.victoryScore;
+    final n = state.players.length;
+    state.firstPlayer = m.firstPlayer ?? state.rng.nextInt(n);
+    final legendsUsed = <int, String>{};
+    final chosenBfs = <ObjId>[];
+    final bfNames = <int, List<String>>{};
+    for (var p = 0; p < n; p++) {
+      final deck = m.decks[p];
+      final legends = [for (final k in deck) if (db[k]?.type == CardType.legend) k];
+      if (legends.length != 1) throw RiftboundError('${playerName(p)}’s deck needs exactly one Champion Legend');
+      final legend = db[legends.first]!;
+      // Teammates may not use the same Champion Legend (CR 491.8.h).
+      for (final q in state.teammates(p)) {
+        if (legendsUsed[q] == legend.name) throw RiftboundError('Teammates can’t both play ${legend.name}');
+      }
+      legendsUsed[p] = legend.name;
+      final pl = state.player(p);
+      pl.legend = _newObj(legend.key, p, Zone.legend);
+      final rest = List.of(deck)..remove(legend.key);
+      final champ = rest.where((k) => db[k]?.type == CardType.unit && db[k]!.champion && legend.tags.any(db[k]!.hasTag)).firstOrNull;
+      if (champ != null) {
+        rest.remove(champ);
+        pl.champion = _newObj(champ, p, Zone.champion);
+        state.marks['champ:$p'] = pl.champion!;
+      }
+      final bfs = <String>[];
+      for (final k in rest) {
+        final c = db[k];
+        if (c == null) throw RiftboundError('Unknown card: $k');
+        switch (c.type) {
+          case CardType.battlefield:
+            bfs.add(k);
+          case CardType.rune:
+            pl.runeDeck.add(_newObj(k, p, Zone.runeDeck));
+          case CardType.legend:
+            break;
+          default:
+            pl.deck.add(_newObj(k, p, Zone.mainDeck));
+        }
+      }
+      if (bfs.isEmpty) throw RiftboundError('${playerName(p)}’s deck needs a battlefield');
+      // In War and 2v2 the first player's battlefields aren't used (CR 490.4.b, 491.5.b); the
+      // others each pick one at random (CR 489.5, 490.5, 491.5.a). Teammates may not use the same
+      // battlefield (CR 491.8.i), so a teammate's pick is skipped while another is possible.
+      if (!(m.mode != RMode.ffa3 && p == state.firstPlayer)) {
+        final taken = {for (final q in state.teammates(p)) ...?bfNames[q]};
+        final open = [for (final k in bfs) if (!taken.contains(db[k]!.name)) k];
+        final from = open.isEmpty ? bfs : open;
+        final pick = from[state.rng.nextInt(from.length)];
+        bfNames[p] = [db[pick]!.name];
+        chosenBfs.add(_newObj(pick, p, Zone.battlefield));
+      }
+      state.rng.shuffle(pl.deck);
+      state.rng.shuffle(pl.runeDeck);
+    }
+    for (final b in chosenBfs) {
+      state.obj(b).loc = state.bfs.length;
+      state.bfs.add(Bf(b));
+    }
+    _openingHands();
+  }
+
+  void _openingHands() {
     state.phase = Phase.main;
     log('${playerName(state.firstPlayer)} goes first.', player: state.firstPlayer, kind: 'turn');
     for (var p = 0; p < state.players.length; p++) {
@@ -316,7 +398,12 @@ class Game implements TcgMatch {
     // Awaken (CR 315.1): ready everything the turn player controls.
     final pl = state.player(p);
     pl.playedThisTurn = 0;
+    // A side scores each battlefield once per turn (CR 472): every player's record starts over.
+    for (final q in state.players) {
+      if (state.multi) q.scored = [];
+    }
     pl.scored = [];
+    _multiNewTurn();
     _genNewTurn(p);
     final readied = <ObjId>[];
     for (final o in state.objects.values) {
@@ -349,6 +436,7 @@ class Game implements TcgMatch {
     switch (state.step) {
       case Step.beginning:
         state.step = Step.scoring;
+        _teamsScoringStep(p);
         // Scoring step (CR 315.2.b): hold every battlefield you control.
         for (var i = 0; i < state.bfs.length; i++) {
           if (state.bfs[i].controller == p) _scoreBf(p, i, conquer: false);
@@ -356,11 +444,16 @@ class Game implements TcgMatch {
       case Step.scoring:
         state.step = Step.channel;
         // Channel phase (CR 315.3, 487.7): 2 runes; the second player's first turn 3.
-        final first = state.turn == 2 && p != state.firstPlayer;
+        // With more players, the player going last channels the extra rune (CR 489.7, 490.7, 491.7).
+        final first = state.multi
+            ? state.turn == state.players.length && state.nextSeat(p) == state.firstPlayer
+            : state.turn == 2 && p != state.firstPlayer;
         _channel(p, _w3ChannelCount(first ? 3 : 2));
       case Step.channel:
         state.step = Step.draw;
-        if (!_s1SkipDraw(p)) _draw(p, 1);
+        // With more players, the first player skips their first draw (CR 489.7, 490.7, 491.7).
+        final skipFirst = state.multi && state.turn == 1;
+        if (!skipFirst && !_s1SkipDraw(p)) _draw(p, 1);
       case Step.draw:
         state.step = Step.main;
         // Main phase (CR 316.3): rune pools empty.
@@ -404,6 +497,62 @@ class Game implements TcgMatch {
     _w3EmptyPools();
   }
 
+  /// A player concedes (CR 649–652). In a Duel the other player wins; with more, the player and
+  /// their teammates are removed (CR 651.4) and play goes on while more than one side remains.
+  void _removePlayer(int seat) {
+    if (!state.multi) {
+      state.player(seat).lost = true;
+      _win(state.other(seat));
+      return;
+    }
+    final out = [seat, ...state.teammates(seat)];
+    for (final p in out) {
+      state.player(p).lost = true;
+    }
+    final left = [for (var p = 0; p < state.players.length; p++) if (state.inGame(p)) p];
+    if (left.isEmpty) return;
+    if (left.every((p) => state.allied(p, left.first))) {
+      _win(left.first);
+      return;
+    }
+    // Banish what they control or own (CR 652.1). Their battlefield stays in play.
+    final ids = state.objects.keys.toList()..sortStable((a, b) => a - b);
+    for (final id in ids) {
+      final o = state.obj(id);
+      if (!out.contains(o.controller) && !out.contains(o.owner)) continue;
+      final pl = state.player(o.owner);
+      if (o.zone == Zone.board) {
+        _leaveBoard(id, toHand: false);
+        if (o.zone != Zone.trash) continue; // a token ceases to exist
+        pl.trash.remove(id);
+      } else if (o.zone == Zone.runes) {
+        state.player(o.controller).runes.remove(id);
+      } else if (o.zone != Zone.facedown) {
+        continue;
+      }
+      o.zone = Zone.banish;
+      pl.banish.add(id);
+    }
+    for (final b in state.bfs) {
+      if (b.controller != null && out.contains(b.controller)) b.controller = null;
+    }
+    state.chain = [for (final c in state.chain) if (!out.contains(c.controller)) c];
+    state.waiting = [for (final c in state.waiting) if (!out.contains(c.controller)) c];
+    state.passes = 0;
+    if (out.contains(state.priority)) state.priority = state.nextSeat(state.priority);
+    final sd = state.showdown;
+    if (sd != null && out.contains(sd.focus)) {
+      sd.focus = state.nextSeat(sd.focus);
+      sd.passes = 0;
+    }
+    if (out.contains(state.active)) {
+      state.chain = [];
+      state.waiting = [];
+      state.showdown = null;
+      _beginTurn(state.nextSeat(state.active));
+    }
+  }
+
   void _win(int p) {
     if (state.over) return;
     state.winner = p;
@@ -441,7 +590,7 @@ class Game implements TcgMatch {
           // The chain the Focus player started has closed: Focus passes (CR 346).
           sd.focusChain = false;
           sd.passes = 0;
-          sd.focus = state.other(sd.focus);
+          sd.focus = state.nextSeat(sd.focus);
           continue;
         }
         if (_canActInShowdown(sd.focus)) return;
@@ -470,26 +619,27 @@ class Game implements TcgMatch {
     throw RiftboundError('Nothing to pass');
   }
 
-  /// CR 338.1.b, 339: when both players pass in sequence, the newest item resolves.
+  /// CR 338.1.b, 339: when every player passes in sequence, the newest item resolves. Priority
+  /// goes around the table in turn order.
   void _passPriority(int p) {
     state.passes++;
-    if (state.passes >= state.players.length) {
+    if (state.passes >= state.inGameCount) {
       state.passes = 0;
       _resolveTop();
       if (state.chain.isNotEmpty) state.priority = state.chain.last.controller;
     } else {
-      state.priority = state.other(p);
+      state.priority = state.nextSeat(p);
     }
   }
 
-  /// CR 347.2: when both players pass Focus in sequence, the showdown ends.
+  /// CR 347.2: when every player passes Focus in sequence, the showdown ends.
   void _passFocus(int p) {
     final sd = state.showdown!;
     sd.passes++;
-    if (sd.passes >= state.players.length) {
+    if (sd.passes >= state.inGameCount) {
       _closeShowdown();
     } else {
-      sd.focus = state.other(p);
+      sd.focus = state.nextSeat(p);
     }
   }
 }

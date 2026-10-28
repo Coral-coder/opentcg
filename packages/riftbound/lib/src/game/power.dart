@@ -348,7 +348,7 @@ extension GamePowerRules on Game {
     final ok = parsed(id).abilities.any(me) || _passives().any((x) => x.$2 is PlayToLoneEnemy && (x.$2 as PlayToLoneEnemy).friendly && state.obj(x.$1).controller == p);
     if (!ok || card(id).type != CardType.unit) return;
     for (var i = 0; i < state.bfs.length; i++) {
-      if (unitsAt(i, player: state.other(p)).length == 1) yield i;
+      if (enemyUnits(p, bf: i).length == 1) yield i;
     }
   }
 
@@ -478,7 +478,7 @@ extension GamePowerRules on Game {
   /// Can't [id] be chosen by [p]'s spells and abilities?
   bool _unchoosable(ObjId id, int p) {
     final o = state.objOrNull(id);
-    if (o == null || o.controller == p) return false;
+    if (o == null || state.allied(o.controller, p)) return false;
     return o.pw.untargetableTurn == state.turn;
   }
 
@@ -686,7 +686,7 @@ extension GamePowerRules on Game {
       case ControlTag(:final tag):
         return units(player: p).any((u) => card(u).hasTag(tag));
       case OpponentNearVictory(:final n):
-        return state.player(state.other(p)).points >= state.victoryScore - n;
+        return anyOpponent(p, (o) => state.player(o).points >= state.victoryScore - n);
       case AtBattlefield():
         final o = state.objOrNull(ctx.source);
         return o != null && o.zone == Zone.board && o.loc != base;
@@ -761,7 +761,7 @@ extension GamePowerRules on Game {
         final pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: '${nameOf(ctx.source)}: choose a unit whose buff to spend', options: options, source: ctx.source));
         return _spendBuff(pick.first, p);
       case PayKillGear():
-        final options = [...gearOf(p), ...gearOf(state.other(p))];
+        final options = [...gearOf(p), for (final q in state.opponents(p)) ...gearOf(q)];
         final pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: '${nameOf(ctx.source)}: choose a gear to kill', options: options, source: ctx.source));
         _kill(pick.first);
         return true;
@@ -894,7 +894,7 @@ extension GamePowerRules on Game {
       case BanishFromTrash(:final unitsOnly):
         _banishFromTrash(p, ctx.source, unitsOnly: unitsOnly);
       case Burn(:final n, :final opponent):
-        _burn(opponent ? state.other(p) : p, n);
+        _burn(opponent ? (state.multi ? chooseOpponent(p, '${nameOf(ctx.source)}: which opponent burns?') : state.other(p)) : p, n);
       case MightUpTo(:final slot):
         final other = _chosen(slot, ctx);
         final me = state.objOrNull(ctx.source);
@@ -958,7 +958,7 @@ extension GamePowerRules on Game {
         }
         if (pick.isNotEmpty && thenIfTags.isNotEmpty && thenIfTags.any(card(pick.first).hasTag)) _resolveChoosingNow(then, ctx);
       case PlayFromTrash(:final opponentsTrash, :final maxEnergy, :final maxPower):
-        final from = opponentsTrash ? state.other(p) : p;
+        final from = opponentsTrash ? (state.multi ? chooseOpponent(p, '${nameOf(ctx.source)}: whose trash?') : state.other(p)) : p;
         final options = [
           for (final id in state.player(from).trash)
             if (card(id).type == CardType.unit && (maxEnergy == null || card(id).energy <= maxEnergy) && (maxPower == null || card(id).power <= maxPower) && _xCanPlayNow(p, id, XPlay(effect: true, ignoreAll: true, toBase: !opponentsTrash, elsewhere: true))) id,
@@ -969,7 +969,7 @@ extension GamePowerRules on Game {
         // Played as part of this effect, ignoring its cost (game/costs.dart).
         _playFromHand(p, pick.first, via: XPlay(effect: true, ignoreAll: true, toBase: !opponentsTrash, elsewhere: true));
       case RevealHand(:final payXpDiscard, :final xp):
-        final o = state.other(p);
+        final o = state.multi ? chooseOpponent(p, '${nameOf(ctx.source)}: which opponent reveals their hand?') : state.other(p);
         final hand = state.player(o).hand;
         log('${playerName(o)} reveals their hand: ${hand.isEmpty ? 'nothing' : hand.map(nameOf).join(', ')}.', player: o, kind: 'info');
         if (payXpDiscard > 0 && hand.isNotEmpty && state.player(p).pw.xp >= payXpDiscard && askYesNo(p, 'Spend $payXpDiscard XP to choose a card from ${playerName(o)}’s hand for them to discard?', source: ctx.source)) {
@@ -1011,12 +1011,12 @@ extension GamePowerRules on Game {
         final bf = state.bfs.indexWhere((b) => b.obj == bfObj);
         if (mine == null || bf < 0) return;
         final m = mightUsed(mine);
-        final weaker = [for (final u in unitsAt(bf, player: state.other(p))) if (mightUsed(u) < m) u];
+        final weaker = [for (final u in enemyUnits(p, bf: bf)) if (mightUsed(u) < m) u];
         if (weaker.isNotEmpty) _moveUnits(weaker, base, p);
       case SplitMightDamage(:final slot, :final xpPerKill):
         final from = _chosen(slot, ctx);
         if (from == null) return;
-        final enemies = [for (final u in units(player: state.other(p))) if (state.obj(u).loc != base && !_noDamage(u)) u];
+        final enemies = [for (final u in enemyUnits(p)) if (state.obj(u).loc != base && !_noDamage(u)) u];
         // The player divides the damage as they like (CR 355.14), one point at a time; the
         // weakest unit is offered first.
         final split = <ObjId, int>{};
