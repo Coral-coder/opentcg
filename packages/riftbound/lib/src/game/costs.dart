@@ -125,13 +125,15 @@ extension GameCosts on Game {
         }
       }
     }
+    // Endless Riches: "You may play cards from your trash."
+    if (o.owner == p && o.zone == Zone.trash && pl.trash.contains(id) && _s1PlayFromTrash(p)) return XPlay(elsewhere: true);
     throw RiftboundError('That card isn’t in your hand');
   }
 
   /// Cards [seat] may play from the trash (for the list of moves): Flow, or an alternative cost.
   List<ObjId> _xExtraPlayable(int seat) => [
         for (final id in state.player(seat).trash)
-          if (_flowPlayable(seat, id) || parsed(id).abilities.any((a) => a is Static && a.passive is AltCost && (a.passive as AltCost).fromTrash)) id,
+          if (_flowPlayable(seat, id) || parsed(id).abilities.any((a) => a is Static && a.passive is AltCost && (a.passive as AltCost).fromTrash) || _s1PlayFromTrash(seat)) id,
       ];
 
   /// Takes a card out of whatever zone it's in (it's being played by [p] as [x]). A Flow spell

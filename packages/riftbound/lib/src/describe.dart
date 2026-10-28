@@ -47,6 +47,7 @@ String describeEffect(Effect e) => switch (e) {
       EqEffect() => e.describe(),
       XEffect() => describeXEffect(e),
       GenEffect() => e.describe(),
+      S1Effect() => e.describe(),
     };
 
 String describeCond(Cond c) => switch (c) {
@@ -57,12 +58,13 @@ String describeCond(Cond c) => switch (c) {
       EqCond() => c.describe(),
       XCond() => describeXCond(c),
       GenCond() => c.describe(),
+      S1Cond() => c.describe(),
     };
 
 String describeAbility(Ability a) => switch (a) {
       KeywordAb(:final kw, :final n) => 'KW ${kw.name}${n > 1 ? ' $n' : ''}',
       Triggered(:final on, :final effects, :final legion, :final gate) =>
-        'TRIG ${gate == null ? '' : '[${describeGate(gate)}] '}${legion ? 'legion ' : ''}${on is EqWhen ? on.event.name : on is GenWhen ? on.describe() : (on is XWhen && on.kind != null ? on.kind!.name : on.on.name)}${on is XWhen && on.n > 0 ? '(${on.n})' : ''}${on.moveToBattlefield ? '(bf)' : ''}${on is XWhen && on.fromTrash ? ' from trash' : ''}${on is XWhen && on.cond != null ? ' if ${describeCond(on.cond!)}' : ''} → ${effects.map(describeEffect).join('; ')}',
+        'TRIG ${gate == null ? '' : '[${describeGate(gate)}] '}${legion ? 'legion ' : ''}${on is EqWhen ? on.event.name : on is GenWhen ? on.describe() : on is S1When ? on.describe() : (on is XWhen && on.kind != null ? on.kind!.name : on.on.name)}${on is XWhen && on.n > 0 ? '(${on.n})' : ''}${on.moveToBattlefield ? '(bf)' : ''}${on is XWhen && on.fromTrash ? ' from trash' : ''}${on is XWhen && on.cond != null ? ' if ${describeCond(on.cond!)}' : ''} → ${effects.map(describeEffect).join('; ')}',
       Activated(:final cost, :final effects, :final timing, :final oncePerTurn, :final legion, :final gate) =>
         'ACT ${gate == null ? '' : '[${describeGate(gate)}] '}[${cost.describe()}]${timing == Timing.normal ? '' : ' ${timing.name}'}${legion ? ' legion' : ''}${oncePerTurn ? ' once/turn' : ''} → ${effects.map(describeEffect).join('; ')}',
       SpellBody(:final effects) => 'SPELL → ${effects.map(describeEffect).join('; ')}',
@@ -79,6 +81,7 @@ String describeAbility(Ability a) => switch (a) {
           HPassive() => passive.describe(),
           XPassive() => passive.describe(),
           GenPassive() => passive.describe(),
+          S1Passive() => passive.describe(),
         }}',
       RepeatCost(:final cost) => 'REPEAT ${cost.describe()}',
     };

@@ -43,6 +43,7 @@ extension GameCombat on Game {
       }
     }
     _xAfterCleanup();
+    _s1Cleanup();
     return changed;
   }
 
@@ -203,6 +204,7 @@ extension GameCombat on Game {
     }
     _fire(conquer ? On.youConquer : On.youHold, player: p, bf: bf);
     _genScored(p, bf, conquer, queuedFrom);
+    _s1Scored(p, bf, conquer);
     if (conquer) _conquerAgain(p, bf, queuedFrom);
   }
 

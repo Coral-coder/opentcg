@@ -39,12 +39,22 @@ enum Zone {
 const base = -1;
 
 class Obj {
-  Obj({required this.id, required this.card, required this.owner, required this.zone}) : controller = owner;
+  // ignore: prefer_initializing_formals
+  Obj({required this.id, required this.card, required this.owner, required Zone zone}) : controller = owner, _zone = zone;
   final ObjId id;
   final String card;
   final int owner;
   int controller;
-  Zone zone;
+  Zone _zone;
+  Zone get zone => _zone;
+  set zone(Zone z) {
+    if (z == Zone.trash && _zone != Zone.trash) trashFrom = _zone;
+    _zone = z;
+  }
+
+  /// Where it last came to the trash from, until the next cleanup looks (Endless Riches,
+  /// game/w2s1.dart). Not part of the digest: it never outlives a move.
+  Zone? trashFrom;
 
   /// [base] or a battlefield's index.
   int loc = base;
@@ -84,7 +94,8 @@ class Obj {
     ..usedThisTurn = List.of(usedThisTurn)
     ..eq = eq.clone()
     ..pw = pw.clone()
-    ..banishedBy = banishedBy;
+    ..banishedBy = banishedBy
+    ..trashFrom = trashFrom;
 
   /// Leaving the board (or entering it) makes a new object for rules purposes (CR 124.1).
   void reset() {

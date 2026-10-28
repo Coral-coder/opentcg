@@ -10,9 +10,10 @@ part 'general.dart';
 part 'costs.dart';
 part 'power.dart';
 part 'hidden.dart';
+part 'w2s1.dart';
 
 /// Bumped whenever parsing or the engine changes what a saved game would replay to.
-const riftboundEngineVersion = 6;
+const riftboundEngineVersion = 7;
 
 class ParsedCard {
   ParsedCard(this.abilities, this.unsupported, [this.extra = const []]);
@@ -141,6 +142,8 @@ class _Line {
       t = t.substring(m.end);
     }
     if (t.isEmpty) return out;
+    final s1 = _s1Line(t, line);
+    if (s1 != null) return [...out, ...s1];
     final pw = _powerLine(t, line);
     if (pw != null) return [...out, ...pw];
     final x = _xLine(t, line);
@@ -538,7 +541,7 @@ class _Line {
     final m = RegExp(r'^you have (\d+)\+ units at that battlefield$').firstMatch(c);
     if (m != null && _eventBf) return UnitsThere(int.parse(m[1]!));
     final mark = _mark();
-    return _powerCond(c) ?? (general ? _genCond(c) : null) ?? _miss(mark, 'C', c);
+    return _powerCond(c) ?? _s1Cond(c) ?? (general ? _genCond(c) : null) ?? _miss(mark, 'C', c);
   }
 
   /// A target phrase → a target; null if not understood.

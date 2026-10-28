@@ -44,6 +44,8 @@ List<Ability> _eqExtra(RCard c, List<Ability> abilities, List<String> unsupporte
       switch (e) {
         case EqGrantThisTurn(:final ability):
           out.add(ability);
+        case S1DoubleAndGrant(:final ability):
+          out.add(ability);
         case May(:final effects) || If(:final effects):
           walk(effects);
         default:

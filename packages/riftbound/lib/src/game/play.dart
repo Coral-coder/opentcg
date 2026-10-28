@@ -50,6 +50,7 @@ extension GamePlay on Game {
         if (a.legion && pl.playedThisTurn < 1) continue;
         final add = a.effects.first as AddRes;
         if (add.spellsOnly && !forSpell) continue;
+        if (!_s1AddOk(add)) continue;
         out.add((src, i, add));
       }
     }
@@ -217,7 +218,7 @@ extension GamePlay on Game {
       ambushOnly = t != null && fd == null && c.type == CardType.unit && _hAmbushTiming(p, id);
       if (t != null && !ambushOnly) throw RiftboundError(t);
     }
-    final gp = _genPlayProblem(p, id);
+    final gp = _genPlayProblem(p, id) ?? _s1PlayProblem(p, id);
     if (gp != null) throw RiftboundError(gp);
     if (!_xCanPay(p, id, x)) throw RiftboundError('Not enough runes (${_costLabel(c)})');
     // Make relevant choices (CR 355): optional, additional and alternative costs first (CR
@@ -226,7 +227,10 @@ extension GamePlay on Game {
     state.marks.remove('t:paid:$id');
     if (x.paidAdditional) state.marks['t:paid:$id'] = 1;
     var loc = base;
-    if (c.type == CardType.unit && x.at != null) {
+    final s1At = _s1PlayAt(p, id);
+    if (s1At != null) {
+      loc = s1At;
+    } else if (c.type == CardType.unit && x.at != null) {
       loc = x.at!;
     } else if (c.type == CardType.unit && x.roostBf >= 0) {
       loc = x.roostBf;
@@ -366,7 +370,7 @@ extension GamePlay on Game {
     if (isAdd && a.timing != Timing.reaction && _timingProblem(p, Timing.normal) != null) throw RiftboundError('Not now');
     if (a.oncePerTurn && o.usedThisTurn.contains(index)) throw RiftboundError('Only once per turn');
     if (a.cost.exhaust && o.exhausted) throw RiftboundError('${nameOf(src)} is exhausted');
-    final problem = _powerActivateProblem(p, src, index, a) ?? _xCostProblem(p, src, a.cost);
+    final problem = _powerActivateProblem(p, src, index, a) ?? _xCostProblem(p, src, a.cost) ?? _s1ActivateProblem(a);
     if (problem != null) throw RiftboundError(problem);
     final ac = _activationCost(p, src, a);
     final energy = _xAbilityEnergy(p, src, a, ac.energy);
@@ -462,6 +466,7 @@ extension GamePlay on Game {
     final ab = _eqAbilityAt(db[key]!, index);
     if (ab is Triggered && !_gateOk(src, ab.gate)) return;
     if (!_genTriggerOk(src, index, controller, loc == -2 ? o.loc : loc, event, card: key)) return;
+    if (!_s1TriggerOk(src, index, key)) return;
     state.waiting.add(ChainItem(id: 0, source: src, card: key, ability: index, controller: controller, loc: loc == -2 ? o.loc : loc, fromTrigger: true, event: event, via: via));
   }
 
@@ -559,6 +564,7 @@ extension GamePlay on Game {
         state.player(o.owner).trash.add(o.id);
         _xAfterSpellTrashed(item);
       }
+      _s1AfterSpell(item);
       // Playing a spell is complete when it resolves (CR 420.4.a).
       _fire(On.youPlaySpell, player: item.controller);
       _genSpellDone(item);
@@ -640,7 +646,7 @@ extension GamePlay on Game {
   void _kill(ObjId id) {
     final o = state.obj(id);
     if (o.zone != Zone.board) return;
-    if (_eqDieInstead(id) || _hSaved(id) || _savedFromDeath(id) || _genReplaceDeath(id)) return;
+    if (_eqDieInstead(id) || _hSaved(id) || _savedFromDeath(id) || _genReplaceDeath(id) || _s1ReplaceDeath(id)) return;
     _xOnKill(o);
     final abs = _eqInactive(id) ? const <Ability>[] : parsed(id).abilities;
     for (var i = 0; i < abs.length; i++) {

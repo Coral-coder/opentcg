@@ -37,6 +37,7 @@ part 'equip.dart';
 part 'general.dart';
 part 'power.dart';
 part 'hidden.dart';
+part 'w2s1.dart';
 
 class NeedDecision implements Exception {
   NeedDecision(this.decision);
@@ -352,7 +353,7 @@ class Game implements TcgMatch {
         _channel(p, first ? 3 : 2);
       case Step.channel:
         state.step = Step.draw;
-        _draw(p, 1);
+        if (!_s1SkipDraw(p)) _draw(p, 1);
       case Step.draw:
         state.step = Step.main;
         // Main phase (CR 316.3): rune pools empty.

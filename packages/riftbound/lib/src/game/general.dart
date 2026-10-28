@@ -1899,6 +1899,7 @@ extension GameGeneral on Game {
     // A showdown without combat: no combat facts for the conquer it may bring.
     if (ev == GEv.showdownHere) _gen.turn.remove('combat');
     if (_probe) return;
+    _s1Event(ev, player: player, loc: loc);
     final sources = <ObjId>[];
     for (var q = 0; q < state.players.length; q++) {
       final pl = state.player(q);

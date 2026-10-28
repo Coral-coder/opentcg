@@ -36,7 +36,7 @@ extension GameHidden on Game {
   /// Battlefields [p] controls with an empty Facedown Zone (CR 107.3.b: one card each).
   List<int> hideSpots(int p) => [
         for (var i = 0; i < state.bfs.length; i++)
-          if (state.bfs[i].controller == p && facedownAt(i) == null) i,
+          if (state.bfs[i].controller == p && (facedownAt(i) == null || _s1ExtraHide(i))) i,
       ];
 
   /// The card facedown at battlefield [bf], if any.

@@ -37,6 +37,8 @@ class RCardDb {
     const RCard(name: 'Tentacle', type: CardType.unit, token: true, might: 1, tags: ['Bilgewater']),
     const RCard(name: 'Shadow Clone', type: CardType.unit, token: true, might: 0, text: 'When I attack, you may banish a unit from your trash. If you do, give me [Assault 4] this turn.'),
     const RCard(name: 'Gold', type: CardType.gear, token: true, text: '[Reaction] Kill this, {E}: [Add] {A}.'),
+    // Baron Nashor adds it to the board (game/w2s1.dart).
+    const RCard(name: 'Baron Pit', type: CardType.battlefield, token: true, text: 'Units can move here from anywhere.'),
   ];
 
   /// From Riftcodex card objects (https://api.riftcodex.com/cards, all pages). Alternate-art and
