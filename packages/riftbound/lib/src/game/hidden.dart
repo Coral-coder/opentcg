@@ -486,6 +486,7 @@ extension GameHidden on Game {
         final pick = ask(Decision(kind: DecisionKind.cards, player: p, prompt: 'Move which units to ${nameOf(state.bfs[to].obj)}?', options: mine, min: 0, max: mine.length, source: ctx.source));
         if (pick.isNotEmpty) _moveUnits(pick, to, p);
       case RevealHiddenDamage(:final n, :final target):
+        _w3BeforeReveal(p);
         final deck = state.player(p).deck;
         final top = deck.take(n).toList();
         if (top.isEmpty) break;

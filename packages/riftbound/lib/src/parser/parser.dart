@@ -10,9 +10,10 @@ part 'general.dart';
 part 'costs.dart';
 part 'power.dart';
 part 'hidden.dart';
+part 'w2s3.dart';
 
 /// Bumped whenever parsing or the engine changes what a saved game would replay to.
-const riftboundEngineVersion = 6;
+const riftboundEngineVersion = 7;
 
 class ParsedCard {
   ParsedCard(this.abilities, this.unsupported, [this.extra = const []]);
@@ -141,6 +142,8 @@ class _Line {
       t = t.substring(m.end);
     }
     if (t.isEmpty) return out;
+    final w3 = _w3Line(t, line);
+    if (w3 != null) return [...out, ...w3];
     final pw = _powerLine(t, line);
     if (pw != null) return [...out, ...pw];
     final x = _xLine(t, line);
@@ -373,6 +376,8 @@ class _Line {
   /// other forms (parser/power.dart).
   List<Effect>? _sentence(String s0) {
     final mark = _mark();
+    final w3 = _w3Sentence(s0);
+    if (w3 != null) return w3;
     final early = _powerSentenceEarly(s0);
     if (early != null) return early;
     final slot = _slotCounter[0];

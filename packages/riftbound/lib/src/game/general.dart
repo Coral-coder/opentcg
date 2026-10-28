@@ -1014,6 +1014,7 @@ extension GameGeneral on Game {
       case LookTop():
         _genLookTop(e, ctx);
       case RevealTop(:final filter, :final yes, :final no):
+        _w3BeforeReveal(p);
         final deck = state.player(p).deck;
         if (deck.isEmpty) return;
         final top = deck.first;
@@ -1652,6 +1653,8 @@ extension GameGeneral on Game {
     final path = cardKey.isEmpty ? null : _genPath(_genRootEffects(cardKey, ctx.ability), e);
     final objs = e.target == null ? <ObjId>[e.kind == DelayKind.noSpells && e.n == 1 ? (ctx.scratch['counteredCtl'] ?? -1) : -1] : _resolveTarget(e.target!, ctx);
     for (final id in objs) {
+      // "They can't move it this turn": read by _genMoveDests.
+      if (e.kind == DelayKind.cantMove && id > 0) _gen.add('o$id:cantMove');
       _gen.delayed.add(
         GenDelayed(
           kind: e.kind.index,
