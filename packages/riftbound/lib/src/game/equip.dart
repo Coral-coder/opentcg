@@ -183,15 +183,6 @@ extension GameEquip on Game {
   /// "I can't be moved by enemy spells and abilities": a move by [mover] that doesn't happen.
   bool _eqUnmovable(ObjId id, int mover) => state.obj(id).controller != mover && _eqOwnPassives(id).any((x) => x.$1 is EqUnmovable);
 
-  /// Bonus Damage [p]'s spells and abilities deal (CR 712–715).
-  int _eqBonusDamage(int p) {
-    var n = 0;
-    for (final (src, x) in _passives()) {
-      if (x is EqBonusDamage && state.obj(src).controller == p) n += x.n;
-    }
-    return n;
-  }
-
   // -------------------------------------------------------------------------------------------
   // Attaching and detaching (CR 435, 436)
   // -------------------------------------------------------------------------------------------
@@ -421,6 +412,7 @@ extension GameEquip on Game {
       _eqBanish(src);
     }
     log('${playerName(p)} uses ${nameOf(src)}${a is EqEquip ? ' (Equip)' : ''}.', player: p, card: src, kind: 'ability');
+    if (card(src).type == CardType.gear) _genEvent(GEv.gearAbility, player: p, obj: src);
     _pushChain(ChainItem(id: state.nextChainId++, source: src, card: cardKey ?? _eqCardKey(src), ability: abilityIndex ?? index, controller: p, targets: targets, loc: loc, via: via));
     if (state.showdown?.focus == p) state.showdown!.focusChain = true;
   }
@@ -606,26 +598,6 @@ extension GameEquip on Game {
     }
   }
 
-  /// Excess damage each side assigned (CR 467.2.c.4), for "if you assigned N or more excess damage".
-  void _eqNoteExcess(List<ObjId> attackers, List<ObjId> defenders, Map<ObjId, int> toDefenders, Map<ObjId, int> toAttackers) {
-    int excess(Map<ObjId, int> given) {
-      var n = 0;
-      for (final e in given.entries) {
-        final m = might(e.key);
-        final lethal = (m > 0 ? m : 1) - state.obj(e.key).damage;
-        if (e.value > lethal) n += e.value - (lethal < 0 ? 0 : lethal);
-      }
-      return n;
-    }
-
-    if (attackers.isEmpty || defenders.isEmpty) return;
-    final att = state.obj(attackers.first).controller;
-    state.eq.excess[att] = excess(toDefenders);
-    state.eq.excess[state.other(att)] = excess(toAttackers);
-    state.eq.excessBf = state.obj(attackers.first).loc;
-    state.eq.excessTurn = state.turn;
-  }
-
   // -------------------------------------------------------------------------------------------
   // Choosing and resolving
   // -------------------------------------------------------------------------------------------
@@ -660,7 +632,6 @@ extension GameEquip on Game {
       };
 
   bool _eqCond(EqCond c, _Ctx ctx) => switch (c) {
-        EqExcessAtLeast(:final n) => state.eq.excessTurn == state.turn && state.eq.excessBf == ctx.loc && state.eq.excess[ctx.controller] >= n,
         EqIsEquipment(:final slot) => slot < ctx.targets.length && ctx.targets[slot] >= 0 && state.objOrNull(ctx.targets[slot])?.zone == Zone.board && isEquipmentObj(ctx.targets[slot]),
         _ => state.objOrNull(ctx.source) != null && _eqHolds(c, ctx.source, ctx.via),
       };

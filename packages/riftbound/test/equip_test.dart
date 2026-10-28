@@ -330,16 +330,12 @@ void main() {
       final u = g.addCard('Daring Poro', 0, zone: Zone.board);
       equip(g, rd, u);
       final target = g.addCard('Zephyr Sage', 1, zone: Zone.board, loc: 0); // 6 Might
-      g.addRunes(0, Domain.fury, 2);
-      final bolt = g.addCard('Get Excited!', 0);
-      if (g.whyNot(PlayMove(0, bolt)) == null) {
-        g.apply(PlayMove(0, bolt));
-        if (g.pending != null) answer(g, [target]);
-        passAll(g);
-        expect(g.state.obj(target).damage, greaterThanOrEqualTo(3));
-      }
-      // Directly: an ability's Deal adds the bonus.
-      expect(RiftboundParser.parse(db['Rabadon\'s Deathcrown']!).extra.first, isA<Static>());
+      g.addRunes(0, Domain.fury, 4);
+      final bolt = g.addCard('Disintegrate', 0); // {4} Deal 3 to a unit at a battlefield
+      g.apply(PlayMove(0, bolt));
+      if (g.pending != null) answer(g, [target]);
+      passAll(g);
+      expect(g.state.obj(target).zone, Zone.trash, reason: '3 + 3 Bonus Damage kills a 6-Might unit');
     });
 
     test('Experimental Hexplate: "I am a Mech" (CR 479.2)', () {

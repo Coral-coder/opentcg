@@ -53,17 +53,10 @@ class EqState {
   /// The battlefield being conquered from an open state (CR 170.11.c), while it's scored; -1.
   int openConquest = -1;
 
-  /// Excess combat damage each player assigned in the last combat (CR 467.2.c.4), and where/when.
-  List<int> excess = [0, 0];
-  int excessBf = -1;
-  int excessTurn = 0;
 
   EqState clone() => EqState()
     ..equipmentPlayed = List.of(equipmentPlayed)
-    ..openConquest = openConquest
-    ..excess = List.of(excess)
-    ..excessBf = excessBf
-    ..excessTurn = excessTurn;
+    ..openConquest = openConquest;
 
-  String digest() => '${equipmentPlayed.join(',')}/$openConquest/${excess.join(',')}/$excessBf/$excessTurn';
+  String digest() => '${equipmentPlayed.join(',')}/$openConquest';
 }

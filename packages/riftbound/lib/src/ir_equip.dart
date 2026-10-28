@@ -119,14 +119,6 @@ class EqDidntConquer extends EqCond {
   String describe() => 'I didn’t conquer this turn';
 }
 
-/// "If you assigned N or more excess damage" (in the combat that led to this conquest).
-class EqExcessAtLeast extends EqCond {
-  const EqExcessAtLeast(this.n);
-  final int n;
-  @override
-  String describe() => 'assigned $n+ excess damage';
-}
-
 /// "If it's an Equipment" (the object chosen in [slot]).
 class EqIsEquipment extends EqCond {
   const EqIsEquipment(this.slot);
@@ -229,14 +221,6 @@ class EqUnmovable extends EqPassive {
   const EqUnmovable();
   @override
   String describe() => 'can’t be moved by enemies';
-}
-
-/// "Your spells and abilities deal N Bonus Damage." (CR 712)
-class EqBonusDamage extends EqPassive {
-  const EqBonusDamage(this.n);
-  final int n;
-  @override
-  String describe() => 'spells and abilities deal $n Bonus Damage';
 }
 
 /// "My hold effects are also conquer effects, and vice versa."

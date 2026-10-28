@@ -11,13 +11,14 @@ extension GameCombat on Game {
     // 3a. Units with lethal damage die (CR 142.4, 323.4).
     for (final o in state.objects.values.toList()) {
       if (o.zone != Zone.board || card(o.id).type != CardType.unit) continue;
-      if (o.damage > 0 && o.damage >= might(o.id)) {
+      if (_genLethal(o.id)) {
         log('${nameOf(o.id)} dies.', player: o.controller, card: o.id, kind: 'die');
         _kill(o.id);
         changed = true;
       }
     }
     if (_eqCleanup()) changed = true;
+    if (_genCleanup()) changed = true;
     _powerCleanup();
     // 4. Control is lost of battlefields without your units (open state, no showdown there; CR 323.5).
     if (state.chain.isEmpty) {
@@ -50,7 +51,7 @@ extension GameCombat on Game {
     // CR 194.2: at or above the Victory Score and more points than every opponent.
     for (var p = 0; p < state.players.length; p++) {
       final pts = state.player(p).points;
-      if (pts >= state.victoryScore && pts > state.player(state.other(p)).points) {
+      if (pts >= _genVictoryScore() && pts > state.player(state.other(p)).points) {
         _win(p);
         return;
       }
@@ -85,8 +86,10 @@ extension GameCombat on Game {
             _fire(On.enemyAttacksYourBf, player: def, bf: i, event: u);
           }
         }
+        _genCombatStart(i, c, mine, theirs);
       } else {
         log('Showdown at ${nameOf(b.obj)}.', player: c, kind: 'showdown');
+        _genEvent(GEv.showdownHere, player: c, loc: i);
       }
       return true;
     }
@@ -97,7 +100,7 @@ extension GameCombat on Game {
     final abs = parsed(u).abilities;
     for (var i = 0; i < abs.length; i++) {
       final a = abs[i];
-      if (a is Triggered && ons.contains(a.on.on)) _queue(u, i, state.obj(u).controller);
+      if (a is Triggered && (ons.contains(a.on.on) || ons.any((on) => _genAlsoOn(a.on, on)))) _queue(u, i, state.obj(u).controller);
     }
     _eqFireUnit(u, ons);
   }
@@ -115,7 +118,7 @@ extension GameCombat on Game {
       if (attackers.isNotEmpty && defenders.isNotEmpty) _combatDamage(attackers, defenders);
       // Combat cleanup (CR 468.1): kill, heal all units, recall attackers if defenders remain.
       for (final o in state.objects.values.toList()) {
-        if (o.zone == Zone.board && card(o.id).type == CardType.unit && o.damage > 0 && o.damage >= might(o.id)) {
+        if (o.zone == Zone.board && card(o.id).type == CardType.unit && _genLethal(o.id)) {
           log('${nameOf(o.id)} dies.', player: o.controller, card: o.id, kind: 'die');
           _kill(o.id);
         }
@@ -175,7 +178,10 @@ extension GameCombat on Game {
     if (pl.scored.contains(bf)) return;
     pl.scored.add(bf);
     final b = state.bfs[bf];
-    if (conquer && pl.points >= state.victoryScore - 1 && pl.scored.length < state.bfs.length) {
+    if (conquer) _gen.add('p$p:conquered$bf');
+    if (_genCantScore(p, bf)) {
+      log('${pl.name} ${conquer ? 'conquers' : 'holds'} ${nameOf(b.obj)} but can’t score.', player: p, kind: conquer ? 'conquer' : 'hold');
+    } else if (conquer && pl.points >= _genVictoryScore() - 1 && pl.scored.length < state.bfs.length) {
       log('${pl.name} conquers ${nameOf(b.obj)} but needs every battlefield this turn for the final point, and draws instead.', player: p, kind: 'conquer');
       _draw(p, 1);
     } else {
@@ -196,6 +202,7 @@ extension GameCombat on Game {
       _fireUnit(u, {conquer ? On.conquer : On.hold});
     }
     _fire(conquer ? On.youConquer : On.youHold, player: p, bf: bf);
+    _genScored(p, bf, conquer, queuedFrom);
     if (conquer) _conquerAgain(p, bf, queuedFrom);
   }
 
@@ -209,26 +216,29 @@ extension GameCombat on Game {
         if (state.obj(u).stunned) continue;
         if (parsed(u).abilities.any((a) => a is Static && a.passive is NoCombatDamage)) continue;
         if (_hNoCombatDamage(u)) continue;
+        if (!_genDealsCombatDamage(u)) continue;
         t += mightUsed(u);
       }
       return t;
     }
 
-    final toDefenders = _assign(total(attackers), defenders);
-    final toAttackers = _assign(total(defenders), attackers);
-    _eqNoteExcess(attackers, defenders, toDefenders, toAttackers);
+    final bf = state.obj(attackers.first).loc;
+    final att = state.obj(attackers.first).controller;
+    final toDefenders = _assign(total(attackers), defenders, ignoreTank: _genIgnoresTank(att, bf));
+    final toAttackers = _assign(total(defenders), attackers, ignoreTank: _genIgnoresTank(state.other(att), bf));
+    _genNoteExcess(att, total(attackers), defenders);
+    _genNoteExcess(state.other(att), total(defenders), attackers);
     for (final e in [...toDefenders.entries, ...toAttackers.entries]) {
       if (e.value <= 0) continue;
-      final d = _hDamage(e.key, e.value);
-      state.obj(e.key).damage += d;
-      log('${nameOf(e.key)} takes $d combat damage.', player: state.obj(e.key).controller, card: e.key, kind: 'damage', amount: d);
+      final d = _genCombatHit(e.key, e.value);
+      if (d > 0) log('${nameOf(e.key)} takes $d combat damage.', player: state.obj(e.key).controller, card: e.key, kind: 'damage', amount: d);
     }
   }
 
-  Map<ObjId, int> _assign(int amount, List<ObjId> targets) {
+  Map<ObjId, int> _assign(int amount, List<ObjId> targets, {bool ignoreTank = false}) {
     final out = <ObjId, int>{};
     if (amount <= 0 || targets.isEmpty) return out;
-    int rank(ObjId u) => hasKw(u, Kw.tank) ? 0 : (hasKw(u, Kw.backline) ? 2 : 1);
+    int rank(ObjId u) => hasKw(u, Kw.tank) && !ignoreTank ? 0 : (hasKw(u, Kw.backline) ? 2 : 1);
     int need(ObjId u) {
       final m = might(u);
       final d = state.obj(u).damage;

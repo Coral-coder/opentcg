@@ -73,11 +73,13 @@ class KillFriendly extends CostPart {
   const KillFriendly();
 }
 
-/// "Discard 1" / "Discard a spell".
+/// "Discard 1" / "Discard a spell" / "Discard a gear".
 class DiscardCost extends CostPart {
-  const DiscardCost(this.n, {this.spell = false});
+  const DiscardCost(this.n, {this.spell = false, this.gear = false});
   final int n;
-  final bool spell;
+  final bool spell, gear;
+
+  bool allows(CardType t) => (!spell || t == CardType.spell) && (!gear || t == CardType.gear);
 }
 
 /// "This ability costs {N} less if you control M or fewer runes" / "… {N} less for each rune you
@@ -94,7 +96,8 @@ String describeCostPart(CostPart c) => switch (c) {
       SpendMyBuff() => 'spend my buff',
       DisempowerMe() => 'disempower me',
       KillFriendly() => 'kill a friendly unit',
-      DiscardCost(:final n, :final spell) => spell ? 'discard a spell' : 'discard $n',
+      DiscardCost(:final n, :final spell, :final gear) => spell ? 'discard a spell' : (gear ? 'discard a gear' : 'discard $n'),
+      GenCostPart() => c.describe(),
       EnergyLess(:final n, :final ifRunesAtMost, :final perRune) => perRune ? '{$n} less per rune' : '{$n} less if ≤$ifRunesAtMost runes',
       RecycleTrash(:final n, :final unit) => 'recycle $n${unit ? ' unit' : ''} from trash',
     };
@@ -175,6 +178,7 @@ String describeAmount(Amount a) => switch (a) {
       PerFriendlyUnit() => '1 per friendly unit',
       ChosenMight(:final slot) => 'Might of #$slot',
       EqAmount() => a.describe(),
+      GenAmount() => a.describe(),
     };
 
 // ---------------------------------------------------------------------------------------------

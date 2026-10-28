@@ -331,9 +331,8 @@ extension GameHidden on Game {
 
   void _hDeal(ObjId id, int n, _Ctx ctx) {
     if (!isUnit(id) || n <= 0) return;
-    final d = _hDamage(id, n);
-    state.obj(id).damage += d;
-    log('${nameOf(ctx.source)} deals $d to ${nameOf(id)}.', player: ctx.controller, card: id, kind: 'damage', amount: d);
+    final d = _genDeal(id, n, ctx);
+    if (d > 0) log('${nameOf(ctx.source)} deals $d to ${nameOf(id)}.', player: ctx.controller, card: id, kind: 'damage', amount: d);
   }
 
   int _bfIndex(ObjId bfObj) => state.obj(bfObj).loc;

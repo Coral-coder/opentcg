@@ -3,6 +3,19 @@ part of 'parser.dart';
 // Equipment (CR 150, 716–725, 818 Equip, 819 Quick-Draw, 821 Weaponmaster) and the cards built
 // around it: their rules text, and the Effect Text (CR 136) an Equipment gives its unit.
 
+/// One line, read by the family grammars (this file's included) and the core first, and by the
+/// general grammar only if they can't (parser/general.dart).
+List<Ability>? _eqParseLine(RCard c, List<int> slots, String line, {bool effectText = false}) {
+  final trace = RiftboundParser.trace;
+  final slot = slots[0];
+  final traced = trace?.length ?? 0;
+  final a = _EqLine(c, slots, effectText: effectText, general: false).parse(line);
+  if (a != null) return a;
+  slots[0] = slot;
+  trace?.removeRange(traced, trace.length);
+  return _EqLine(c, slots, effectText: effectText).parse(line);
+}
+
 /// The Effect Text of an Equipment, read as abilities of the unit it's attached to ("I", "me"),
 /// with "this" meaning the Equipment (CR 136.2.c–d). Lines it can't read go to [unsupported].
 List<Ability> _eqEffectAbilities(RCard c, List<String> unsupported) {
@@ -12,7 +25,7 @@ List<Ability> _eqEffectAbilities(RCard c, List<String> unsupported) {
   final out = <Ability>[];
   for (final line in c.effect.split('\n')) {
     if (line.trim().isEmpty) continue;
-    final a = _EqLine(asUnit, slots, effectText: true).parse(line.trim());
+    final a = _eqParseLine(asUnit, slots, line.trim(), effectText: true);
     if (a == null) {
       unsupported.add('(Effect Text) ${line.trim()}');
     } else {
@@ -59,7 +72,7 @@ List<Ability> _eqExtra(RCard c, List<Ability> abilities, List<String> unsupporte
 bool _isEquipment(RCard c) => c.type == CardType.gear && c.hasTag('Equipment');
 
 class _EqLine extends _Line {
-  _EqLine(super.card, super._slotCounter, {this.effectText = false});
+  _EqLine(super.card, super._slotCounter, {this.effectText = false, super.general});
 
   /// Reading an Equipment's Effect Text: "this" is the Equipment.
   final bool effectText;
@@ -142,7 +155,7 @@ class _EqLine extends _Line {
     m = RegExp(r'^While you control this battlefield, friendly legends have "(.+)"\.?$').firstMatch(t);
     if (m != null && _isBattlefield) {
       final legend = RCard(name: card.name, type: CardType.legend, domains: card.domains, text: m[1]!);
-      final a = _EqLine(legend, [0]).parse(m[1]!);
+      final a = _eqParseLine(legend, [0], m[1]!);
       if (a == null || a.length != 1 || a.first is! Activated) return null;
       return Static(line, EqGrantLegends(a.first as Activated));
     }
@@ -171,7 +184,7 @@ class _EqLine extends _Line {
       if (m != null) return Static(line, EqHasTag(m[1]!));
       if (t == "I can't be moved by enemy spells and abilities.") return Static(line, const EqUnmovable());
       m = RegExp(r'^Your spells and abilities deal (\d+) Bonus Damage\.$').firstMatch(t);
-      if (m != null) return Static(line, EqBonusDamage(int.parse(m[1]!)));
+      if (m != null) return Static(line, Restrict(RKind.bonusDamage, n: int.parse(m[1]!)));
       if (t == 'My hold effects are also conquer effects, and vice versa.') return Static(line, const EqHoldIsConquer());
       m = RegExp(r'^Your units here have \[([A-Za-z]+)(?: (\d+))?\]\.$').firstMatch(t);
       if (m != null) {
@@ -272,12 +285,6 @@ class _EqLine extends _Line {
       _unitSlot = slot;
       return [EqChooseOnly(EqChoose(Filter(side: m[1] == 'friendly' ? Side.friendly : Side.enemy), slot: slot, equipped: true))];
     }
-    m = RegExp(r'^It deals damage equal to its Might to (.+)$').firstMatch(s);
-    if (m != null) {
-      final u = _target('it');
-      final v = u == null ? null : _target(m[1]!);
-      return v == null ? null : [EqUnitDeals(u!, v)];
-    }
     // Angle Shot: "Choose a unit and an Equipment with the same controller."
     if (s == 'Choose a unit and an Equipment with the same controller') {
       _unitSlot = _slotCounter[0]++;
@@ -297,7 +304,7 @@ class _EqLine extends _Line {
     final that = m == null ? null : (_unitSlot >= 0 ? Chosen(_unitSlot) : _target('that unit'));
     if (m != null && that is Chosen) {
       final asUnit = RCard(name: card.name, type: CardType.unit, domains: card.domains, might: 0, text: m[1]!);
-      final a = _EqLine(asUnit, [0]).parse('${m[1]!}.');
+      final a = _eqParseLine(asUnit, [0], '${m[1]!}.');
       if (a == null || a.length != 1 || a.first is! Triggered) return null;
       return [EqGrantThisTurn(that, a.first as Triggered)];
     }
@@ -330,6 +337,13 @@ class _EqLine extends _Line {
   List<Effect>? _eqSentenceLate(String s) {
     var m = RegExp(r'^Then (.+)$').firstMatch(s);
     if (m != null) return _sentence(_Line._cap(m[1]!));
+    // Strike Down.
+    // ("It" is the equipped unit chosen before; other cards are the general grammar's.)
+    m = RegExp(r'^It deals damage equal to its Might to (.+)$').firstMatch(s);
+    if (m != null && _unitSlot >= 0) {
+      final v = _target(m[1]!);
+      return v == null ? null : [EqUnitDeals(Chosen(_unitSlot), v)];
+    }
     if (s == 'Ready your units') return [const Ready(Each(Filter(side: Side.friendly)))];
     if (s == 'Play a unit from your trash') return [const EqPlayFromTrash()];
     m = RegExp(r'^You may pay ((?:\{[0-9A-Z]+\})+) to (.+)$').firstMatch(s);
@@ -371,8 +385,6 @@ class _EqLine extends _Line {
   @override
   Cond? _cond(String c) {
     if (c == "I didn't conquer this turn" && effectText) return const EqDidntConquer();
-    final m = RegExp(r'^you assigned (\d+) or more excess damage$').firstMatch(c);
-    if (m != null && card.type == CardType.unit) return EqExcessAtLeast(int.parse(m[1]!));
     if (c == "it's an Equipment" && _slotCounter[0] > _first) return EqIsEquipment(_slotCounter[0] - 1);
     return super._cond(c);
   }
