@@ -47,6 +47,7 @@ extension GameQuery on Game {
       n += _genKw(id, k);
       n += _powerKw(id, k, n);
       n += _hKw(id, k);
+      n += _ws2Kw(id, k);
     }
     return n;
   }
@@ -190,6 +191,7 @@ extension GameQuery on Game {
     }
     out.addAll(_eqCandidates(seat));
     out.addAll(_hCandidates(seat));
+    out.addAll(_ws2Candidates(seat));
     if (state.chain.isNotEmpty || state.showdown != null) out.add(PassMove(seat));
     if (_neutralMain(seat)) out.add(EndTurnMove(seat));
     return out;

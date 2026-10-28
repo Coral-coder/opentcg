@@ -35,6 +35,8 @@ String describeEffect(Effect e) => switch (e) {
       GainPoints(:final n) => 'gain $n point${n == 1 ? '' : 's'}',
       Predict(:final n) => 'predict $n',
       Counter() => 'counter a spell',
+      Ws2PowerToEnergy() => 'pay any amount of {A} to add that much Energy',
+      Ws2RestrictedAdd(gear: true, :final anyPower) => 'add ${'{A}' * anyPower} (gear only)',
       AddRes(:final energy, :final anyPower, :final spellsOnly, :final power) => 'add ${energy > 0 ? '{$energy}' : ''}${power.map((d) => '{${d.letter}}').join()}${'{A}' * anyPower}${spellsOnly ? ' (spells only)' : ''}',
       ReadyRunes(:final n) => 'ready $n runes',
       ToOrFromBase(:final target) => 'move ${describeTarget(target)} to or from base',
